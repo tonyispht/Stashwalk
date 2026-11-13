@@ -7,7 +7,7 @@
 
 const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites']);
 const SEG = /^[A-Za-z0-9_-]{1,64}$/;
-const ITEM_ID = /^\d{1,3}_[0-4]$/;
+const ITEM_ID = /^(\d{1,3}_[0-4]|c\d{1,3})$/;   // base items, or crafted relics (c0, c1, ...)
 let ready = false;
 
 const json = (obj, status, cors) => new Response(JSON.stringify(obj), {

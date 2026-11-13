@@ -73,6 +73,22 @@ reach, shown on a welcome card. Joining through an invite link adds a fourth. An
 already exists but has never collected, traded or claimed anything gets the same kit on its next
 sign-in, so nobody who registered earlier is left with an empty pack.
 
+## Workshop: merging and crafting
+A sixth tab, unlocked in stages. Your Workshop level is how many of these achievements you hold,
+in any order, and it is also the highest rarity you can merge up to:
+  1 Apprentice  - first trade          (merge up to Uncommon)
+  2 Tinker      - open 5 chests        (up to Rare)
+  3 Artisan     - collect 50 items     (up to Epic)
+  4 Master      - 50 trades            (up to Legendary)
+  5 Grandmaster - collect 100 items
+**Merging**: MERGE_COUNT (3) copies of one item become a single copy one rarity higher.
+**Relics**: 20 craft-only items in 5 tiers (`relics.js`), each from 3-4 named ingredients at a
+minimum rarity. Relics never drop from chests - they join ITEMS and ITEM_BY_ID so they appear on
+the Shelf as silhouettes to work toward, but deliberately NOT ITEMS_BY_R, which is what chests roll
+from. They can still be traded, so a player can obtain one without crafting it.
+Edit the recipes in `tools/build_relics.py` (ingredients are written by name, not index) and re-run
+it to regenerate relics.js.
+
 ## Inviting friends
 Share the link or QR code from the Me tab. The invited player starts with an extra item. You get a
 Rare once they actually open their first chest, an Epic at 5 friends and a Legendary at 10, plus

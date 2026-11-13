@@ -1,7 +1,7 @@
 (function () {
 'use strict';
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
-      RAR = window.RARITIES, DB = window.DB;
+      RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
 const UNLOCK_M = C.UNLOCK_FT * 0.3048, FT = 3.28084;
 const unlockM = () => C.UNLOCK_FT * 0.3048;
 const DEV = /[?&]dev=1/.test(location.search);
@@ -82,6 +82,77 @@ function refreshChest(cur, meta, day) {
   SLOT_IDS.slice(0, C.CHEST_SLOTS).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
   const fresh = wildItems(meta.id, day, kindInfo(cur.kind || meta.kind)[2], wildSlots);
   cur.items = Object.assign(items, fresh); cur.day = day; return cur;
+}
+
+// ---------------- workshop ----------------
+// Each level is unlocked by an achievement, so crafting is something you grow into.
+// Your level is also the highest rarity you can merge up to (1 = Uncommon ... 4 = Legendary).
+const WORKSHOP = [
+  { lvl: 1, name: 'Apprentice',  ach: 'ex1',    how: 'Complete your first trade' },
+  { lvl: 2, name: 'Tinker',      ach: 'visit5', how: 'Open 5 different chests' },
+  { lvl: 3, name: 'Artisan',     ach: 'dex50',  how: 'Collect 50 different items' },
+  { lvl: 4, name: 'Master',      ach: 'ex50',   how: 'Complete 50 trades' },
+  { lvl: 5, name: 'Grandmaster', ach: 'dex100', how: 'Collect 100 different items' }
+];
+const workshopLevel = () => WORKSHOP.filter(w => P.ach[w.ach]).length;
+const nextWorkshop = () => WORKSHOP.find(w => !P.ach[w.ach]);
+
+// Three of the same item become one of the next rarity up.
+function mergeOptions() {
+  const lvl = workshopLevel(), out = [];
+  Object.keys(P.inv).forEach(id => {
+    const it = BY_ID[id];
+    if (!it || it.crafted || it.r >= 4 || P.inv[id] < C.MERGE_COUNT) return;
+    const to = BY_R[it.r + 1].find(x => x.base === it.base);
+    if (to) out.push({ from: it, to, have: P.inv[id], ok: lvl >= it.r + 1 });
+  });
+  return out.sort((a, b) => b.from.r - a.from.r || a.from.n.localeCompare(b.from.n));
+}
+function doMerge(id) {
+  const it = BY_ID[id];
+  if (!it || P.inv[id] < C.MERGE_COUNT || it.r >= 4) return toast('Not enough to merge', 'bad');
+  if (workshopLevel() < it.r + 1) return toast(`Workshop level ${it.r + 1} needed for that`, 'bad');
+  const to = BY_R[it.r + 1].find(x => x.base === it.base);
+  if (!to) return toast('Nothing to merge into', 'bad');
+  for (let i = 0; i < C.MERGE_COUNT; i++) removeItem(id);
+  const isNew = !P.dex[to.id];
+  addItem(to.id);
+  P.stats.merges = (P.stats.merges || 0) + 1;
+  save(); checkAch(); renderAll();
+  showMade(to, `${C.MERGE_COUNT} × ${it.n} became`, isNew);
+}
+
+// Which ingredients a recipe still needs, and the cheapest thing you own that satisfies each.
+function recipeState(relic) {
+  const used = {}, parts = relic.req.map(([base, minR]) => {
+    let pick = null;
+    for (let r = minR; r <= 4 && !pick; r++) {
+      const cand = BY_R[r].find(x => x.base === base);
+      if (cand && (P.inv[cand.id] || 0) > (used[cand.id] || 0)) { pick = cand; used[cand.id] = (used[cand.id] || 0) + 1; }
+    }
+    return { base, minR, pick, sample: BY_R[minR].find(x => x.base === base) };
+  });
+  return { locked: workshopLevel() < relic.lvl, parts, ready: parts.every(p => p.pick) };
+}
+function doCraft(id) {
+  const relic = BY_ID[id]; if (!relic || !relic.crafted) return;
+  const st = recipeState(relic);
+  if (st.locked) return toast(`Workshop level ${relic.lvl} needed`, 'bad');
+  if (!st.ready) return toast('You are missing an ingredient', 'bad');
+  st.parts.forEach(p => removeItem(p.pick.id));
+  const isNew = !P.dex[relic.id];
+  addItem(relic.id);
+  P.stats.crafted = (P.stats.crafted || 0) + 1;
+  save(); checkAch(); renderAll();
+  showMade(relic, 'You crafted', isNew);
+}
+function showMade(it, lead, isNew) {
+  FX.sfx('coin');
+  modal(`<div style="text-align:center"><p class="sub">${esc(lead)}</p>${revealBox(it)}
+    <h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}${it.crafted ? ' <span class="badge" style="background:#6a5acd">Crafted only</span>' : ''}
+    <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
+    <button class="btn big" id="okBtn">Great</button></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => FX.reveal(it.r, $('.tile.big', m)), 200); });
 }
 
 // ---------------- player state ----------------
@@ -188,12 +259,18 @@ ach('leg5', 'Dragon Hoard', 'Dragon Keeper', 'Collect 5 different Legendary item
 ach('gave1', 'Generous Soul', 'Philanthropist', 'Leave an Epic or Legendary item in a chest', s => s.gaveRare, 1, '🎁');
 ach('hide1', 'Cache Keeper', 'Hider', 'Hide your first chest', s => s.hidden, 1, '🫳');
 ach('hide5', 'Chest Smith', 'Master of Hiding', 'Hide 5 chests', s => s.hidden, 5, '🔨');
+ach('merge5', 'Fusionist', 'Alchemist', 'Merge items 5 times', s => s.merges, 5, '🔗');
+ach('merge25', 'Transmuter', 'Transmuter', 'Merge items 25 times', s => s.merges, 25, '⚗️');
+ach('craft1', 'First Relic', 'Artificer', 'Craft your first relic', s => s.crafted, 1, '⚒️');
+ach('craft5', 'Workshop Regular', 'Relicsmith', 'Craft 5 relics', s => s.crafted, 5, '🛠️');
+ach('craftall', 'Complete Workshop', 'Grand Artificer', 'Collect every relic', s => s.relics, RELICS.length || 20, '🏵️');
 ach('inv1', 'Bring a Friend', 'Recruiter', 'Invite 1 friend who joins', s => s.invites, 1, '💌');
 ach('inv5', 'Party Leader', 'Party Leader', 'Invite 5 friends who join', s => s.invites, 5, '🎉');
 function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
   return { logins: P.daily.n, streak: P.daily.max || 0, visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
-           dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0 };
+           dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
+           merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length };
 }
 function checkAch() {
   const s = statView(), got = [];
@@ -288,6 +365,7 @@ function renderAll() {
   else if (view === 'pack') renderPack();
   else if (view === 'dex') renderDex();
   else if (view === 'daily') renderDaily();
+  else if (view === 'craft') renderCraft();
   else if (view === 'me') renderMe();
 }
 
@@ -345,6 +423,39 @@ async function runDiag() {
   } else lines.push('shared database: not configured (local mode)');
   out.textContent = lines.join('\n');
   btn.disabled = false;
+}
+
+// ---- workshop tab ----
+function renderCraft() {
+  const lvl = workshopLevel(), nxt = nextWorkshop(), cur = WORKSHOP[lvl - 1];
+  let h = `<div class="card wsHead"><div><b>Workshop level ${lvl}</b><small class="fine">${lvl ? esc(cur.name) : 'Locked'}</small></div>
+    <div class="wsPips">${WORKSHOP.map(w => `<i class="${P.ach[w.ach] ? 'on' : ''}" title="${esc(w.name)}"></i>`).join('')}</div></div>`;
+  if (nxt) h += `<p class="fine pad">Next: <b>level ${nxt.lvl} – ${esc(nxt.name)}</b> · ${esc(nxt.how)}</p>`;
+  else h += `<p class="fine pad">Workshop fully unlocked. Everything is craftable.</p>`;
+  if (!lvl) h += `<div class="empty">Trade at a chest to open the Workshop.</div>`;
+
+  const merges = mergeOptions();
+  h += `<h2 class="sec">Merge <small>${C.MERGE_COUNT} of a kind → 1 of the next rarity</small></h2>`;
+  h += merges.length ? '<div class="list">' + merges.map(m => `<div class="mrow${m.ok ? '' : ' off'}">
+      ${tile(m.from, { count: m.have })}<span class="arrow">→</span>${tile(m.to)}
+      <button class="btn sm" data-merge="${esc(m.from.id)}" ${m.ok ? '' : 'disabled'}>${m.ok ? 'Merge' : 'Lv ' + (m.from.r + 1)}</button>
+    </div>`).join('') + '</div>'
+    : `<div class="empty">Nothing to merge yet. Collect ${C.MERGE_COUNT} of the same item and you can fuse them.</div>`;
+
+  h += `<h2 class="sec">Relics <small>${statView().relics} / ${RELICS.length} collected</small></h2>
+    <p class="fine pad">Relics are craft-only — they never appear in chests.</p><div class="list">`;
+  RELICS.forEach(r => {
+    const st = recipeState(r);
+    h += `<div class="recipe${st.locked ? ' off' : ''}">
+      <div class="rhead">${tile(r, st.locked || !P.dex[r.id] ? { sil: true } : {})}
+        <div><b>${esc(r.n)}</b><small>${badge(r.r)} · Tier ${r.tier}${P.dex[r.id] ? ' · ✓ made' : ''}</small>
+        <small class="fine"><i>${esc(r.flavor)}</i></small></div>
+        <button class="btn sm" data-craft="${esc(r.id)}" ${st.locked || !st.ready ? 'disabled' : ''}>${st.locked ? 'Lv ' + r.lvl : 'Craft'}</button></div>
+      <div class="ring">${st.parts.map(p => `<span class="ing${p.pick ? ' got' : ''}">${p.sample ? p.sample.e : '?'} ${esc(p.sample ? p.sample.n.replace(/^\S+\s/, '') : '')}<b>${p.minR ? ' ' + RAR[p.minR].n + '+' : ''}</b></span>`).join('')}</div>
+    </div>`;
+  });
+  h += '</div>';
+  $('#craftBox').innerHTML = h;
 }
 
 // ---- dex ----
@@ -769,6 +880,12 @@ function wire() {
   const openFrom = e => { const b = e.target.closest('[data-open]'); if (b && !b.disabled) openChest(b.dataset.open); };
   $('#nearby').onclick = openFrom; $('#hereBar').onclick = openFrom;
   $('#packGrid').onclick = e => { const t = e.target.closest('.tile'); if (t) showItem(t.dataset.id); };
+  $('#craftBox').onclick = e => {
+    const mg = e.target.closest('[data-merge]'), cf = e.target.closest('[data-craft]');
+    if (mg && !mg.disabled) return doMerge(mg.dataset.merge);
+    if (cf && !cf.disabled) return doCraft(cf.dataset.craft);
+    const t = e.target.closest('.tile'); if (t && !t.classList.contains('sil')) showItem(t.dataset.id);
+  };
   $('#dexGrid').onclick = e => { const t = e.target.closest('.tile'); if (!t) return; if (P.dex[t.dataset.id]) showItem(t.dataset.id); else toast('Not collected yet – find it in a chest!'); };
   $('#dexFilters').onclick = e => { const b = e.target.closest('button'); if (b) { dexFilter = b.dataset.f; renderDex(); } };
   $('#dexSearch').oninput = renderDex;
