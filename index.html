@@ -7,7 +7,7 @@
 <title>Stashwalk – digital geocaching</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=202611131343">
+<link rel="stylesheet" href="style.css?v=202611131357">
 </head>
 <body>
 <div id="toasts"></div>
@@ -35,7 +35,7 @@
 <!-- GAME -->
 <div id="app" hidden>
   <header class="top">
-    <div class="who"><div class="av" id="hAv">?</div><div><b id="hName">-</b><small id="hTitle">-</small></div></div>
+    <button class="who" id="hWho"><div class="av" id="hAv">?</div><div><b id="hName">-</b><small id="hTitle">-</small></div></button>
     <div class="chips"><button class="chip ibtn" id="hSnd" title="Sound">🔊</button><button class="chip ibtn" id="hFs" title="Fullscreen">⛶</button><span class="chip" id="hStreak">🔥 0</span><span class="chip" id="hPack">🎒 0</span></div>
   </header>
 
@@ -56,6 +56,7 @@
           <button class="btn sm" id="hideBtn">🫳 Hide</button>
         </div>
         <div class="herebar" id="hereBar" hidden></div>
+        <div class="nextach" id="nextAch" hidden></div>
         <div class="phead"><b id="panelTitle">Chests nearby</b><small id="radInfo"></small></div>
         <div id="dev" class="dev" hidden>DEV – tap map to teleport. <button class="btn sm ghost" id="tpNear">Nearest chest</button></div>
         <div id="nearby" class="list"></div>
@@ -100,12 +101,12 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>window.ASSET_V="202611131343"</script>
-<script src="config.js?v=202611131343"></script>
-<script src="items.js?v=202611131343"></script>
-<script src="relics.js?v=202611131343"></script>
-<script src="db.js?v=202611131343"></script>
-<script src="fx.js?v=202611131343"></script>
-<script src="app.js?v=202611131343"></script>
+<script>window.ASSET_V="202611131357"</script>
+<script src="config.js?v=202611131357"></script>
+<script src="items.js?v=202611131357"></script>
+<script src="relics.js?v=202611131357"></script>
+<script src="db.js?v=202611131357"></script>
+<script src="fx.js?v=202611131357"></script>
+<script src="app.js?v=202611131357"></script>
 </body>
 </html>

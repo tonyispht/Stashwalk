@@ -306,6 +306,26 @@ ach('craft5', 'Workshop Regular', 'Relicsmith', 'Craft 5 relics', s => s.crafted
 ach('craftall', 'Complete Workshop', 'Grand Artificer', 'Collect every relic', s => s.relics, RELICS.length || 20, '🏵️');
 ach('inv1', 'Bring a Friend', 'Recruiter', 'Invite 1 friend who joins', s => s.invites, 1, '💌');
 ach('inv5', 'Party Leader', 'Party Leader', 'Invite 5 friends who join', s => s.invites, 5, '🎉');
+// The locked achievement you are nearest to finishing - something concrete to aim at.
+function nextAch() {
+  const s = statView();
+  let best = null;
+  ACH.forEach(a => {
+    if (P.ach[a.id]) return;
+    const have = Math.max(0, Math.min(a.get(s), a.goal)), frac = have / a.goal;
+    if (!best || frac > best.frac || (frac === best.frac && a.goal < best.goal))
+      best = { a, have, goal: a.goal, frac };
+  });
+  return best;
+}
+function renderNextAch() {
+  const el = $('#nextAch'); if (!el) return;
+  const n = nextAch();
+  if (!n) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<i>${n.a.icon}</i><b>${esc(n.a.n)}</b><span class="bar"><i style="width:${Math.round(n.frac * 100)}%"></i></span><u>${n.have}/${n.goal}</u>`;
+}
+
 function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
   return { logins: P.daily.n, streak: P.daily.max || 0, visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
@@ -403,6 +423,7 @@ function renderHeader() {
 function streakNow() { return P.daily.last && daysBetween(P.daily.last, dayKey()) <= 1 ? P.daily.streak : 0; }
 function renderAll() {
   if (!P) return; renderHeader();
+  renderNextAch();
   if (view === 'explore') renderNearby();
   else if (view === 'pack') renderPack();
   else if (view === 'dex') renderDex();
@@ -431,6 +452,36 @@ function renderPack() {
   $('#packGrid').innerHTML = ids.length ? ids.map(it => tile(it, { count: P.inv[it.id] })).join('')
     : '<div class="empty" style="grid-column:1/-1">Your pack is empty. Claim today\'s login reward on the Daily tab to get your first item.</div>';
 }
+function showStats() {
+  const s = statView(), got = ACH.filter(a => P.ach[a.id]);
+  const titles = [...new Set(['Newcomer'].concat(got.map(a => a.t)))];
+  const n = nextAch();
+  const row = (label, val) => `<div class="srow"><span>${label}</span><b>${val}</b></div>`;
+  modal(`<div style="text-align:center"><div class="av big">${esc(P.name[0].toUpperCase())}</div>
+      <h3 style="margin:8px 0 2px">${esc(P.name)}</h3><p class="sub" style="color:var(--acc2);margin:0">${esc(P.title)}</p></div>
+    <div class="lbl">Equipped title</div>
+    <select id="titleSel2">${titles.map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+    <p class="fine">${titles.length === 1 ? 'Earn achievements to unlock more titles.' : titles.length + ' titles earned.'}</p>
+    <div class="lbl">Your record</div>
+    <div class="stats">
+      ${row('Chests opened', s.visited)}${row('Trades made', s.ex)}
+      ${row('Items collected', s.dex + ' / ' + ITEMS.length)}${row('Relics crafted', s.relics + ' / ' + (RELICS.length || 0))}
+      ${row('Items merged', s.merges)}${row('Gifts left', s.given)}
+      ${row('Chests hidden', s.hidden)}${row('Friends invited', s.invites)}
+      ${row('Daily rewards', s.logins)}${row('Best streak', s.streak)}
+      ${row('Legendaries', s.byR[4])}${row('Achievements', got.length + ' / ' + ACH.length)}
+    </div>
+    ${n ? `<div class="lbl">Closest achievement</div>
+      <div class="nextbig"><i>${n.a.icon}</i><div><b>${esc(n.a.n)}</b><small>${esc(n.a.d)}</small>
+        <span class="bar"><i style="width:${Math.round(n.frac * 100)}%"></i></span></div><u>${n.have}/${n.goal}</u></div>` : ''}
+    <div class="trade"><button class="btn ghost" id="okBtn">Close</button><button class="btn" id="allAch">All achievements</button></div>`,
+    m => {
+      $('#okBtn', m).onclick = closeModal;
+      $('#titleSel2', m).onchange = e => { P.title = e.target.value; save(); renderHeader(); toast('Title set to ' + P.title); };
+      $('#allAch', m).onclick = () => { closeModal(); show('me'); setTimeout(() => { const a = $('#meBox .sec'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); };
+    });
+}
+
 function showItem(id) {
   const it = BY_ID[id]; if (!it) return;
   const own = P.inv[id] || 0, first = P.dex[id];
@@ -566,8 +617,12 @@ function renderMe() {
     <h2 class="sec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2><div style="padding:0 14px">`;
   ACH.forEach(a => {
     const v = Math.min(a.get(s), a.goal), got = !!P.ach[a.id];
-    h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${got ? a.icon : '🔒'}</div><div><b>${esc(a.n)}</b> <small style="display:inline;color:var(--acc2)">${got ? '· title: ' + esc(a.t) : ''}</small>
-      <small>${esc(a.d)}${got ? '' : ` (${v}/${a.goal})`}</small>${got ? '' : `<div class="bar"><i style="width:${v / a.goal * 100}%"></i></div>`}</div></div>`;
+    const pct = Math.round(v / a.goal * 100);
+    h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${got ? a.icon : a.icon}</div><div><b>${esc(a.n)}</b>
+      <small style="display:inline;color:var(--acc2)">${got ? '· ' + esc(a.t) : ''}</small>
+      <small>${esc(a.d)}</small>
+      <div class="achbar"><span class="bar"><i style="width:${got ? 100 : pct}%" class="${got ? 'done' : ''}"></i></span>
+        <u>${got ? '✓ earned' : v + ' / ' + a.goal}</u></div></div></div>`;
   });
   h += `</div><div class="card"><b>This build</b>
     <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>. Use this if an update does not seem to have arrived -
@@ -1177,6 +1232,9 @@ function checkZoom() {
 }
 
 function wire() {
+  // iOS pays much more for CSS filters, backdrop blur and large canvases than Android does,
+  // so it gets a lighter effect set (see .ios rules in style.css).
+  if (isIOS()) { document.body.classList.add('ios'); FX.lowPower(true); }
   trackViewport();
   lockInteractions();
   setTimeout(checkZoom, 2500);
@@ -1203,6 +1261,7 @@ function wire() {
     const sf = $('#setFs'); if (sf) sf.checked = FX.inFs();
   };
   FX.onChange(sync); sync();
+  $('#hWho').onclick = showStats;
   $('#hSnd').onclick = () => { FX.set('snd', !FX.prefs.snd); FX.sfx('coin'); };
   $('#hFs').onclick = () => FX.toggleFs();
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };

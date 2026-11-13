@@ -102,6 +102,13 @@ it to regenerate relics.js.
   dedupes by player, adds it to a blocklist the client filters against, and deletes the chest and
   its index entry.
 
+## Player stats and achievement progress
+Tapping your name/avatar in the header opens a stats card: your record (chests, trades, items,
+relics, merges, gifts, hidden, invites, streak, legendaries, achievements), the title picker, and
+the achievement you are closest to finishing. A compact strip on the Explore tab shows that same
+closest achievement with a progress bar, so there is always something concrete to aim at. The Me
+tab lists every achievement with a bar and a count.
+
 ## Inviting friends
 Share the link or QR code from the Me tab. The invited player starts with an extra item. You get a
 Rare once they actually open their first chest, an Epic at 5 friends and a Legendary at 10, plus
@@ -136,6 +143,12 @@ are blocked via the viewport meta, touch-action and a touchend guard.
 Browser PAGE zoom is a browser setting that a page cannot change. The game detects it
 (screen.width vs innerWidth in portrait) and warns once per session; the Me tab readout shows the
 estimate. If a player reports things being cut off, check that figure first.
+
+## iOS performance
+iOS pays far more than Android for CSS filters, backdrop blur and large canvases. On an iPhone or
+iPad the game adds `body.ios` and turns on FX low-power mode: the canvas drops to 1x pixel ratio,
+particle counts are roughly halved, and the header blur, per-item hue filters, screen flash and
+several looping animations are switched off. The gameplay is identical.
 
 ## Layout and performance notes
 - The app is a fixed-height flex column sized from `--vh`, clamped against `100svh`. Every API for

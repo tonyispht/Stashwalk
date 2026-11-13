@@ -304,3 +304,39 @@ input,textarea,select,.diag,#inviteLink{-webkit-user-select:text;user-select:tex
 .help{margin:6px 0 0;padding-left:20px;font-size:13px;line-height:1.55;color:var(--ink)}
 .help li{margin-bottom:6px}
 .help b{color:var(--acc2)}
+
+/* ---- player stats + achievement progress ---- */
+button.who{background:none;border:0;padding:0;display:flex;gap:10px;align-items:center;cursor:pointer;text-align:left;color:inherit}
+button.who:active{transform:scale(.96)}
+.av.big{width:62px;height:62px;font-size:26px;margin:0 auto}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.srow{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--mut);border-bottom:1px solid #1f3729;padding:5px 0}
+.srow b{color:var(--ink)}
+.nextbig{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid #234230;border-radius:12px;padding:10px}
+.nextbig i{font-style:normal;font-size:26px}
+.nextbig b{display:block;font-size:13.5px}
+.nextbig small{display:block;color:var(--mut);font-size:11.5px;margin-bottom:5px}
+.nextbig u{text-decoration:none;color:var(--acc2);font-size:12px;white-space:nowrap}
+.nextbig .bar{display:block;height:7px;margin:0}
+/* the compact strip on Explore */
+.nextach{flex:none;display:flex;align-items:center;gap:8px;margin:0 12px 5px;padding:5px 9px;border-radius:10px;
+  background:var(--card);border:1px solid #234230;font-size:11.5px;color:var(--mut)}
+.nextach i{font-style:normal;font-size:15px}
+.nextach b{color:var(--ink);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42%}
+.nextach .bar{flex:1;height:7px;margin:0;min-width:40px}
+.nextach u{text-decoration:none;color:var(--acc2);white-space:nowrap}
+.achbar{display:flex;align-items:center;gap:8px;margin-top:5px}
+.achbar .bar{flex:1;height:7px;margin:0}
+.achbar u{text-decoration:none;font-size:11px;color:var(--mut);white-space:nowrap}
+.bar i.done{background:linear-gradient(90deg,var(--ok),#9df0bb)}
+.ach .ai{font-size:24px}
+.ach.lock .ai{filter:grayscale(1) opacity(.45)}
+
+/* ---- lighter effects on iOS, where filters and blurs are far more expensive ---- */
+.ios .top{backdrop-filter:none;-webkit-backdrop-filter:none;background:#0f1a14}
+.ios .tile .em{filter:none!important}
+.ios .revealbox .rays{background:radial-gradient(circle,var(--rc) 0%,transparent 68%);-webkit-mask:none;mask:none;animation:none;opacity:.35}
+.ios .tile.r4,.ios .tile.r4::before{animation:none}
+.ios .chest.near,.ios .herebar,.ios .cm.near span{animation:none}
+.ios .sheet{animation:none}
+.ios .revealbox .tile.big{animation-duration:.4s}
