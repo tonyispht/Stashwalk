@@ -56,70 +56,32 @@ function validate(segs, value) {
   }
   return false;
 }
-const OVERPASS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass.osm.ch/api/interpreter',
-  'https://overpass.osm.jp/api/interpreter'
-];
-const UA = 'StashwalkGame/1.0 (browser game)';
-function osmKind(t) {
-  if (t.tourism === 'camp_site') return 'camp'; if (t.tourism === 'picnic_site' || t.leisure === 'picnic_table') return 'picnic';
-  if (t.tourism === 'viewpoint') return 'view'; if (t.natural === 'peak') return 'peak'; if (t.leisure === 'playground') return 'play';
-  if (t.leisure === 'fire_pit' || t.amenity === 'bbq') return 'fire'; if (t.amenity === 'shelter') return 'shelter';
-  if (t.leisure === 'nature_reserve') return 'reserve'; return 'park';
-}
-const KIND_NAME = { camp: 'Campsite', picnic: 'Picnic Spot', view: 'Viewpoint', peak: 'Summit', play: 'Playground', fire: 'Fire Ring', shelter: 'Trail Shelter', reserve: 'Nature Reserve', park: 'Park' };
-const host = u => u.split('/')[2];
-
-// One attempt at one mirror. Always settles - never left hanging.
-async function askOverpass(ep, q, ms) {
-  const t0 = Date.now();
-  try {
-    const r = await fetch(ep, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, 'Accept': 'application/json' },
-      body: 'data=' + encodeURIComponent(q),
-      signal: AbortSignal.timeout(ms)
-    });
-    const dt = Date.now() - t0;
-    if (!r.ok) return { ep, note: host(ep) + ': HTTP ' + r.status + ' in ' + dt + 'ms ' + (await r.text()).slice(0, 100).replace(/\s+/g, ' ') };
-    const txt = await r.text();
-    let j; try { j = JSON.parse(txt); } catch (e) { return { ep, note: host(ep) + ': not JSON in ' + dt + 'ms: ' + txt.slice(0, 100).replace(/\s+/g, ' ') }; }
-    if (!j.elements) return { ep, note: host(ep) + ': no elements in ' + dt + 'ms' };
-    return { ep, note: host(ep) + ': ok, ' + j.elements.length + ' raw in ' + dt + 'ms', elements: j.elements };
-  } catch (e) {
-    return { ep, note: host(ep) + ': ' + String(e && e.name === 'TimeoutError' ? 'timed out' : (e && e.message) || 'threw').slice(0, 100) + ' after ' + (Date.now() - t0) + 'ms' };
+const KINDS = new Set(['camp', 'picnic', 'view', 'peak', 'play', 'fire', 'shelter', 'reserve', 'park', 'landmark']);
+const CELL_DEG = 0.1;                                  // ~11 km grid
+const osmCell = (lat, lon) => (Math.round(lat / CELL_DEG) * CELL_DEG).toFixed(1) + '_' + (Math.round(lon / CELL_DEG) * CELL_DEG).toFixed(1);
+// Players' devices supply this data, so check every record before storing it for everyone else.
+function cleanPlaces(places, cell) {
+  if (!Array.isArray(places) || !places.length || places.length > 400) return null;
+  const parts = cell.split('_'), cLat = +parts[0], cLon = +parts[1];
+  if (!Number.isFinite(cLat) || !Number.isFinite(cLon)) return null;
+  // Everything must sit in or near the cell it claims, so nobody can scatter chests wherever they like.
+  const latPad = 0.35, lonPad = 0.35 / Math.max(0.2, Math.cos(cLat * Math.PI / 180));
+  const seen = new Set(), out = [];
+  for (const p of places) {
+    if (!p || typeof p !== 'object') continue;
+    const id = String(p.id || ''), name = String(p.name || ''), lat = +p.lat, lon = +p.lon, kind = String(p.kind || '');
+    if (!/^osm_[nwr]\d{1,12}$/.test(id) || seen.has(id)) continue;
+    if (!name || name.length > 60) continue;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (Math.abs(lat - cLat) > latPad || Math.abs(lon - cLon) > lonPad) continue;
+    if (!KINDS.has(kind)) continue;
+    seen.add(id);
+    out.push({ id, name, lat: +lat.toFixed(5), lon: +lon.toFixed(5), kind });
+    if (out.length >= 400) break;
   }
-}
-// Ask every mirror at once and take the first usable answer.
-async function raceOverpass(q, ms, diag) {
-  const results = await Promise.all(OVERPASS.map(ep => askOverpass(ep, q, ms)));
-  results.forEach(r => diag && diag.push(r.note));
-  const win = results.find(r => r.elements && r.elements.length);
-  return win ? win.elements : null;
-}
-function compact(elements, cap) {
-  const out = [];
-  for (const el of elements) {
-    const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
-    if (la == null || lo == null) continue;
-    const t = el.tags || {}, k = osmKind(t);
-    out.push({ id: 'osm_' + el.type[0] + el.id, name: String(t.name || KIND_NAME[k] || 'Park').slice(0, 60), lat: +la.toFixed(5), lon: +lo.toFixed(5), kind: k });
-    if (out.length >= cap) break;
-  }
-  return out;
-}
-async function osmFetch(lat, lon, diag) {
-  const a = `(around:6000,${lat},${lon})`, b = `(around:28000,${lat},${lon})`;
-  const q = `[out:json][timeout:18];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
-    `nwr${b}[tourism=camp_site];nwr${b}[leisure=nature_reserve][name];nwr${b}[natural=peak][name];);out center 220;`;
-  const els = await raceOverpass(q, 20000, diag);
-  if (!els) return null;
-  const out = compact(els, 220);
   return out.length ? out : null;
 }
+
 const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 3000 };
 
 export default {
@@ -142,25 +104,37 @@ export default {
       }
 
       // Park/campground lookup, proxied + cached so players never hit the slow public API directly.
-      if (url.pathname === '/probe' && req.method === 'GET') {
-        const diag = [];
-        const els = await raceOverpass('[out:json][timeout:10];node(around:300,30.2,-82.35)[natural];out 3;', 12000, diag);
-        return json({ reachable: !!els, tried: diag }, 200, cors);
-      }
-
+      // Park/campground lookup. Cloudflare cannot reach the OpenStreetMap query service (datacenter
+      // IPs are blocked there), so players fetch it on their own connection and POST the result back.
+      // After the first player visits an area, everyone else is served from this database instantly.
       if (url.pathname === '/osm' && req.method === 'GET') {
         const lat = +url.searchParams.get('lat'), lon = +url.searchParams.get('lon');
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad coords' }, 400, cors);
-        // Snap to a ~11km grid so everyone in an area shares one cached answer.
-        const cl = Math.round(lat * 10) / 10, co = Math.round(lon * 10) / 10, ck = 'osm/' + cl.toFixed(1) + '_' + co.toFixed(1);
-        const hit = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind(ck).first();
-        if (hit && Date.now() - hit.v < 30 * 86400000) return json({ value: JSON.parse(hit.val), cached: true }, 200, cors);
-        const diag = [];
-        const list = await osmFetch(cl, co, diag);
-        if (!list) return json(hit ? { value: JSON.parse(hit.val), cached: true, stale: true } : { error: 'park data unavailable', tried: diag }, hit ? 200 : 503, cors);
+        const cell = osmCell(lat, lon);
+        const hit = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind('osm/' + cell).first();
+        if (hit) return json({ value: JSON.parse(hit.val), cell, cached: true, refresh: Date.now() - hit.v > 30 * 86400000 }, 200, cors);
+        return json({ value: null, cell, cached: false, refresh: true }, 200, cors);
+      }
+
+      // A player sends back what their own device found for one grid cell.
+      if (url.pathname === '/osm' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const raw = await req.text(); if (raw.length > 120000) return json({ error: 'too large' }, 413, cors);
+        let body; try { body = JSON.parse(raw); } catch (e) { return json({ error: 'bad json' }, 400, cors); }
+        const cell = String(body.cell || '');
+        if (!/^-?\d{1,3}\.\d_-?\d{1,3}\.\d$/.test(cell)) return json({ error: 'bad cell' }, 400, cors);
+        const clean = cleanPlaces(body.places, cell);
+        if (!clean) return json({ error: 'bad places' }, 400, cors);
+        const prev = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind('osm/' + cell).first();
+        // First good answer for an area wins; later ones must be fresher or fuller to replace it.
+        if (prev) {
+          const old = JSON.parse(prev.val);
+          if (Date.now() - prev.v < 30 * 86400000 && clean.length <= old.length) return json({ ok: true, kept: 'existing', count: old.length }, 200, cors);
+        }
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = excluded.v')
-          .bind(ck, JSON.stringify(list), Date.now()).run();
-        return json({ value: list, cached: false }, 200, cors);
+          .bind('osm/' + cell, JSON.stringify(clean), Date.now()).run();
+        return json({ ok: true, stored: clean.length, cell }, 200, cors);
       }
 
       if (url.pathname === '/many' && req.method === 'GET') {          // batched read of hidden-chest index cells
