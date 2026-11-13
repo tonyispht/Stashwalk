@@ -114,7 +114,7 @@ the tally lives server-side - the /kv/invites path refuses writes so no client c
 Walk toward it. Within GEIGER_FT (250 ft) the game starts ticking like a Geiger counter, faster and
 brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears above the chest list
 with an Open button, the list row reads YOU'RE HERE, and the map icon becomes tappable.
-Toggle the ticking off under Me -> Settings.
+The ticking is OFF by default; turn it on under Me -> Settings.
 
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are

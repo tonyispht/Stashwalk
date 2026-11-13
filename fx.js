@@ -3,7 +3,7 @@ window.FX = (function () {
   const RAR = window.RARITIES || [];
   const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const get = (k, d) => { try { const v = localStorage.getItem('sw_' + k); return v === null ? d : v === '1'; } catch (e) { return d; } };
-  const prefs = { snd: get('snd', true), fx: get('fx', !reduce), fs: get('fs', true), geiger: get('geiger', true) };
+  const prefs = { snd: get('snd', true), fx: get('fx', !reduce), fs: get('fs', true), geiger: get('geiger', false) };
   function set(k, v) {
     prefs[k] = !!v;
     try { localStorage.setItem('sw_' + k, v ? '1' : '0'); } catch (e) {}
