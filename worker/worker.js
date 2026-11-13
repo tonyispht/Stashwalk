@@ -64,25 +64,34 @@ function osmKind(t) {
   if (t.leisure === 'nature_reserve') return 'reserve'; return 'park';
 }
 const KIND_NAME = { camp: 'Campsite', picnic: 'Picnic Spot', view: 'Viewpoint', peak: 'Summit', play: 'Playground', fire: 'Fire Ring', shelter: 'Trail Shelter', reserve: 'Nature Reserve', park: 'Park' };
-async function osmFetch(lat, lon) {
+async function osmFetch(lat, lon, diag) {
   const a = `(around:6000,${lat},${lon})`, b = `(around:28000,${lat},${lon})`;
   const q = `[out:json][timeout:20];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
     `nwr${b}[tourism=camp_site];nwr${b}[leisure=nature_reserve][name];nwr${b}[natural=peak][name];);out center 220;`;
   for (const ep of OVERPASS) {
-    try {
-      const r = await fetch(ep + '?data=' + encodeURIComponent(q), { cf: { cacheTtl: 604800, cacheEverything: true } });
-      if (!r.ok) continue;
-      const j = await r.json(); if (!j || !j.elements) continue;
-      const out = [];
-      for (const el of j.elements) {
-        const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
-        if (la == null || lo == null) continue;
-        const t = el.tags || {}, k = osmKind(t);
-        out.push({ id: 'osm_' + el.type[0] + el.id, name: String(t.name || KIND_NAME[k] || 'Park').slice(0, 60), lat: la, lon: lo, kind: k });
-        if (out.length >= 220) break;
-      }
-      if (out.length) return out;
-    } catch (e) {}
+    // Overpass rejects anonymous clients, so identify ourselves like a normal app would.
+    const headers = { 'User-Agent': 'Stashwalk/1.0 (browser game; contact via github.com/tonyispht/Stashwalk)', 'Accept': 'application/json' };
+    for (const mode of ['post', 'get']) {
+      try {
+        const r = mode === 'post'
+          ? await fetch(ep, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, headers), body: 'data=' + encodeURIComponent(q) })
+          : await fetch(ep + '?data=' + encodeURIComponent(q), { headers, cf: { cacheTtl: 604800, cacheEverything: true } });
+        if (!r.ok) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120).replace(/\s+/g, ' ')); continue; }
+        const txt = await r.text();
+        let j; try { j = JSON.parse(txt); } catch (e) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': not JSON: ' + txt.slice(0, 120).replace(/\s+/g, ' ')); continue; }
+        if (!j || !j.elements) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': no elements'); continue; }
+        const out = [];
+        for (const el of j.elements) {
+          const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
+          if (la == null || lo == null) continue;
+          const t = el.tags || {}, k = osmKind(t);
+          out.push({ id: 'osm_' + el.type[0] + el.id, name: String(t.name || KIND_NAME[k] || 'Park').slice(0, 60), lat: la, lon: lo, kind: k });
+          if (out.length >= 220) break;
+        }
+        if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': ok, ' + out.length + ' places');
+        if (out.length) return out;
+      } catch (e) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': ' + (e && e.message ? e.message : 'threw').slice(0, 120)); }
+    }
   }
   return null;
 }
@@ -115,8 +124,9 @@ export default {
         const cl = Math.round(lat * 10) / 10, co = Math.round(lon * 10) / 10, ck = 'osm/' + cl.toFixed(1) + '_' + co.toFixed(1);
         const hit = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind(ck).first();
         if (hit && Date.now() - hit.v < 30 * 86400000) return json({ value: JSON.parse(hit.val), cached: true }, 200, cors);
-        const list = await osmFetch(cl, co);
-        if (!list) return json(hit ? { value: JSON.parse(hit.val), cached: true, stale: true } : { error: 'park data unavailable' }, hit ? 200 : 503, cors);
+        const diag = [];
+        const list = await osmFetch(cl, co, diag);
+        if (!list) return json(hit ? { value: JSON.parse(hit.val), cached: true, stale: true } : { error: 'park data unavailable', tried: diag }, hit ? 200 : 503, cors);
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = excluded.v')
           .bind(ck, JSON.stringify(list), Date.now()).run();
         return json({ value: list, cached: false }, 200, cors);
