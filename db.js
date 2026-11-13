@@ -88,12 +88,6 @@ window.DB = (function () {
       return Promise.all(keys.map(k => this.get(prefix + '/' + k)));
     },
     setAuth(user, hash) { auth = { user: String(user).toLowerCase(), hash }; },
-    // Share what this device found for one map cell, so other players get it instantly.
-    async putPlaces(cell, places) {
-      if (!W) return; const r = await fetch(W + '/osm', { method: 'POST', headers: whead(), body: JSON.stringify({ cell, places }) });
-      if (!r.ok) throw new Error('upload ' + r.status);
-      return r.json();
-    },
     async verify(user, hash) {                       // does this name+hash belong to a real account?
       if (W) { try { const r = await fetch(W + '/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, hash }) }); return !!(await r.json()).ok; } catch (e) { return false; } }
       const u = await this.get('users/' + String(user).toLowerCase()); return !!u && u.hash === hash;

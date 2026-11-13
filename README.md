@@ -4,7 +4,7 @@ Plain static files. Upload the folder to any static host (GitHub Pages, Netlify 
 GPS needs HTTPS (those hosts all provide it; `localhost` also works for testing).
 
 ## Files
-index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), worker/ (optional shared-world backend), items.js (550 items), locations.js (landmark chests), db.js (storage), config.js (settings)
+index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), worker/ (optional shared-world backend), items.js (550 items), places.json (14,323 chest locations), tools/ (dataset builder), db.js (storage), config.js (settings)
 
 ## 1. Local mode (default, zero setup)
 Everything saves in the player's browser. Works instantly, but chests/trades are only shared between accounts on the same device.
@@ -46,11 +46,19 @@ Instead of the Worker you can paste a Firebase Realtime Database URL into `DB_UR
 The Worker is the better option: Firebase in this mode is wide open to anyone with the URL.
 
 ## Locations
-- locations.js: 106 landmark chests across the US (national parks, peaks, scenic spots, city parks). Coordinates are approximate, so they open within LANDMARK_UNLOCK_FT (300 ft) – edit/add your own rows.
-- Radius slider (Explore tab): choose how far to show chests, 1–250 mi. Park/campground data loads out to ~15 mi; landmarks show at any distance.
-- Automatically: campsites, parks, picnic tables, viewpoints, summits, shelters, playgrounds and fire rings near each player are pulled from OpenStreetMap, so every area has chests.
-- Players can hide their own chests (2/day) at their exact spot.
-- Opening needs you within UNLOCK_FT (5 ft) in config.js. Phone GPS is often only accurate to ~10-30 ft, so raise it (e.g. 25) if players can't unlock.
+- `places.json`: 14,323 real US locations shipped with the game - campgrounds, day-use and picnic
+  sites, trailheads, visitor centers, wildlife refuges and recreation areas. Built from the
+  Recreation Information Database (RIDB) full export, the federal system of record behind
+  Recreation.gov. RIDB is a U.S. Government work and is in the public domain.
+  Coverage is FEDERAL land only: no city or state parks, no private campgrounds. Towns far from
+  federal land will have few or no chests - players can hide their own there.
+- No internet service is queried to find chests. The list is downloaded once (~800 KB, ~250 KB
+  gzipped), cached by the browser, and works offline after that.
+- Players can hide their own chests (2/day) at their exact spot; those live in your database.
+- Rebuilding the list: download https://ridb.recreation.gov/downloads/RIDBFullExport_V1_JSON.zip
+  and re-run the build (see tools/build_places.py).
+- Opening a chest needs you within UNLOCK_FT (20 ft) in config.js. Phone GPS is often only accurate
+  to ~10-30 ft, so raise it if players can't unlock.
 
 ## Test without walking
 Open `index.html?dev=1` – tap the map to teleport, or use "Teleport to nearest chest".

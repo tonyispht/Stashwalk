@@ -1,10 +1,9 @@
 (function () {
 'use strict';
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
-      RAR = window.RARITIES, SEEDS = window.LANDMARKS || [], DB = window.DB;
+      RAR = window.RARITIES, DB = window.DB;
 const UNLOCK_M = C.UNLOCK_FT * 0.3048, FT = 3.28084;
-// Landmark chests use approximate coordinates, so they unlock from a wider ring than OSM / player chests.
-const unlockM = c => (c && c.src === 'seed' ? C.LANDMARK_UNLOCK_FT : C.UNLOCK_FT) * 0.3048;
+const unlockM = () => C.UNLOCK_FT * 0.3048;
 const DEV = /[?&]dev=1/.test(location.search);
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
@@ -252,32 +251,27 @@ function showItem(id) {
     <button class="btn ghost" onclick="document.getElementById('modal').onclick({target:document.getElementById('modal')})">Close</button></div>`);
 }
 
-// Ask every mirror the same tiny question and report exactly what each one said.
 async function runDiag() {
   const out = $('#diagOut'), btn = $('#diagBtn');
-  out.hidden = false; btn.disabled = true;
-  const here = pos || { lat: 30.2, lon: -82.35 };
-  out.textContent = 'Checking ' + (pos ? 'your area' : 'a test area') + '…\n';
-  const q = `[out:json][timeout:20];nwr(around:6000,${here.lat},${here.lon})[leisure=park];out center 5;`;
+  out.hidden = false; btn.disabled = true; out.textContent = 'Loading…';
   const lines = [];
-  await Promise.all(OVERPASS.map(async ep => {
-    const host = ep.split('/')[2], t0 = Date.now();
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
-    try {
-      const r = await fetch(ep, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
-      const dt = Date.now() - t0;
-      if (!r.ok) { lines.push(`${host}: HTTP ${r.status} (${dt}ms)`); return; }
-      const j = await r.json().catch(() => null);
-      lines.push(j && j.elements ? `${host}: OK - ${j.elements.length} places (${dt}ms)` : `${host}: bad reply (${dt}ms)`);
-    } catch (e) {
-      lines.push(`${host}: ${e.name === 'AbortError' ? 'timed out' : (e.message || 'blocked')} (${Date.now() - t0}ms)`);
-    } finally { clearTimeout(t); }
-  }));
+  try {
+    await loadPlaces();
+    lines.push(`${PLACES.length.toLocaleString()} places built into the game`);
+    const by = {}; PLACES.forEach(p => by[p.kind] = (by[p.kind] || 0) + 1);
+    lines.push(Object.keys(by).sort((a, b) => by[b] - by[a]).map(k => `  ${kindInfo(k)[0]}: ${by[k]}`).join('\n'));
+    if (pos) {
+      const n = placesWithin(pos.lat, pos.lon, radiusM()).length;
+      lines.push(`${n} within your ${radiusMi} mi radius`);
+      const all = placesWithin(pos.lat, pos.lon, 400000);
+      if (all.length) lines.push(`nearest: ${all[0].name} - ${fmtDist(all[0].d)}`);
+    } else lines.push('turn on GPS to see what is near you');
+  } catch (e) { lines.push('place list failed to load: ' + (e.message || e)); }
   if (DB.osmBase) {
-    try { const r = await fetch(DB.osmBase + `/osm?lat=${here.lat}&lon=${here.lon}`); const j = await r.json(); lines.push(`your database: ${j.value ? j.value.length + ' places stored' : 'nothing stored yet'}`); }
-    catch (e) { lines.push('your database: unreachable'); }
-  }
-  out.textContent = lines.join('\n') + '\n\nAt least one OK line means chests will work here.';
+    try { const r = await fetch(DB.osmBase + '/'); lines.push('shared database: ' + (r.ok ? 'connected' : 'error ' + r.status)); }
+    catch (e) { lines.push('shared database: unreachable'); }
+  } else lines.push('shared database: not configured (local mode)');
+  out.textContent = lines.join('\n');
   btn.disabled = false;
 }
 
@@ -345,8 +339,8 @@ function renderMe() {
     h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${got ? a.icon : '🔒'}</div><div><b>${esc(a.n)}</b> <small style="display:inline;color:var(--acc2)">${got ? '· title: ' + esc(a.t) : ''}</small>
       <small>${esc(a.d)}${got ? '' : ` (${v}/${a.goal})`}</small>${got ? '' : `<div class="bar"><i style="width:${v / a.goal * 100}%"></i></div>`}</div></div>`;
   });
-  h += `</div><div class="card"><b>Park data</b><p class="fine">Checks which map servers this device can reach. Useful if chests aren't appearing.</p>
-    <button class="btn sm ghost" id="diagBtn">Run check</button><pre id="diagOut" class="diag" hidden></pre></div>
+  h += `</div><div class="card"><b>Place list</b><p class="fine">Chest locations ship with the game - no internet service is needed to find them.</p>
+    <button class="btn sm ghost" id="diagBtn">Show details</button><pre id="diagOut" class="diag" hidden></pre></div>
     <div class="card"><b>Settings</b>
     <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
@@ -432,92 +426,44 @@ function cellsAround(lat, lon, rM) {
   for (let a = a0; a <= a1; a++) for (let b = b0; b <= b1; b++) if (out.length < 25) out.push(a + '_' + b);
   return out;
 }
-function kindOf(t) {
-  if (t.tourism === 'camp_site') return 'camp'; if (t.tourism === 'picnic_site' || t.leisure === 'picnic_table') return 'picnic';
-  if (t.tourism === 'viewpoint') return 'view'; if (t.natural === 'peak') return 'peak'; if (t.leisure === 'playground') return 'play';
-  if (t.leisure === 'fire_pit' || t.amenity === 'bbq') return 'fire'; if (t.amenity === 'shelter') return 'shelter';
-  if (t.leisure === 'nature_reserve') return 'reserve'; return 'park';
+// Every chest location ships with the game (places.json, built from the public-domain Recreation
+// Information Database). No outside service is contacted, so chests work offline and never break.
+let PLACES = null, placesLoading = null;
+const placeId = (lat, lon) => 'r' + Math.round(lat * 1e4).toString(36).replace('-', 'm') + '_' + Math.round(lon * 1e4).toString(36).replace('-', 'm');
+function loadPlaces() {
+  if (PLACES) return Promise.resolve(PLACES);
+  if (!placesLoading) placesLoading = fetch('places.json' + (window.ASSET_V ? '?v=' + window.ASSET_V : ''))
+    .then(r => { if (!r.ok) throw new Error('places ' + r.status); return r.json(); })
+    .then(raw => {
+      PLACES = raw.map(a => ({ id: placeId(a[1], a[2]), name: a[0], lat: a[1], lon: a[2], kind: a[3], src: 'ridb' }));
+      return PLACES;
+    })
+    .catch(e => { placesLoading = null; throw e; });
+  return placesLoading;
 }
-const anyOf = ps => Promise.any ? Promise.any(ps) : new Promise((res, rej) => { let n = ps.length; const errs = []; ps.forEach(p => p.then(res, e => { errs.push(e); if (!--n) rej({ errors: errs }); })); });
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
-// Take the first mirror that actually returns places; a mirror answering "nothing here" never wins
-// over one with real data (regional mirrors answer fast but only carry their own country).
-function raceNonEmpty(promises) {
-  return new Promise((resolve, reject) => {
-    let left = promises.length, sawEmpty = false, lastErr = null;
-    promises.forEach(p => p.then(v => {
-      if (v && v.length) return resolve(v);
-      sawEmpty = true; if (!--left) resolve([]);
-    }, e => { lastErr = e; if (!--left) sawEmpty ? resolve([]) : reject(lastErr); }));
-  });
-}
-// The shared database is checked first. If it has nothing for this area, this device fetches the
-// park data itself (home and mobile connections can reach OpenStreetMap; Cloudflare's cannot) and
-// hands the result back so the next player here gets it instantly.
-async function fetchWorkerOSM(lat, lon, R) {
-  let cached = null, cell = null, refresh = true;
-  try {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
-    try {
-      const r = await fetch(DB.osmBase + '/osm?lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4), { signal: ctl.signal });
-      if (r.ok) { const j = await r.json(); cell = j.cell; refresh = j.refresh !== false; if (j.value && j.value.length) cached = j.value.map(m => Object.assign({ src: 'osm' }, m)); }
-    } finally { clearTimeout(t); }
-  } catch (e) { /* fall through to a direct lookup */ }
-  if (cached && !refresh) return cached;
-
-  let mine = null, err = null;
-  try { mine = await fetchOSM(lat, lon, R); } catch (e) { err = e; }
-  if (mine && mine.length) {
-    if (cell) DB.putPlaces(cell, mine.map(m => ({ id: m.id, name: m.name, lat: m.lat, lon: m.lon, kind: m.kind }))).catch(() => {});
-    return mine;
+function placesWithin(lat, lon, rM) {
+  if (!PLACES) return [];
+  const dLat = rM / 111320, dLon = rM / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+  const here = { lat, lon }, out = [];
+  for (const p of PLACES) {                       // bounding box first, exact distance only for survivors
+    if (Math.abs(p.lat - lat) > dLat || Math.abs(p.lon - lon) > dLon) continue;
+    const d = dist(here, p); if (d <= rM) out.push(Object.assign({ d }, p));
   }
-  if (cached) return cached;
-  if (err) throw err;
-  return [];
-}
-async function fetchOSM(lat, lon, R) {
-  R = Math.min(R, 24140);   // park data is pulled out to ~15 miles; landmarks cover the rest of the country
-  const ck = 'sw_osm2_' + lat.toFixed(2) + '_' + lon.toFixed(2) + '_' + Math.round(R / 1000); let raw = null;
-  try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.t < 12 * 3600e3) raw = c.d; } catch (e) {}
-  if (!raw) {
-    const near = Math.min(R, 2500), a = `(around:${near},${lat},${lon})`, b = `(around:${R},${lat},${lon})`;
-    const q = `[out:json][timeout:25];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
-      `nwr${b}[tourism~"camp_site|viewpoint"];nwr${b}[natural=peak][name];nwr${b}[leisure=nature_reserve][name];);out center 500;`;
-    const tryEp = async ep => {
-      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 22000);
-      try {
-        const r = await fetch(ep, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
-        if (!r.ok) throw new Error('server said ' + r.status); const j = await r.json(); if (!j.elements) throw new Error('bad reply'); return j.elements;
-      } finally { clearTimeout(t); }
-    };
-    try { raw = await raceNonEmpty(OVERPASS.map(tryEp)); }
-    catch (e) { const m = e && e.message; throw new Error(m === 'The user aborted a request.' ? 'timed out' : (m || 'servers busy')); }
-    try { localStorage.setItem(ck, JSON.stringify({ t: Date.now(), d: raw })); } catch (e) {}
-  }
-  const out = raw.map(el => {
-    const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
-    if (la == null || lo == null) return null; const t = el.tags || {}, kind = kindOf(t), ki = kindInfo(kind);
-    return { id: 'osm_' + el.type[0] + el.id, name: (t.name ? t.name : ki[0]).slice(0, 60), lat: la, lon: lo, kind, src: 'osm' };
-  }).filter(Boolean);
-  out.sort((x, y) => dist({ lat, lon }, x) - dist({ lat, lon }, y)); return out.slice(0, C.MAX_OSM_CHESTS);
+  out.sort((x, y) => x.d - y.d);
+  return out.slice(0, C.MAX_PLACES);
 }
 async function loadNearby() {
   if (!pos || loading) return; loading = true; osmErr = ''; lastLoad = { lat: pos.lat, lon: pos.lon }; lastR = radiusM();
   const found = new Map();
-  SEEDS.forEach(s => found.set(s.id, Object.assign({ src: 'seed' }, s)));
-  try {
+  try { await loadPlaces(); placesWithin(pos.lat, pos.lon, lastR).forEach(p => found.set(p.id, p)); }
+  catch (e) { osmErr = 'place list failed to load'; lastLoad = null; }
+  chests = [...found.values()]; refreshChestViews();
+  try {                                            // chests other players hid, from the shared database
     const res = await DB.getMany('cells', cellsAround(pos.lat, pos.lon, lastR));
     res.forEach(o => o && Object.keys(o).forEach(id => found.set(id, Object.assign({ id, src: 'player' }, o[id]))));
-  } catch (e) {}
-  chests = [...found.values()]; refreshChestViews();
-  try {
-    const list = DB.osmBase ? await fetchWorkerOSM(pos.lat, pos.lon, lastR) : await fetchOSM(pos.lat, pos.lon, lastR);
-    list.forEach(m => { if (!found.has(m.id)) found.set(m.id, m); });
     chests = [...found.values()];
-  }
-  catch (e) { osmErr = e.message || 'offline'; lastLoad = null; }
+  } catch (e) {}
   loading = false; refreshChestViews();
-  if (pos && radiusM() > lastR * 1.05) loadNearby();   // slider was raised while loading
 }
 function updateRadiusCircle() {
   if (!map || !window.L || !pos) return;
@@ -543,7 +489,9 @@ function renderNearby() {
   $('#radInfo').textContent = `${all.length} chest${all.length === 1 ? '' : 's'} within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
   $('#panelTitle').textContent = all.length ? `${all.length} chest${all.length === 1 ? '' : 's'} nearby` : 'Chests nearby';
   if (!list.length) {
-    const nearest = chests.map(c => Object.assign({ d: dist(pos, c) }, c)).sort((a, b) => a.d - b.d)[0];
+    // Look past the radius so an empty screen still points somewhere worth walking.
+    const nearest = (PLACES ? placesWithin(pos.lat, pos.lon, 800000) : []).concat(
+      chests.map(c => Object.assign({ d: dist(pos, c) }, c))).sort((a, b) => a.d - b.d)[0];
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
       (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
   }
