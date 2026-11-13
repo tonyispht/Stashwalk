@@ -32,12 +32,18 @@ function toast(msg, kind) {
   const t = document.createElement('div'); t.className = 'toast ' + (kind || ''); t.textContent = msg;
   $('#toasts').appendChild(t); setTimeout(() => t.classList.add('out'), 3200); setTimeout(() => t.remove(), 3700);
 }
+const modalOpen = () => $('#modal').classList.contains('open');
 function modal(html, mount) {
   const m = $('#modal'); m.innerHTML = '<div class="sheet">' + html + '</div>'; m.classList.add('open');
+  document.body.classList.add('modal-open');          // pauses looping background animations
   m.onclick = e => { if (e.target === m) closeModal(); };
   if (mount) mount(m.firstChild);
 }
-function closeModal() { const m = $('#modal'); m.classList.remove('open'); m.innerHTML = ''; }
+function closeModal() {
+  const m = $('#modal'); m.classList.remove('open'); m.innerHTML = '';
+  document.body.classList.remove('modal-open');
+  if (view === 'explore') renderNearby(true);         // catch up on anything skipped while it was open
+}
 function tile(it, o = {}) {
   if (o.sil) return `<div class="tile sil" data-id="${it.id}"><span class="em">${it.e}</span></div>`;
   return `<div class="tile r${it.r}${o.sel ? ' sel' : ''}${o.big ? ' big' : ''}" data-id="${it.id}" data-slot="${o.slot || ''}" title="${esc(it.n)}">` +
@@ -348,6 +354,7 @@ let view = 'explore';
 function show(v) {
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
+  if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   renderAll(); window.scrollTo(0, 0);
   if (v === 'explore' && map) setTimeout(() => map.invalidateSize(), 50);
@@ -717,7 +724,20 @@ function refreshChestViews() {
     }));
   });
 }
-function renderNearby() {
+let lastRowIds = '', lastRender = 0, renderTimer = null;
+function renderNearby(force) {
+  // A GPS fix arrives about once a second. Rebuilding 60 rows each time is what made the
+  // reveal animation stutter, so skip while a dialog is up and otherwise update in place.
+  if (modalOpen()) return;
+  const now = Date.now();
+  if (!force && now - lastRender < 400) {
+    // Always run the skipped render a moment later, or the list can be left stale.
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => renderNearby(true), 400 - (now - lastRender));
+    return;
+  }
+  clearTimeout(renderTimer); renderTimer = null;
+  lastRender = now;
   const el = $('#nearby');
   const hb = $('#hereBar'), here = pos ? inRadius().filter(c => c.d <= unlockM(c)) : [];
   hb.hidden = !here.length;
@@ -727,12 +747,27 @@ function renderNearby() {
   $('#radInfo').textContent = `${all.length} chest${all.length === 1 ? '' : 's'} within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
   $('#panelTitle').textContent = all.length ? `${all.length} chest${all.length === 1 ? '' : 's'} nearby` : 'Chests nearby';
   if (!list.length) {
+    lastRowIds = '';
     // Look past the radius so an empty screen still points somewhere worth walking.
     const nearest = [nearestLoaded(pos.lat, pos.lon)].concat(
       chests.map(c => Object.assign({}, c, { d: dist(pos, c) }))).filter(Boolean).sort((a, b) => a.d - b.d)[0];
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
       (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
   }
+  const rowIds = list.map(c => c.id).join(',');
+  if (rowIds === lastRowIds && el.children.length >= list.length) {
+    // Same chests, only the distances moved: touch just those nodes instead of re-parsing HTML.
+    list.forEach((c, i) => {
+      const row = el.children[i]; if (!row || !row.classList.contains('chest')) return;
+      const near = c.d <= unlockM(c), cd = row.querySelector('.cd'), btn = row.querySelector('[data-open]');
+      const txt = near ? "YOU'RE<br>HERE" : fmtDist(c.d) + '<br><small>' + dirName(pos, c) + '</small>';
+      if (cd && cd.innerHTML !== txt) cd.innerHTML = txt;
+      row.classList.toggle('near', near);
+      if (btn) { btn.disabled = !near; const label = near ? 'OPEN' : 'Open'; if (btn.textContent !== label) btn.textContent = label; }
+    });
+    return;
+  }
+  lastRowIds = rowIds;
   el.innerHTML = list.map(c => {
     const near = c.d <= unlockM(c), done = P.exch[c.id] === today;
     return `<div class="chest${near ? ' near' : ''}"><div class="ci">${kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${kindInfo(c.kind)[0]}${done ? ' · ✓ traded today' : ''}</small></div>
@@ -838,7 +873,22 @@ function hideDialog() {
 }
 
 // ---------------- wiring ----------------
+// Mobile browsers change the visible height as their toolbars slide in and out, and 100dvh
+// does not always follow. Track it directly so the tab bar stays put.
+function trackViewport() {
+  const vv = window.visualViewport;
+  const set = () => {
+    const h = Math.round(vv ? vv.height : window.innerHeight);
+    if (h > 200) document.documentElement.style.setProperty('--vh', h + 'px');
+  };
+  set();
+  addEventListener('resize', set);
+  addEventListener('orientationchange', () => setTimeout(set, 250));
+  if (vv) { vv.addEventListener('resize', set); vv.addEventListener('scroll', set); }
+}
+
 function wire() {
+  trackViewport();
   let mode = 'reg';
   $('#modeNote').textContent = DB.remote ? 'Shared world: you play alongside everyone else.' : 'Local mode: your progress is saved on this device.';
   const ref = getRef(); if (ref) { try { sessionStorage.setItem('sw_ref', ref); } catch (e) {} const i = $('#invited'); i.hidden = false; i.textContent = '🎉 ' + ref + ' invited you – you get a bonus item!'; }

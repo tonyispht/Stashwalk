@@ -103,5 +103,16 @@ brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears ab
 with an Open button, the list row reads YOU'RE HERE, and the map icon becomes tappable.
 Toggle the ticking off under Me -> Settings.
 
+## Layout and performance notes
+- The app is a fixed-height flex column sized from `--vh`, which app.js keeps in step with
+  `visualViewport.height`. Mobile toolbars slide in and out and 100dvh does not always follow, so
+  this is what keeps the tab bar pinned.
+- The chest list updates distances in place and only rebuilds its HTML when the set of chests
+  changes; it is throttled to 400 ms (with a trailing render) and skipped entirely while a dialog
+  is open. Rebuilding 60 rows on every GPS fix was what made reveal animations stutter.
+- `body.modal-open` stops every looping background animation while a dialog is up.
+- The particle canvas caps its pixel ratio (1 on large viewports, 1.5 on small) and its particle
+  count; a retina full-screen canvas cleared each frame costs far more than the confetti is worth.
+
 ## Sound, effects, fullscreen
 Sounds are synthesized in the browser (no audio files). Header buttons toggle sound (🔊) and fullscreen (⛶); Me tab → Settings also toggles visual effects/vibration. Fullscreen turns on at login by default. Effects default off if the device asks for reduced motion.

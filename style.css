@@ -213,3 +213,56 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .ing.got{border-color:var(--ok);color:var(--ok)}
 .ing b{font-weight:600;opacity:.75}
 .tabs button i{font-size:19px}
+
+/* ---- compact pass + performance ---- */
+/* Height comes from the real visible viewport (set in app.js), so the tab bar never
+   drifts off when a mobile browser's toolbars slide in or out. */
+#app{height:var(--vh,100dvh);max-height:var(--vh,100dvh)}
+.tabs{flex:none;height:auto;min-height:54px;padding-bottom:max(env(safe-area-inset-bottom),2px)}
+.tabs button{padding:5px 0 3px}
+.tabs button i{font-size:18px}
+.tabs button{font-size:10px}
+
+/* tighter header */
+.top{padding:6px 12px;padding-top:calc(6px + env(safe-area-inset-top))}
+.av{width:32px;height:32px;font-size:14px}
+.who b{font-size:14px}.who small{font-size:11px}
+.chip{padding:3px 8px;font-size:12px}
+.ibtn{padding:3px 7px;font-size:14px}
+
+/* the chest list: one tight row each, so more fit without scrolling */
+.panel{max-height:52%}
+.ctl{padding:6px 12px 0}
+.ctl input[type=range]{height:22px}
+.phead{padding:1px 12px 4px}
+.phead b{font-size:14px}
+.list{gap:6px}
+.chest{grid-template-columns:30px 1fr auto auto;gap:8px;padding:6px 9px;border-radius:11px}
+.chest .ci{font-size:20px}
+.chest b{font-size:13px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.chest small{font-size:10.5px}
+.chest .cd{font-size:12px;line-height:1.1}
+.chest .cd small{font-size:10px}
+.chest .btn.sm{padding:5px 10px;font-size:12px}
+.herebar{margin:2px 12px 4px;padding:7px 10px}
+.herebar b{font-size:13px}
+.sec{margin:12px 12px 6px;font-size:18px}
+.card{margin:8px 12px;padding:12px}
+
+/* Looping animations are decoration; stop them while a dialog is open so the reveal
+   gets the whole frame budget. */
+body.modal-open .chest.near,
+body.modal-open .cm.near span,
+body.modal-open .herebar,
+body.modal-open .day.now,
+body.modal-open .claim .btn,
+body.modal-open .tile.r4,
+body.modal-open .tile.r4::before{animation:none!important}
+.revealbox .rays{inset:-18px;will-change:transform;transform:translateZ(0)}
+.revealbox .tile.big{will-change:transform,opacity}
+#fx{will-change:transform}
+/* A grid item only shrinks below its content width with min-width:0 - without it a long
+   park name pushes the Open button off the screen. */
+.chest > div{min-width:0}
+.chest .cd{white-space:nowrap}
+.chest .btn.sm{white-space:nowrap}

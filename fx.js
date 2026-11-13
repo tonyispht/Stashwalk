@@ -98,7 +98,15 @@ window.FX = (function () {
   let cv, g2, parts = [], raf = 0, W = 0, H = 0, dpr = 1;
   function ensureCanvas() {
     if (cv) return true; cv = document.getElementById('fx'); if (!cv) return false; g2 = cv.getContext('2d');
-    const rs = () => { dpr = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; g2.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    // A full-screen canvas cleared every frame is the expensive part, and it scales with the
+    // square of the pixel ratio. Confetti does not need retina sharpness, so cap it low.
+    const rs = () => {
+      const w = innerWidth, h = innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, w * h > 400000 ? 1 : 1.5);
+      if (W === w && H === h && cv.width === Math.round(w * dpr)) return;
+      W = w; H = h; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
     rs(); addEventListener('resize', rs); return true;
   }
   function loop() {
@@ -116,7 +124,8 @@ window.FX = (function () {
     g2.globalAlpha = 1;
     if (parts.length) raf = requestAnimationFrame(loop); else { raf = 0; g2.clearRect(0, 0, W, H); }
   }
-  function add(p) { parts.push(p); if (parts.length > 700) parts.splice(0, parts.length - 700); if (!raf) raf = requestAnimationFrame(loop); }
+  const MAX_PARTS = 260;
+  function add(p) { parts.push(p); if (parts.length > MAX_PARTS) parts.splice(0, parts.length - MAX_PARTS); if (!raf) raf = requestAnimationFrame(loop); }
   function burst(x, y, colors, n) {
     if (!prefs.fx || !ensureCanvas()) return; colors = [].concat(colors);
     for (let i = 0; i < n; i++) {
@@ -127,7 +136,7 @@ window.FX = (function () {
   }
   function confetti(colors, n) {
     if (!prefs.fx || !ensureCanvas()) return; colors = [].concat(colors);
-    for (let i = 0; i < (n || 70); i++) add({ x: Math.random() * W, y: -10 - Math.random() * 120, vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 3, g: 0.07, drag: 0.995,
+    for (let i = 0; i < Math.min(n || 45, 60); i++) add({ x: Math.random() * W, y: -10 - Math.random() * 120, vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 3, g: 0.07, drag: 0.995,
       life: 110 + Math.random() * 70, s: 8 + Math.random() * 8, c: colors[i % colors.length], rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3, shape: 'conf' });
   }
   function flash(color) {
@@ -139,10 +148,10 @@ window.FX = (function () {
   function reveal(r, el, silent) {
     if (!silent) sfx('reveal', r); const c = RAR[r] ? RAR[r].c : '#fff', p = centerOf(el);
     setTimeout(() => {
-      burst(p.x, p.y, [c, '#ffffff', '#ffd98a'], 16 + r * 14);
-      if (r >= 2) confetti([c, '#ffffff', '#ffd98a'], 30 + r * 20);
+      burst(p.x, p.y, [c, '#ffffff', '#ffd98a'], 12 + r * 8);
+      if (r >= 2) confetti([c, '#ffffff', '#ffd98a'], 22 + r * 10);
       if (r >= 3) flash(c);
-      if (r >= 4) { setTimeout(() => burst(p.x, p.y, [c, '#fff'], 50), 250); setTimeout(() => burst(p.x, p.y, [c, '#ffd98a'], 50), 500); }
+      if (r >= 4) { setTimeout(() => burst(p.x, p.y, [c, '#fff'], 30), 260); setTimeout(() => burst(p.x, p.y, [c, '#ffd98a'], 30), 520); }
     }, 120);
     vibe(r >= 3 ? [40, 40, 90] : 30);
   }
