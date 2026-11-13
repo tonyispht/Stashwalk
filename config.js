@@ -8,8 +8,9 @@ window.GEO_CONFIG = {
   DB_URL: "",
 
   UNLOCK_FT: 5,            // how close (feet) you must be to a chest to open it
-  SEARCH_RADIUS_M: 1200,   // how far around you to look for chest locations
-  MAX_OSM_CHESTS: 80,      // cap on auto-generated chests shown at once
+  DEFAULT_RADIUS_MI: 25,   // starting value of the "show chests within" slider (1-250 mi)
+  LANDMARK_UNLOCK_FT: 300, // landmark chests (locations.js) use approximate coordinates, so they open from a wider ring
+  MAX_OSM_CHESTS: 150,     // cap on auto-found park/campground chests
   CHEST_SLOTS: 4,          // items inside each chest
   HIDE_PER_DAY: 2,         // how many chests a player may hide per day
   MIN_CHEST_GAP_M: 20      // new hidden chests must be this far from any other chest

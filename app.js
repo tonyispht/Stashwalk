@@ -3,6 +3,8 @@
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, SEEDS = window.LANDMARKS || [], DB = window.DB;
 const UNLOCK_M = C.UNLOCK_FT * 0.3048, FT = 3.28084;
+// Landmark chests use approximate coordinates, so they unlock from a wider ring than OSM / player chests.
+const unlockM = c => (c && c.src === 'seed' ? C.LANDMARK_UNLOCK_FT : C.UNLOCK_FT) * 0.3048;
 const DEV = /[?&]dev=1/.test(location.search);
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
@@ -330,7 +332,9 @@ function importSave(e) {
 }
 
 // ---------------- map / GPS / chests ----------------
-let map, meMarker, accCircle, pos = null, chests = [], markers = [], watchId = null, lastLoad = null, loading = false, nearSeen = {};
+let map, meMarker, accCircle, pos = null, chests = [], markers = [], watchId = null, lastLoad = null, loading = false, nearSeen = {}, radCircle = null, lastR = 0, osmErr = '';
+let radiusMi = 25; try { radiusMi = +localStorage.getItem('sw_radius') || C.DEFAULT_RADIUS_MI || 25; } catch (e) {}
+const radiusM = () => radiusMi * 1609.344;
 function initMap() {
   if (map || !window.L) { if (!window.L) $('#map').innerHTML = '<div class="nomap">Map unavailable offline – the chest list below still works.</div>'; return; }
   map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
@@ -352,22 +356,26 @@ function setPos(lat, lon, acc, manual) {
   if (window.L && map) {
     if (!meMarker) { meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16, 16] }), zIndexOffset: 1000 }).addTo(map); accCircle = L.circle([lat, lon], { radius: pos.acc, weight: 1, color: '#3b9cff', fillOpacity: .08 }).addTo(map); }
     else { meMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(pos.acc); }
-    if (first || manual) map.setView([lat, lon], 18);
+    if (first) map.setView([lat, lon], 16); else if (manual) map.setView([lat, lon], 18);
+    updateRadiusCircle();
   }
-  if (!lastLoad || dist(pos, lastLoad) > 250 || manual && dist(pos, lastLoad) > 100) loadNearby();
+  if (!lastLoad || dist(pos, lastLoad) > Math.min(1000, Math.max(250, radiusM() * 0.3))) loadNearby();
   if (view === 'explore') renderNearby(); markNear();
 }
 function markNear() {
   chests.forEach(c => {
     const d = dist(pos, c);
-    if (d <= UNLOCK_M && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); try { navigator.vibrate && navigator.vibrate(200); } catch (e) {} }
-    if (d > UNLOCK_M * 3) delete nearSeen[c.id];
+    if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); try { navigator.vibrate && navigator.vibrate(200); } catch (e) {} }
+    if (d > unlockM(c) * 3) delete nearSeen[c.id];
   });
 }
-const cellKey = (lat, lon) => Math.floor(lat / 0.02) + '_' + Math.floor(lon / 0.02);
-function cellsAround(lat, lon) {
-  const a = Math.floor(lat / 0.02), b = Math.floor(lon / 0.02), out = [];
-  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) out.push((a + i) + '_' + (b + j)); return out;
+const CELL = 0.5;   // hidden-chest index cells are ~55 km wide
+const cellKey = (lat, lon) => Math.floor(lat / CELL) + '_' + Math.floor(lon / CELL);
+function cellsAround(lat, lon, rM) {
+  const dLat = rM / 111320, dLon = rM / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180))), out = [];
+  const a0 = Math.floor((lat - dLat) / CELL), a1 = Math.floor((lat + dLat) / CELL), b0 = Math.floor((lon - dLon) / CELL), b1 = Math.floor((lon + dLon) / CELL);
+  for (let a = a0; a <= a1; a++) for (let b = b0; b <= b1; b++) if (out.length < 25) out.push(a + '_' + b);
+  return out;
 }
 function kindOf(t) {
   if (t.tourism === 'camp_site') return 'camp'; if (t.tourism === 'picnic_site' || t.leisure === 'picnic_table') return 'picnic';
@@ -375,17 +383,25 @@ function kindOf(t) {
   if (t.leisure === 'fire_pit' || t.amenity === 'bbq') return 'fire'; if (t.amenity === 'shelter') return 'shelter';
   if (t.leisure === 'nature_reserve') return 'reserve'; return 'park';
 }
-async function fetchOSM(lat, lon) {
-  const ck = 'sw_osm_' + lat.toFixed(2) + '_' + lon.toFixed(2); let raw = null;
+const anyOf = ps => Promise.any ? Promise.any(ps) : new Promise((res, rej) => { let n = ps.length; const errs = []; ps.forEach(p => p.then(res, e => { errs.push(e); if (!--n) rej({ errors: errs }); })); });
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+async function fetchOSM(lat, lon, R) {
+  R = Math.min(R, 24140);   // park data is pulled out to ~15 miles; landmarks cover the rest of the country
+  const ck = 'sw_osm2_' + lat.toFixed(2) + '_' + lon.toFixed(2) + '_' + Math.round(R / 1000); let raw = null;
   try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.t < 12 * 3600e3) raw = c.d; } catch (e) {}
   if (!raw) {
-    const R = C.SEARCH_RADIUS_M, a = `(around:${R},${lat},${lon})`;
-    const q = `[out:json][timeout:25];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];);out center 300;`;
-    let lastErr;
-    for (const ep of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-      try { const r = await fetch(ep, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }); if (!r.ok) throw new Error(r.status); raw = (await r.json()).elements; break; } catch (e) { lastErr = e; }
-    }
-    if (!raw) throw lastErr || new Error('overpass');
+    const near = Math.min(R, 2500), a = `(around:${near},${lat},${lon})`, b = `(around:${R},${lat},${lon})`;
+    const q = `[out:json][timeout:25];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
+      `nwr${b}[tourism~"camp_site|viewpoint"];nwr${b}[natural=peak][name];nwr${b}[leisure=nature_reserve][name];);out center 500;`;
+    const tryEp = async ep => {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 22000);
+      try {
+        const r = await fetch(ep, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
+        if (!r.ok) throw new Error('server said ' + r.status); const j = await r.json(); if (!j.elements) throw new Error('bad reply'); return j.elements;
+      } finally { clearTimeout(t); }
+    };
+    try { raw = await anyOf(OVERPASS.map(tryEp)); }
+    catch (e) { const m = e && e.errors && e.errors[0] && e.errors[0].message; throw new Error(m ? (m === 'The user aborted a request.' ? 'timed out' : m) : 'servers busy'); }
     try { localStorage.setItem(ck, JSON.stringify({ t: Date.now(), d: raw })); } catch (e) {}
   }
   const out = raw.map(el => {
@@ -396,43 +412,58 @@ async function fetchOSM(lat, lon) {
   out.sort((x, y) => dist({ lat, lon }, x) - dist({ lat, lon }, y)); return out.slice(0, C.MAX_OSM_CHESTS);
 }
 async function loadNearby() {
-  if (!pos || loading) return; loading = true; lastLoad = { lat: pos.lat, lon: pos.lon };
+  if (!pos || loading) return; loading = true; osmErr = ''; lastLoad = { lat: pos.lat, lon: pos.lon }; lastR = radiusM();
   const found = new Map();
-  SEEDS.forEach(s => { if (dist(pos, s) < 10000) found.set(s.id, Object.assign({ src: 'seed' }, s)); });
+  SEEDS.forEach(s => found.set(s.id, Object.assign({ src: 'seed' }, s)));
   try {
-    const res = await Promise.all(cellsAround(pos.lat, pos.lon).map(k => DB.get('cells/' + k)));
+    const res = await Promise.all(cellsAround(pos.lat, pos.lon, lastR).map(k => DB.get('cells/' + k)));
     res.forEach(o => o && Object.keys(o).forEach(id => found.set(id, Object.assign({ id, src: 'player' }, o[id]))));
   } catch (e) {}
   chests = [...found.values()]; refreshChestViews();
-  try { (await fetchOSM(pos.lat, pos.lon)).forEach(m => { if (!found.has(m.id)) found.set(m.id, m); }); chests = [...found.values()]; refreshChestViews(); }
-  catch (e) { toast('Could not load park/campground data (offline?)', 'bad'); lastLoad = null; }
-  loading = false;
+  try { (await fetchOSM(pos.lat, pos.lon, lastR)).forEach(m => { if (!found.has(m.id)) found.set(m.id, m); }); chests = [...found.values()]; }
+  catch (e) { osmErr = e.message || 'offline'; lastLoad = null; }
+  loading = false; refreshChestViews();
+  if (pos && radiusM() > lastR * 1.05) loadNearby();   // slider was raised while loading
+}
+function updateRadiusCircle() {
+  if (!map || !window.L || !pos) return;
+  if (!radCircle) radCircle = L.circle([pos.lat, pos.lon], { radius: radiusM(), weight: 1.5, dashArray: '6 6', color: '#f2b84b', fillOpacity: 0.03, interactive: false }).addTo(map);
+  else radCircle.setLatLng([pos.lat, pos.lon]).setRadius(radiusM());
+}
+function inRadius() {
+  if (!pos) return []; const R = radiusM();
+  return chests.map(c => Object.assign({ d: dist(pos, c) }, c)).filter(c => c.d <= R).sort((a, b) => a.d - b.d);
 }
 function refreshChestViews() {
   if (view === 'explore') renderNearby();
   if (!map || !window.L) return; markers.forEach(m => m.remove()); markers = [];
-  chests.forEach(c => {
-    const ic = L.divIcon({ className: 'cm' + (pos && dist(pos, c) <= UNLOCK_M ? ' near' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
-    markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => { if (pos) { const d = dist(pos, c); toast(`${c.name} – ${fmtDist(d)} away`); } }));
+  inRadius().slice(0, 200).forEach(c => {
+    const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
+    markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => toast(`${c.name} – ${fmtDist(dist(pos, c))} away`)));
   });
 }
 function renderNearby() {
   const el = $('#nearby');
-  if (!pos) { el.innerHTML = '<div class="empty">Turn on GPS to see chests around you.</div>'; return; }
-  const list = chests.map(c => Object.assign({ d: dist(pos, c) }, c)).sort((a, b) => a.d - b.d).slice(0, 40), today = dayKey();
-  if (!list.length) { el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : 'No chests found within reach yet. Try Refresh, or hide the first one here!') + '</div>'; return; }
+  if (!pos) { el.innerHTML = '<div class="empty">Turn on GPS to see chests around you.</div>'; $('#radInfo').textContent = ''; return; }
+  const all = inRadius(), list = all.slice(0, 60), today = dayKey();
+  $('#radInfo').textContent = `${all.length} chest${all.length === 1 ? '' : 's'} within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
+  if (!list.length) {
+    const nearest = chests.map(c => Object.assign({ d: dist(pos, c) }, c)).sort((a, b) => a.d - b.d)[0];
+    el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
+      (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
+  }
   el.innerHTML = list.map(c => {
-    const near = c.d <= UNLOCK_M, done = P.exch[c.id] === today;
+    const near = c.d <= unlockM(c), done = P.exch[c.id] === today;
     return `<div class="chest${near ? ' near' : ''}"><div class="ci">${kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${kindInfo(c.kind)[0]}${done ? ' · ✓ traded today' : ''}</small></div>
       <div class="cd">${near ? 'HERE' : fmtDist(c.d) + '<br><small>' + dirName(pos, c) + '</small>'}</div>
       <button class="btn sm" data-open="${esc(c.id)}" ${near ? '' : 'disabled'}>Open</button></div>`;
-  }).join('');
+  }).join('') + (all.length > list.length ? `<div class="empty">+ ${all.length - list.length} more – lower the radius to focus on the closest.</div>` : '');
 }
 
 // ---- opening a chest ----
 async function openChest(id) {
   const meta = chests.find(c => c.id === id); if (!meta || !pos) return;
-  if (dist(pos, meta) > UNLOCK_M) return toast(`Get within ${C.UNLOCK_FT} ft of the chest first`, 'bad');
+  if (dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
   toast('Opening…');
   try {
     const day = utcDay();
@@ -521,9 +552,17 @@ function wire() {
   };
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };
   $('#gpsBtn').onclick = () => startGPS();
-  $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 18); else startGPS(); };
-  $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm_')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
+  $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
+  $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = hideDialog;
+  const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';
+  rad.oninput = () => { radiusMi = +rad.value; $('#rVal').textContent = radiusMi + ' mi'; updateRadiusCircle(); refreshChestViews(); };
+  rad.onchange = () => {
+    try { localStorage.setItem('sw_radius', radiusMi); } catch (e) {}
+    if (!pos) return;
+    if (map && window.L) map.fitBounds(L.latLng(pos.lat, pos.lon).toBounds(radiusM() * 2), { padding: [8, 8] });
+    if (radiusM() > lastR * 1.05 && !loading) { lastLoad = null; loadNearby(); }
+  };
   $('#nearby').onclick = e => { const b = e.target.closest('[data-open]'); if (b && !b.disabled) openChest(b.dataset.open); };
   $('#packGrid').onclick = e => { const t = e.target.closest('.tile'); if (t) showItem(t.dataset.id); };
   $('#dexGrid').onclick = e => { const t = e.target.closest('.tile'); if (!t) return; if (P.dex[t.dataset.id]) showItem(t.dataset.id); else toast('Not collected yet – find it in a chest!'); };

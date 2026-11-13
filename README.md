@@ -19,7 +19,8 @@ A pure file host cannot be written to by visitors, so shared chests need one fre
 Note: this is a casual game, not a hardened one – a determined player could still edit records or spoof GPS. Passwords are PBKDF2-hashed, but don't reuse real ones.
 
 ## Locations
-- locations.js: 14 landmark chests (approximate coordinates – edit/add your own).
+- locations.js: 106 landmark chests across the US (national parks, peaks, scenic spots, city parks). Coordinates are approximate, so they open within LANDMARK_UNLOCK_FT (300 ft) – edit/add your own rows.
+- Radius slider (Explore tab): choose how far to show chests, 1–250 mi. Park/campground data loads out to ~15 mi; landmarks show at any distance.
 - Automatically: campsites, parks, picnic tables, viewpoints, summits, shelters, playgrounds and fire rings near each player are pulled from OpenStreetMap, so every area has chests.
 - Players can hide their own chests (2/day) at their exact spot.
 - Opening needs you within UNLOCK_FT (5 ft) in config.js. Phone GPS is often only accurate to ~10-30 ft, so raise it (e.g. 25) if players can't unlock.

@@ -100,3 +100,7 @@ select{background:var(--card2);border:1px solid #2c4d3b;border-radius:10px;paddi
 #toasts{position:fixed;inset:0;pointer-events:none;z-index:99}
 .toast.out{opacity:0;transition:.4s}.toast.bad{border-color:var(--bad)}.toast.gold{background:#3a2f0f;border-color:var(--acc2)}
 @keyframes drop{from{transform:translate(-50%,-20px);opacity:0}}
+.radius{margin:0 14px 6px;padding:10px 12px;background:var(--card);border-radius:14px;border:1px solid #234230}
+.radius label{display:block;font-size:13px;color:var(--mut)}.radius b{color:var(--acc2)}
+.radius input[type=range]{padding:0;border:0;background:none;accent-color:var(--acc);height:28px}
+.radius small{color:var(--mut);font-size:12px}
