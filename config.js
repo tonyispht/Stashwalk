@@ -18,7 +18,9 @@ window.GEO_CONFIG = {
   MAX_TILES: 40,           // most map tiles loaded at once (each is one degree square)
   STARTER_ITEMS: 3,        // items a brand-new player begins with
   MERGE_COUNT: 3,          // identical items needed to merge one rarity upward
-  CHEST_SLOTS: 4,          // items inside each chest
+  CHEST_SLOTS: 4,          // items a chest starts with
+  MAX_CHEST_SLOTS: 8,      // a chest can grow to this many when players leave gifts
+  FLAGS_TO_REMOVE: 3,      // reports from different players before a chest is dropped
   HIDE_PER_DAY: 2,         // how many chests a player may hide per day
   MIN_CHEST_GAP_M: 20      // new hidden chests must be this far from any other chest
 };

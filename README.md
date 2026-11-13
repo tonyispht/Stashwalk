@@ -89,6 +89,19 @@ from. They can still be traded, so a player can obtain one without crafting it.
 Edit the recipes in `tools/build_relics.py` (ingredients are written by name, not index) and re-run
 it to regenerate relics.js.
 
+## Activity feed, gifts and reporting
+- **Activity feed**: when another player takes an item you left in a chest, the server records it
+  (derived from what actually changed in the chest, so it cannot be forged by a client) and the
+  next time you open the game you get a "While you were away" card. `feed/<user>` keeps the last 30
+  events and refuses client writes; each player tracks what they have seen with `feedSeen`.
+- **Gifts**: "Leave an item (no swap)" puts an item into a FREE slot - chests grow from CHEST_SLOTS
+  (4) up to MAX_CHEST_SLOTS (8), so a gift never overwrites anything. It does not use up your one
+  trade per chest per day.
+- **Reporting**: any player can report a chest that is on private land, unsafe or not a real public
+  place. FLAGS_TO_REMOVE (3) reports from DIFFERENT players removes it for everyone - the server
+  dedupes by player, adds it to a blocklist the client filters against, and deletes the chest and
+  its index entry.
+
 ## Inviting friends
 Share the link or QR code from the Me tab. The invited player starts with an extra item. You get a
 Rare once they actually open their first chest, an Epic at 5 friends and a Legendary at 10, plus

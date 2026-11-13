@@ -90,6 +90,38 @@ function refreshChest(cur, meta, day) {
   cur.items = Object.assign(items, fresh); cur.day = day; return cur;
 }
 
+// ---------------- activity ----------------
+// The server records what happened to items other players left, so coming back shows
+// that the world moved while you were away.
+async function checkFeed() {
+  if (!KEY) return;
+  let list = [];
+  try { list = (await DB.get('feed/' + KEY)) || []; } catch (e) { return; }
+  if (!Array.isArray(list) || !list.length) return;
+  const fresh = list.filter(e => e && e.t > (P.feedSeen || 0));
+  if (!fresh.length) return;
+  P.feedSeen = fresh[0].t; save();
+  showFeed(fresh.slice(0, 12));
+}
+function feedLine(e) {
+  const gone = BY_ID[e.item], got = BY_ID[e.got];
+  if (e.k === 'taken' && gone) {
+    return `<div class="fitem">${tile(gone)}<div><b>${esc(gone.n)}</b>
+      <small>taken by ${esc(e.by || 'someone')}${e.where ? ' at ' + esc(e.where) : ''}</small>
+      <small class="fine">${got ? 'They left ' + esc(got.n) : ''}</small></div></div>`;
+  }
+  return '';
+}
+function showFeed(events) {
+  const body = events.map(feedLine).filter(Boolean).join('');
+  if (!body) return;
+  modal(`<h3>While you were away</h3>
+    <p class="sub">${events.length === 1 ? 'Someone found something you left.' : events.length + ' of your items found a new owner.'}</p>
+    <div class="feed">${body}</div>
+    <button class="btn big" id="okBtn" style="margin-top:14px">Nice</button>`,
+    m => { $('#okBtn', m).onclick = closeModal; FX.sfx('ping'); });
+}
+
 // ---------------- workshop ----------------
 // Each level is unlocked by an achievement, so crafting is something you grow into.
 // Your level is also the highest rarity you can merge up to (1 = Uncommon ... 4 = Legendary).
@@ -172,6 +204,7 @@ function normalize(p) {
   p.stats = Object.assign({ visited: {}, ex: 0, hidden: 0, gaveRare: 0 }, p.stats || {}); p.stats.visited = p.stats.visited || {};
   p.daily = Object.assign({ n: 0, last: '', streak: 0, max: 0 }, p.daily || {}); p.title = p.title || 'Newcomer';
   p.refPaid = p.refPaid || 0;                       // referrals already rewarded
+  p.feedSeen = p.feedSeen || 0;                     // newest activity already shown
   return p;
 }
 let saveTimer = null;
@@ -263,6 +296,7 @@ ach('rare25', 'Rare Habit', 'Rare Breed', 'Collect 25 different Rare items', s =
 ach('epic10', 'Epic Shelf', 'Epic Collector', 'Collect 10 different Epic items', s => s.byR[3], 10, '🔮');
 ach('leg5', 'Dragon Hoard', 'Dragon Keeper', 'Collect 5 different Legendary items', s => s.byR[4], 5, '🐉');
 ach('gave1', 'Generous Soul', 'Philanthropist', 'Leave an Epic or Legendary item in a chest', s => s.gaveRare, 1, '🎁');
+ach('given5', 'Trail Angel', 'Trail Angel', 'Leave 5 items for other players without swapping', s => s.given, 5, '😇');
 ach('hide1', 'Cache Keeper', 'Hider', 'Hide your first chest', s => s.hidden, 1, '🫳');
 ach('hide5', 'Chest Smith', 'Master of Hiding', 'Hide 5 chests', s => s.hidden, 5, '🔨');
 ach('merge5', 'Fusionist', 'Alchemist', 'Merge items 5 times', s => s.merges, 5, '🔗');
@@ -276,7 +310,7 @@ function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
   return { logins: P.daily.n, streak: P.daily.max || 0, visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
-           merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length };
+           given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length };
 }
 function checkAch() {
   const s = statView(), got = [];
@@ -342,6 +376,7 @@ async function boot(key, p) {
   KEY = key; P = p;
   try { inviteCount = (await DB.get('invites/' + key)) || 0; } catch (e) { inviteCount = 0; }
   setTimeout(() => refreshInvites(), 1200);
+  setTimeout(() => checkFeed(), 2200);
   $('#auth').hidden = true; $('#app').hidden = false;
   $('#dev').hidden = !DEV;
   initMap(); renderHeader(); renderAll(); checkAch(); show('explore');
@@ -680,6 +715,10 @@ function cellsAround(lat, lon, rM) {
 // built from Overture Maps and the Recreation Information Database. Only the tiles around the
 // player are downloaded, and each is kept for the session. No outside service is ever contacted.
 const TILES = new Map();
+let BLOCKED = new Set();
+async function loadBlocked() {
+  try { (await DB.blockedChests()).forEach(id => BLOCKED.add(id)); } catch (e) {}
+}
 let tileIndex = null, tileIndexErr = '';
 const placeId = (lat, lon) => 'r' + Math.round(lat * 1e4).toString(36).replace('-', 'm') + '_' + Math.round(lon * 1e4).toString(36).replace('-', 'm');
 const assetV = () => (window.ASSET_V ? '?v=' + window.ASSET_V : '');
@@ -732,12 +771,13 @@ function nearestLoaded(lat, lon) {
 async function loadNearby() {
   if (!pos || loading) return; loading = true; osmErr = ''; lastLoad = { lat: pos.lat, lon: pos.lon }; lastR = radiusM();
   const found = new Map();
-  try { await loadTiles(pos.lat, pos.lon, lastR); placesWithin(pos.lat, pos.lon, lastR).forEach(p => found.set(p.id, p)); }
+  if (!BLOCKED.size) await loadBlocked();
+  try { await loadTiles(pos.lat, pos.lon, lastR); placesWithin(pos.lat, pos.lon, lastR).forEach(p => { if (!BLOCKED.has(p.id)) found.set(p.id, p); }); }
   catch (e) { osmErr = 'place list failed to load'; tileIndexErr = e.message || 'error'; lastLoad = null; }
   chests = [...found.values()]; refreshChestViews();
   try {                                            // chests other players hid, from the shared database
     const res = await DB.getMany('cells', cellsAround(pos.lat, pos.lon, lastR));
-    res.forEach(o => o && Object.keys(o).forEach(id => found.set(id, Object.assign({ id, src: 'player' }, o[id]))));
+    res.forEach(o => o && Object.keys(o).forEach(id => { if (!BLOCKED.has(id)) found.set(id, Object.assign({ id, src: 'player' }, o[id])); }));
     chests = [...found.values()];
   } catch (e) {}
   loading = false; refreshChestViews();
@@ -852,8 +892,14 @@ function showChest(meta, chest) {
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
     ${done ? '' : `<div class="lbl">Your pack</div><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
     <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button><button class="btn" id="swapBtn" disabled>Choose items</button></div>`}
-    ${done ? '<div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>' : ''}`, m => {
+    ${done ? '<div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>' : ''}
+    <div class="chestfoot">
+      ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
+      <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
+    </div>`, m => {
     $('#cancelBtn', m).onclick = closeModal;
+    const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
+    $('#flagBtn', m).onclick = () => flagDialog(meta);
     $$('#chestGrid .tile', m).forEach((t, i) => { t.style.animationDelay = (550 + i * 110) + 'ms'; });
     setTimeout(() => { const f = $('#chestfx', m); if (f) { f.textContent = '🎁'; const p = FX.centerOf(f); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#ffffff'], 26); } }, 560);
     if (done) return;
@@ -882,6 +928,78 @@ async function doTrade(meta, slot, getId, giveId) {
   FX.sfx('coin');
   modal(`<div style="text-align:center"><p class="sub">You traded and received</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf! ' : ''}${esc(BY_ID[giveId].n)} stays in the chest for the next explorer.</p><button class="btn big" id="okBtn">Great</button></div>`, m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => FX.reveal(it.r, $('.tile.big', m)), 280); });
+}
+
+// Leaving an item without taking one. It goes into a free slot, so nothing is overwritten.
+function donateDialog(meta, chest) {
+  const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
+  if (!mine.length) return toast('Your pack is empty', 'bad');
+  const used = Object.keys(chest.items || {});
+  const free = SLOT_IDS.slice(0, C.MAX_CHEST_SLOTS).find(s => used.indexOf(s) < 0);
+  if (!free) return toast('This chest is full', 'bad');
+  let pick = null;
+  modal(`<h3>\u{1F381} Leave an item</h3>
+    <p class="sub">A gift for whoever finds this chest next. You get nothing back, and it does not use up your trade for today.</p>
+    <div class="grid" id="giveGrid2">${mine.map(it => tile(it, { count: P.inv[it.id] })).join('')}</div>
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Cancel</button><button class="btn" id="goGive" disabled>Leave it</button></div>`,
+    m => {
+      $('#cancelBtn', m).onclick = () => { closeModal(); openChest(meta.id); };
+      const go = $('#goGive', m);
+      $('#giveGrid2', m).onclick = e => {
+        const t = e.target.closest('.tile'); if (!t) return;
+        pick = t.dataset.id; $$('#giveGrid2 .tile', m).forEach(x => x.classList.toggle('sel', x === t));
+        go.disabled = false; go.textContent = 'Leave ' + BY_ID[pick].n;
+      };
+      go.onclick = () => doDonate(meta, free, pick);
+    });
+}
+async function doDonate(meta, slot, giveId) {
+  if (!P.inv[giveId]) return toast('You no longer have that item', 'bad');
+  let ok = false;
+  try {
+    await DB.tx('chests/' + meta.id, cur => {
+      ok = false;
+      if (!cur || !cur.items) return undefined;
+      if (cur.items[slot]) return undefined;                       // someone filled it first
+      if (Object.keys(cur.items).length >= C.MAX_CHEST_SLOTS) return undefined;
+      cur.items[slot] = { id: giveId, by: P.name, at: Date.now() };
+      ok = true; return cur;
+    });
+    if (!ok) { toast('That chest just filled up - try again', 'bad'); return; }
+  } catch (e) { return toast('Could not leave it: ' + e.message, 'bad'); }
+  removeItem(giveId);
+  P.stats.given = (P.stats.given || 0) + 1;
+  if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
+  save(); checkAch(); renderAll(); closeModal();
+  toast('\u{1F381} ' + BY_ID[giveId].n + ' left for the next explorer', 'gold');
+  FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 22);
+}
+
+// Reporting a chest that should not be in the game.
+function flagDialog(meta) {
+  modal(`<h3>\u{1F6A9} Report this chest</h3>
+    <p class="sub">Report <b>${esc(meta.name)}</b> if it is on private property, unsafe to reach, or not a real public place.
+    Once ${C.FLAGS_TO_REMOVE} different players report it, it is removed for everyone.</p>
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Cancel</button><button class="btn" id="goFlag">Report it</button></div>`,
+    m => {
+      $('#cancelBtn', m).onclick = () => { closeModal(); openChest(meta.id); };
+      $('#goFlag', m).onclick = async e => {
+        e.target.disabled = true; e.target.textContent = 'Reporting…';
+        try {
+          const r = await DB.flagChest(meta.id, meta.src === 'player' ? cellKey(meta.lat, meta.lon) : '');
+          closeModal();
+          if (r && r.removed) {
+            BLOCKED.add(meta.id);
+            chests = chests.filter(c => c.id !== meta.id);
+            lastRowIds = ''; refreshChestViews();
+            toast('Removed - enough players reported it', 'gold');
+          } else {
+            const n = (r && r.flags) || 1, need = (r && r.needed) || C.FLAGS_TO_REMOVE;
+            toast(`Reported (${n} of ${need})`);
+          }
+        } catch (err) { toast('Could not report: ' + err.message, 'bad'); }
+      };
+    });
 }
 
 // ---- hiding a chest ----

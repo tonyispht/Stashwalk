@@ -89,6 +89,18 @@ window.DB = (function () {
     },
     setAuth(user, hash) { auth = { user: String(user).toLowerCase(), hash }; },
     // Tell the server this account's referral now counts (called after its first chest).
+    // Flag a chest. Enough distinct players and the server drops it for everyone.
+    async flagChest(chest, cell) {
+      if (!W) return { ok: false };
+      const r = await fetch(W + '/flag', { method: 'POST', headers: whead(), body: JSON.stringify({ chest, cell }) });
+      if (!r.ok) throw new Error('flag ' + r.status);
+      return r.json();
+    },
+    async blockedChests() {
+      if (!W) return [];
+      const r = await fetch(W + '/blocked'); if (!r.ok) return [];
+      return (await r.json()).value || [];
+    },
     async reportReferral() {
       if (!W) return null;
       const r = await fetch(W + '/refer', { method: 'POST', headers: whead(), body: '{}' });

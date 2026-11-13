@@ -5,7 +5,8 @@
 //   DB               (D1 database binding)
 //   ALLOWED_ORIGINS  (text, comma separated, e.g. https://tonyispht.github.io)  - only these sites may call the Worker
 
-const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites']);
+const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites', 'feed']);
+const FLAGS_TO_REMOVE = 3;   // distinct players who must flag a chest before it is dropped
 const SEG = /^[A-Za-z0-9_-]{1,64}$/;
 const ITEM_ID = /^(\d{1,3}_[0-4]|c\d{1,3})$/;   // base items, or crafted relics (c0, c1, ...)
 let ready = false;
@@ -80,6 +81,20 @@ function cleanPlaces(places, cell) {
     if (out.length >= 400) break;
   }
   return out.length ? out : null;
+}
+
+// The feed is written by the server only, from what actually changed in a chest, so an
+// event cannot be forged by a client claiming "someone took your item".
+async function pushFeed(env, user, ev) {
+  const key = String(user || '').toLowerCase();
+  if (!SEG.test(key)) return;
+  const row = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind('feed/' + key).first();
+  let list = [];
+  if (row) { try { list = JSON.parse(row.val) || []; } catch (e) { list = []; } }
+  list.unshift(ev);
+  if (list.length > 30) list.length = 30;
+  await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
+    .bind('feed/' + key, JSON.stringify(list)).run();
 }
 
 const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 3000 };
@@ -162,6 +177,32 @@ export default {
         return json({ ok: true, counted: true, referrer: ref, total: row ? JSON.parse(row.val) : 1 }, 200, cors);
       }
 
+      // Chests the community has flagged often enough to drop.
+      if (url.pathname === '/blocked' && req.method === 'GET') {
+        const { results } = await env.DB.prepare("SELECT path FROM kv WHERE path LIKE 'block/%' LIMIT 3000").all();
+        return json({ value: results.map(r => r.path.slice(6)) }, 200, cors);
+      }
+
+      if (url.pathname === '/flag' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''), cell = String(b.cell || '');
+        if (!SEG.test(chest)) return json({ error: 'bad chest' }, 400, cors);
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING')
+          .bind('flagv/' + chest + '/' + me, '1').run();
+        const c = await env.DB.prepare("SELECT count(*) AS n FROM kv WHERE path LIKE ?").bind('flagv/' + chest + '/%').first();
+        const n = (c && c.n) || 0;
+        let removed = false;
+        if (n >= FLAGS_TO_REMOVE) {
+          await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind('block/' + chest, '1').run();
+          if (/^-?\d+_-?\d+$/.test(cell)) await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('cells/' + cell + '/' + chest).run();
+          await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('chests/' + chest).run();
+          removed = true;
+        }
+        return json({ ok: true, flags: n, needed: FLAGS_TO_REMOVE, removed }, 200, cors);
+      }
+
       if (url.pathname === '/many' && req.method === 'GET') {          // batched read of hidden-chest index cells
         const keys = (url.searchParams.get('keys') || '').split(',').filter(k => /^-?\d+_-?\d+$/.test(k)).slice(0, 25);
         if (!keys.length) return json({ value: {} }, 200, cors);
@@ -197,16 +238,32 @@ export default {
             const r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind(path, JSON.stringify(value)).run();
             return r.meta.changes ? json({ ok: true, v: 1 }, 200, cors) : json({ error: 'exists' }, 409, cors);
           }
-          if (segs[0] === 'invites') return json({ error: 'set by the server only' }, 403, cors);
+          if (segs[0] === 'invites' || segs[0] === 'feed') return json({ error: 'set by the server only' }, 403, cors);
           const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
           if (!me) return json({ error: 'not logged in' }, 401, cors);
           if (segs[0] === 'players' && segs[1] !== me) return json({ error: 'not your record' }, 403, cors);
 
+          // Keep the previous chest so we can tell whose item just left it.
+          let prevChest = null;
+          if (segs[0] === 'chests') {
+            const pr = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind(path).first();
+            if (pr) { try { prevChest = JSON.parse(pr.val); } catch (e) {} }
+          }
           const str = JSON.stringify(value); let r;
           if (ifv === 0) r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind(path, str).run();
           else if (Number.isInteger(ifv)) r = await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ? AND v = ?').bind(str, path, ifv).run();
           else r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind(path, str).run();
-          return r.meta.changes ? json({ ok: true }, 200, cors) : json({ error: 'version conflict' }, 409, cors);
+          if (!r.meta.changes) return json({ error: 'version conflict' }, 409, cors);
+          if (prevChest && prevChest.items && value.items) {
+            const where = String(value.name || prevChest.name || '').slice(0, 52);
+            for (const slot of Object.keys(prevChest.items)) {
+              const was = prevChest.items[slot], now = value.items[slot];
+              if (!was || !was.by || !now || now.id === was.id) continue;
+              if (String(was.by).toLowerCase() === me) continue;          // you took back your own
+              await pushFeed(env, was.by, { t: Date.now(), k: 'taken', item: String(was.id), got: String(now.id), by: String(now.by || me).slice(0, 16), where });
+            }
+          }
+          return json({ ok: true }, 200, cors);
         }
       }
       return json({ error: 'not found' }, 404, cors);

@@ -284,3 +284,13 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 /* An early rule set #app{min-height:100vh}. min-height beats max-height in CSS, so it pinned the
    app to the LARGE viewport (toolbars hidden) and pushed the tab bar underneath them. */
 #app{min-height:0}
+
+/* activity feed + chest footer actions */
+.feed{display:grid;gap:8px;max-height:46vh;overflow-y:auto}
+.fitem{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid #234230;border-radius:12px;padding:8px}
+.fitem .tile{width:52px;flex:none;aspect-ratio:1}
+.fitem .tile .em{font-size:23px;margin-bottom:0}.fitem .tile .nm{display:none}
+.fitem b{display:block;font-size:13px}
+.fitem small{display:block;font-size:11.5px;color:var(--mut)}
+.chestfoot{display:flex;gap:8px;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid #234230}
+.btn.danger{color:var(--bad)}
