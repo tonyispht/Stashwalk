@@ -137,6 +137,31 @@ export default {
         return json({ ok: true, stored: clean.length, cell }, 200, cors);
       }
 
+      // The invited player's own client calls this once they have opened their first chest.
+      if (url.pathname === '/refer' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const already = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('refer/' + me).first();
+        if (already) return json({ ok: true, counted: false, reason: 'already counted' }, 200, cors);
+        const prow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('players/' + me).first();
+        if (!prow) return json({ error: 'no player record' }, 400, cors);
+        let p; try { p = JSON.parse(prow.val); } catch (e) { return json({ error: 'bad record' }, 400, cors); }
+        const ref = String(p.ref || '').toLowerCase();
+        if (!ref || !SEG.test(ref) || ref === me) return json({ ok: true, counted: false, reason: 'no referrer' }, 200, cors);
+        const visited = p.stats && p.stats.visited ? Object.keys(p.stats.visited).length : 0;
+        if (visited < 1) return json({ ok: true, counted: false, reason: 'no chest opened yet' }, 200, cors);
+        const refUser = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + ref).first();
+        if (!refUser) return json({ ok: true, counted: false, reason: 'referrer not found' }, 200, cors);
+        // mark this player as counted first, so a double call cannot pay twice
+        const mark = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING')
+          .bind('refer/' + me, JSON.stringify(ref)).run();
+        if (!mark.meta.changes) return json({ ok: true, counted: false, reason: 'already counted' }, 200, cors);
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = CAST(CAST(kv.val AS INTEGER) + 1 AS TEXT), v = kv.v + 1')
+          .bind('invites/' + ref, '1').run();
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('invites/' + ref).first();
+        return json({ ok: true, counted: true, referrer: ref, total: row ? JSON.parse(row.val) : 1 }, 200, cors);
+      }
+
       if (url.pathname === '/many' && req.method === 'GET') {          // batched read of hidden-chest index cells
         const keys = (url.searchParams.get('keys') || '').split(',').filter(k => /^-?\d+_-?\d+$/.test(k)).slice(0, 25);
         if (!keys.length) return json({ value: {} }, 200, cors);
@@ -172,6 +197,7 @@ export default {
             const r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind(path, JSON.stringify(value)).run();
             return r.meta.changes ? json({ ok: true, v: 1 }, 200, cors) : json({ error: 'exists' }, 409, cors);
           }
+          if (segs[0] === 'invites') return json({ error: 'set by the server only' }, 403, cors);
           const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
           if (!me) return json({ error: 'not logged in' }, 401, cors);
           if (segs[0] === 'players' && segs[1] !== me) return json({ error: 'not your record' }, 403, cors);

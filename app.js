@@ -87,13 +87,14 @@ function refreshChest(cur, meta, day) {
 // ---------------- player state ----------------
 let P = null, KEY = null, inviteCount = 0;
 function newPlayer(name, ref) {
-  return { name, created: Date.now(), inv: {}, dex: {}, ach: {}, exch: {}, title: 'Newcomer', ref: ref || '',
+  return { name, created: Date.now(), inv: {}, dex: {}, ach: {}, exch: {}, title: 'Newcomer', ref: ref || '', refPaid: 0, refSent: 0,
            stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0 }, daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0 };
 }
 function normalize(p) {
   p.inv = p.inv || {}; p.dex = p.dex || {}; p.ach = p.ach || {}; p.exch = p.exch || {};
   p.stats = Object.assign({ visited: {}, ex: 0, hidden: 0, gaveRare: 0 }, p.stats || {}); p.stats.visited = p.stats.visited || {};
   p.daily = Object.assign({ n: 0, last: '', streak: 0, max: 0 }, p.daily || {}); p.title = p.title || 'Newcomer';
+  p.refPaid = p.refPaid || 0;                       // referrals already rewarded
   return p;
 }
 let saveTimer = null;
@@ -116,6 +117,42 @@ function grantStarter(p, extra) {
 function starterIfEmpty(p) {
   const fresh = !Object.keys(p.inv).length && !Object.keys(p.dex).length && !(p.stats && p.stats.ex) && !p.daily.n;
   return fresh ? grantStarter(p, 0) : null;
+}
+
+// A Rare for every friend who joins and opens a chest, with bigger milestones at 5 and 10.
+function referralRewards(from, to) {
+  const out = [];
+  for (let n = from + 1; n <= to; n++) {
+    out.push(rollItem(Math.random, 1, 2));
+    if (n === 5) out.push(rollItem(Math.random, 1, 3));
+    if (n === 10) out.push(rollItem(Math.random, 1, 4));
+  }
+  return out;
+}
+// Re-read the tally and pay out anything owed. Safe to call often.
+async function refreshInvites(quiet) {
+  if (!KEY) return;
+  let n = 0;
+  try { n = (await DB.get('invites/' + KEY)) || 0; } catch (e) { return; }
+  if (typeof n !== 'number' || n < 0) return;
+  inviteCount = n;
+  const paid = P.refPaid || 0;
+  if (n > paid) {
+    const items = referralRewards(paid, n), gained = n - paid;
+    P.refPaid = n;
+    items.forEach(it => addItem(it.id));
+    save(); checkAch(); renderAll();
+    if (!quiet) showReferralReward(gained, items);
+  } else { checkAch(); renderHeader(); }
+}
+function showReferralReward(count, items) {
+  const best = items.reduce((a, b) => (b.r > a.r ? b : a));
+  modal(`<div style="text-align:center"><h3>${count === 1 ? 'A friend joined!' : count + ' friends joined!'}</h3>
+    <p class="sub">They found their first chest, so here's your thank-you.</p>
+    <div class="grid" style="justify-content:center">${items.map(it => tile(it)).join('')}</div>
+    <p class="fine" style="margin-top:12px">${esc(String(inviteCount))} friend${inviteCount === 1 ? '' : 's'} invited so far.</p>
+    <button class="btn big" id="okBtn" style="margin-top:12px">Nice</button></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => { FX.sfx('reveal', best.r); FX.confetti(['#4aa3ff', '#ffd98a', '#ffffff'], 50); }, 250); });
 }
 
 // ---------------- achievements ----------------
@@ -184,7 +221,9 @@ async function register(name, pw) {
   if (!r.changed) throw new Error('That name is already taken');
   DB.setAuth(key, hash);
   let ref = getRef(); if (ref && ref.toLowerCase() === key) ref = '';
-  if (ref) { const u = await DB.get('users/' + ref.toLowerCase()); if (!u) ref = ''; else await DB.tx('invites/' + ref.toLowerCase(), c => (c || 0) + 1); }
+  // The tally is not touched here: the server credits the referrer only once this player has
+  // actually opened a chest (see DB.reportReferral), so invites cannot be farmed by signing up.
+  if (ref) { const u = await DB.get('users/' + ref.toLowerCase()); if (!u) ref = ''; }
   const p = newPlayer(name, ref ? ref.toLowerCase() : '');
   const starter = grantStarter(p, ref ? 1 : 0);
   await DB.set('players/' + key, p);
@@ -219,6 +258,7 @@ async function resume() {
 async function boot(key, p) {
   KEY = key; P = p;
   try { inviteCount = (await DB.get('invites/' + key)) || 0; } catch (e) { inviteCount = 0; }
+  setTimeout(() => refreshInvites(), 1200);
   $('#auth').hidden = true; $('#app').hidden = false;
   $('#dev').hidden = !DEV;
   initMap(); renderHeader(); renderAll(); checkAch(); show('explore');
@@ -234,6 +274,7 @@ function show(v) {
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   renderAll(); window.scrollTo(0, 0);
   if (v === 'explore' && map) setTimeout(() => map.invalidateSize(), 50);
+  if (v === 'me') refreshInvites();
 }
 function renderHeader() {
   $('#hAv').textContent = P.name[0].toUpperCase(); $('#hName').textContent = P.name; $('#hTitle').textContent = P.title;
@@ -361,7 +402,11 @@ function renderMe() {
   let h = `<div class="card"><b>${esc(P.name)}</b><br><small class="fine">Equipped title</small>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
     <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p></div>
-    <div class="card"><b>Invite friends</b><p class="fine">Share this link or let them scan the code. They get a bonus item for joining through it.</p>
+    <div class="card"><b>Invite friends</b>
+    <p class="fine">Share this link or let them scan the code. They start with a bonus item, and you get a Rare
+    once they open their first chest - plus an Epic at 5 friends and a Legendary at 10.</p>
+    <p class="fine"><b style="color:var(--acc2)">${s.invites} friend${s.invites === 1 ? '' : 's'} joined</b>${s.invites ? ` \u00b7 ${P.refPaid || 0} rewarded` : ''}
+      <button class="btn sm ghost" id="refBtn" style="margin-left:6px">Check</button></p>
     <div id="qr"></div><div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
     ${navigator.share ? '<button class="btn ghost big" id="shareBtn" style="margin-top:8px">Share…</button>' : ''}</div>
     <h2 class="sec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2><div style="padding:0 14px">`;
@@ -382,6 +427,7 @@ function renderMe() {
     <button class="btn sm ghost" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>`;
   $('#meBox').innerHTML = h;
   $('#titleSel').onchange = e => { P.title = e.target.value; save(); renderHeader(); };
+  $('#refBtn').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; const was = inviteCount; await refreshInvites(); if (inviteCount === was) toast(`${inviteCount} friend${inviteCount === 1 ? '' : 's'} joined so far`); renderMe(); };
   $('#copyBtn').onclick = () => { const i = $('#inviteLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } toast('Invite link copied'); };
   const sb = $('#shareBtn'); if (sb) sb.onclick = () => navigator.share({ title: 'Stashwalk', text: 'Come find loot with me on Stashwalk!', url: link }).catch(() => {});
   if (window.QRCode) { try { new QRCode($('#qr'), { text: link, width: 176, height: 176, colorDark: '#0f1a14', colorLight: '#ffffff' }); } catch (e) {} }
@@ -593,6 +639,18 @@ async function openChest(id) {
     const day = utcDay();
     const r = await DB.tx('chests/' + id, cur => !cur ? makeChest(meta, day) : ((cur.day || 0) < day ? refreshChest(cur, meta, day) : undefined));
     P.stats.visited[id] = 1; save(); checkAch(); FX.sfx('open'); FX.vibe(60); showChest(meta, r.value);
+    // First chest opened: let the server credit whoever invited us. The visit has to be stored
+    // before we ask, or the server correctly sees no chest yet - so write it, then report, and
+    // only mark it done once the server confirms.
+    if (P.ref && !P.refSent) {
+      (async () => {
+        try {
+          await DB.set('players/' + KEY, P);
+          const res = await DB.reportReferral();
+          if (res && (res.counted || res.reason === 'already counted')) { P.refSent = 1; save(); }
+        } catch (e) { /* try again next chest */ }
+      })();
+    }
   } catch (e) { toast('Could not open chest: ' + e.message, 'bad'); }
 }
 function showChest(meta, chest) {
@@ -715,7 +773,7 @@ function wire() {
   $('#dexFilters').onclick = e => { const b = e.target.closest('button'); if (b) { dexFilter = b.dataset.f; renderDex(); } };
   $('#dexSearch').oninput = renderDex;
   $('#tpNear').onclick = () => { if (!chests.length) return toast('No chests loaded yet – tap the map somewhere first'); const ref = pos || chests[0]; const c = chests.slice().sort((a, b) => dist(ref, a) - dist(ref, b))[0]; setPos(c.lat, c.lon, 1, true); };
-  setInterval(() => { if (P && !$('#app').hidden && P.daily) renderHeader(); }, 60000);
+  setInterval(() => { if (P && !$('#app').hidden && P.daily) { renderHeader(); refreshInvites(); } }, 60000);
 }
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 

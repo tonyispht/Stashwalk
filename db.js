@@ -88,6 +88,13 @@ window.DB = (function () {
       return Promise.all(keys.map(k => this.get(prefix + '/' + k)));
     },
     setAuth(user, hash) { auth = { user: String(user).toLowerCase(), hash }; },
+    // Tell the server this account's referral now counts (called after its first chest).
+    async reportReferral() {
+      if (!W) return null;
+      const r = await fetch(W + '/refer', { method: 'POST', headers: whead(), body: '{}' });
+      if (!r.ok) throw new Error('refer ' + r.status);
+      return r.json();
+    },
     async verify(user, hash) {                       // does this name+hash belong to a real account?
       if (W) { try { const r = await fetch(W + '/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, hash }) }); return !!(await r.json()).ok; } catch (e) { return false; } }
       const u = await this.get('users/' + String(user).toLowerCase()); return !!u && u.hash === hash;

@@ -73,6 +73,14 @@ reach, shown on a welcome card. Joining through an invite link adds a fourth. An
 already exists but has never collected, traded or claimed anything gets the same kit on its next
 sign-in, so nobody who registered earlier is left with an empty pack.
 
+## Inviting friends
+Share the link or QR code from the Me tab. The invited player starts with an extra item. You get a
+Rare once they actually open their first chest, an Epic at 5 friends and a Legendary at 10, plus
+the Recruiter and Party Leader titles. Rewards arrive on the Me tab (or within a minute of play);
+"Check" forces a refresh.
+A referral only counts after the invited player opens a chest, so fake sign-ups earn nothing, and
+the tally lives server-side - the /kv/invites path refuses writes so no client can inflate it.
+
 ## Finding and opening a chest
 Walk toward it. Within GEIGER_FT (250 ft) the game starts ticking like a Geiger counter, faster and
 brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears above the chest list
