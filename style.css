@@ -177,3 +177,11 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .chest .cd{line-height:1.15}
 /* the player dot is decoration - taps must reach the chest marker beneath it */
 .me-icon,.me-dot{pointer-events:none!important}
+
+/* Leaflet gives its own panes z-index 200-1000. #maprow must trap them in their own stacking
+   context, or the map draws over dialogs, toasts and effects. */
+#maprow{isolation:isolate;z-index:0}
+#map,.leaflet-container{z-index:0}
+#modal{z-index:1000}
+#fx{z-index:1100}
+#toasts{z-index:1200}
