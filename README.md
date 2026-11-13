@@ -67,6 +67,12 @@ The Worker is the better option: Firebase in this mode is wide open to anyone wi
 ## Test without walking
 Open `index.html?dev=1` – tap the map to teleport, or use "Teleport to nearest chest".
 
+## Starting out
+A new player is given STARTER_ITEMS (3) random items so they can trade at the first chest they
+reach, shown on a welcome card. Joining through an invite link adds a fourth. An account that
+already exists but has never collected, traded or claimed anything gets the same kit on its next
+sign-in, so nobody who registered earlier is left with an empty pack.
+
 ## Finding and opening a chest
 Walk toward it. Within GEIGER_FT (250 ft) the game starts ticking like a Geiger counter, faster and
 brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears above the chest list

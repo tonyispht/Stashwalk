@@ -105,6 +105,19 @@ function packCount() { return Object.values(P.inv).reduce((a, b) => a + b, 0); }
 function addItem(id) { P.inv[id] = (P.inv[id] || 0) + 1; if (!P.dex[id]) P.dex[id] = Date.now(); }
 function removeItem(id) { if (!P.inv[id]) return false; if (--P.inv[id] <= 0) delete P.inv[id]; return true; }
 
+// A starting kit, so a new player can trade at the very first chest they find.
+function grantStarter(p, extra) {
+  const ids = [];
+  for (let i = 0; i < C.STARTER_ITEMS + (extra || 0); i++) ids.push(rollItem(Math.random, 1).id);
+  ids.forEach(id => { p.inv[id] = (p.inv[id] || 0) + 1; p.dex[id] = Date.now(); });
+  return ids;
+}
+// Accounts made before the starting kit existed, still untouched, get one on their next sign-in.
+function starterIfEmpty(p) {
+  const fresh = !Object.keys(p.inv).length && !Object.keys(p.dex).length && !(p.stats && p.stats.ex) && !p.daily.n;
+  return fresh ? grantStarter(p, 0) : null;
+}
+
 // ---------------- achievements ----------------
 const ACH = [];
 function ach(id, n, t, d, get, goal, icon) { ACH.push({ id, n, t, d, get, goal, icon: icon || '🏅' }); }
@@ -173,9 +186,9 @@ async function register(name, pw) {
   let ref = getRef(); if (ref && ref.toLowerCase() === key) ref = '';
   if (ref) { const u = await DB.get('users/' + ref.toLowerCase()); if (!u) ref = ''; else await DB.tx('invites/' + ref.toLowerCase(), c => (c || 0) + 1); }
   const p = newPlayer(name, ref ? ref.toLowerCase() : '');
-  if (ref) { const b = rollItem(Math.random, 1, 1).id; p.inv[b] = 1; p.dex[b] = Date.now(); }   // welcome bonus for joining through an invite
+  const starter = grantStarter(p, ref ? 1 : 0);
   await DB.set('players/' + key, p);
-  return { key, hash, p };
+  return { key, hash, p, starter };
 }
 async function login(name, pw) {
   const key = name.toLowerCase(), u = await DB.get('users/' + key);
@@ -184,7 +197,9 @@ async function login(name, pw) {
   if (!(await DB.verify(key, hash))) throw new Error('Wrong password');
   DB.setAuth(key, hash);
   const p = normalize((await DB.get('players/' + key)) || newPlayer(u.name));
-  return { key, hash, p };
+  const starter = starterIfEmpty(p);
+  if (starter) await DB.set('players/' + key, p);
+  return { key, hash, p, starter };
 }
 function remember(key, hash) { try { localStorage.setItem('stashwalk_session', JSON.stringify({ key, hash })); } catch (e) {} }
 function armFs() {
@@ -233,6 +248,19 @@ function renderAll() {
   else if (view === 'dex') renderDex();
   else if (view === 'daily') renderDaily();
   else if (view === 'me') renderMe();
+}
+
+// First thing a new player sees: the items they can start trading with.
+function showStarter(ids) {
+  const items = ids.map(id => BY_ID[id]).filter(Boolean);
+  if (!items.length) return;
+  const best = items.reduce((a, b) => (b.r > a.r ? b : a));
+  modal(`<div style="text-align:center"><h3>Welcome to Stashwalk</h3>
+    <p class="sub">Here's your starting pack. Walk to a chest and swap any of these for what's inside.</p>
+    <div class="grid" style="justify-content:center">${items.map(it => tile(it)).join('')}</div>
+    <p class="fine" style="margin-top:12px">Everything you ever collect stays on your Shelf, even after you trade it away.</p>
+    <button class="btn big" id="okBtn" style="margin-top:12px">Let's go</button></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => { FX.sfx('reveal', best.r); FX.confetti(['#ffd98a', '#f2b84b', '#ffffff'], 40); }, 250); });
 }
 
 // ---- pack ----
@@ -648,7 +676,12 @@ function wire() {
   $('#authTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.t; $$('#authTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#aGo').textContent = mode === 'reg' ? 'Start playing' : 'Log in'; $('#aErr').textContent = ''; };
   $('#authForm').onsubmit = async e => {
     e.preventDefault(); FX.unlock(); if (FX.prefs.fs) FX.enterFs(); const name = $('#aName').value.trim(), pw = $('#aPass').value, btn = $('#aGo'); btn.disabled = true; $('#aErr').textContent = '';
-    try { const r = await (mode === 'reg' ? register(name, pw) : login(name, pw)); remember(r.key, r.hash); await boot(r.key, r.p); FX.sfx('welcome'); }
+    try {
+      const r = await (mode === 'reg' ? register(name, pw) : login(name, pw));
+      remember(r.key, r.hash); await boot(r.key, r.p); FX.sfx('welcome');
+      if (r.starter && r.starter.length) showStarter(r.starter);
+      else if (mode === 'login') toast('Welcome back, ' + r.p.name);
+    }
     catch (err) { $('#aErr').textContent = err.message || 'Something went wrong'; } btn.disabled = false;
   };
   document.addEventListener('click', e => {

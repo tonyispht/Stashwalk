@@ -16,6 +16,7 @@ window.GEO_CONFIG = {
   MAX_PLACES: 150,         // most built-in chest locations shown at once
   GEIGER_FT: 250,          // proximity ticking starts this far from a chest
   MAX_TILES: 40,           // most map tiles loaded at once (each is one degree square)
+  STARTER_ITEMS: 3,        // items a brand-new player begins with
   CHEST_SLOTS: 4,          // items inside each chest
   HIDE_PER_DAY: 2,         // how many chests a player may hide per day
   MIN_CHEST_GAP_M: 20      // new hidden chests must be this far from any other chest
