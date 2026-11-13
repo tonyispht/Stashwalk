@@ -110,6 +110,13 @@ the Recruiter and Party Leader titles. Rewards arrive on the Me tab (or within a
 A referral only counts after the invited player opens a chest, so fake sign-ups earn nothing, and
 the tally lives server-side - the /kv/invites path refuses writes so no client can inflate it.
 
+## When location is inaccurate
+If a fix comes back worse than COARSE_FT (400 ft) the device gave a network-level position rather
+than real GPS, chests appear in the wrong place and do not track walking. The GPS pill turns red and
+reads "imprecise", and a help card shows platform-specific steps - on iOS almost always the
+**Precise Location** switch for the browser under Settings -> Privacy & Security -> Location
+Services, plus choosing "Allow While Using" rather than "Allow Once".
+
 ## Finding and opening a chest
 Walk toward it. Within GEIGER_FT (250 ft) the game starts ticking like a Geiger counter, faster and
 brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears above the chest list

@@ -676,11 +676,55 @@ function startGPS(quiet) {
     err => gpsMsg(err.code === 1 ? 'Location blocked – allow it in your browser settings (HTTPS required)' : 'Can\'t get a GPS fix yet…', 'bad'),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.platform || '') ||
+  (/Mac/.test(navigator.userAgent) && 'ontouchend' in document) || /iPhone|iPad/.test(navigator.userAgent);
+// A fix of several hundred feet means the device gave a coarse, network-level position rather
+// than real GPS. On iOS that is almost always the Precise Location switch.
+let coarseWarned = 0;
+function coarseHint(accFt) {
+  if (accFt < C.COARSE_FT) return '';
+  if (Date.now() - coarseWarned > 120000) {
+    coarseWarned = Date.now();
+    setTimeout(() => showCoarseHelp(accFt), 800);
+  }
+  return ' · imprecise';
+}
+function showCoarseHelp(accFt) {
+  const ios = isIOS();
+  modal(`<h3>📍 Location is only roughly right</h3>
+    <p class="sub">Your device reported a position accurate to about ${Math.round(accFt)} ft. That is a
+    network-level guess rather than real GPS, so chests will look like they are in the wrong place and
+    will not update as you walk.</p>
+    ${ios ? `<div class="lbl">On iPhone or iPad</div>
+    <ol class="help">
+      <li><b>Settings → Privacy &amp; Security → Location Services</b> — make sure this is on.</li>
+      <li>In that list, find your browser (Safari, Brave, Chrome) and set it to <b>While Using the App</b>.</li>
+      <li>Turn on <b>Precise Location</b> for it. This is the setting that usually causes this.</li>
+      <li>Reload this page and choose <b>Allow While Using</b>, not "Allow Once".</li>
+      <li>Turn off <b>Low Power Mode</b>, which slows location updates.</li>
+    </ol>`
+    : `<div class="lbl">On Android</div>
+    <ol class="help">
+      <li><b>Settings → Location</b> — make sure it is on.</li>
+      <li>Set <b>Location accuracy</b> (or Google Location Accuracy) to on.</li>
+      <li>In your browser's site settings, allow Location for this site and choose <b>precise</b>.</li>
+      <li>Turn off Battery Saver, which slows location updates.</li>
+    </ol>`}
+    <p class="fine">Step outside if you can - indoors a device often falls back to wi-fi positioning.</p>
+    <div class="trade"><button class="btn ghost" id="okBtn">Got it</button><button class="btn" id="retryGps">Try again</button></div>`,
+    m => {
+      $('#okBtn', m).onclick = closeModal;
+      $('#retryGps', m).onclick = () => { closeModal(); startGPS(); toast('Asking your device again…'); };
+    });
+}
+
 function gpsMsg(t, cls) {
   if (cls === 'bad') FX.geiger(Infinity, 1); const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
-  gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(pos.acc * FT)} ft`, 'ok');
+  const accFt = pos.acc * FT;
+  gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(accFt)} ft${manual ? '' : coarseHint(accFt)}`,
+         accFt >= C.COARSE_FT ? 'bad' : 'ok');
   if (window.L && map) {
     if (!meMarker) {
       meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'me-icon', html: '<div class="me-dot"></div>', iconSize: [16, 16] }), zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);

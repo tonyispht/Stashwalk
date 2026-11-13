@@ -14,6 +14,7 @@ window.GEO_CONFIG = {
   UNLOCK_FT: 20,           // how close (feet) you must be to a chest to open it
   DEFAULT_RADIUS_MI: 25,   // starting value of the "show chests within" slider (1-250 mi)
   MAX_PLACES: 150,         // most built-in chest locations shown at once
+  COARSE_FT: 400,          // worse than this and the device is not giving real GPS
   GEIGER_FT: 250,          // proximity ticking starts this far from a chest
   MAX_TILES: 40,           // most map tiles loaded at once (each is one degree square)
   STARTER_ITEMS: 3,        // items a brand-new player begins with
