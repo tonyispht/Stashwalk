@@ -537,7 +537,16 @@ function renderMe() {
   h += `</div><div class="card"><b>This build</b>
     <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>. Use this if an update does not seem to have arrived -
     it reloads everything from scratch without touching your sign-in or settings.</p>
-    <button class="btn sm" id="reloadBtn">Hard refresh</button></div>
+    <button class="btn sm" id="reloadBtn">Hard refresh</button>
+    <p class="fine" style="margin-top:12px"><b>Tab bar hidden behind your browser's toolbar?</b>
+    Nudge the game up until you can see it. Saved for next time.</p>
+    <div class="row2" style="padding:0;align-items:center">
+      <button class="btn sm ghost" id="insetDown">− less</button>
+      <b id="insetVal" style="color:var(--acc2);min-width:52px;text-align:center">${getInset()} px</b>
+      <button class="btn sm ghost" id="insetUp">+ more</button>
+      <button class="btn sm ghost" id="insetAuto">Auto</button>
+    </div>
+    <pre id="layoutOut" class="diag" style="margin-top:10px"></pre></div>
     <div class="card"><b>Place list</b><p class="fine">Chest locations ship with the game - no internet service is needed to find them.</p>
     <button class="btn sm ghost" id="diagBtn">Show details</button><pre id="diagOut" class="diag" hidden></pre></div>
     <div class="card"><b>Settings</b>
@@ -556,6 +565,19 @@ function renderMe() {
   if (window.QRCode) { try { new QRCode($('#qr'), { text: link, width: 176, height: 176, colorDark: '#0f1a14', colorLight: '#ffffff' }); } catch (e) {} }
   else $('#qr').outerHTML = '<p class="fine">QR code library unavailable offline – use the link.</p>';
   $('#diagBtn').onclick = runDiag;
+  const showLayout = () => {
+    const r = layoutReport();
+    $('#layoutOut').textContent =
+      `window.innerHeight  ${r.win}\nvisualViewport      ${r.vv}\ndocument client     ${r.doc}\n` +
+      `100svh              ${r.svh}\nscreen              ${r.scr} (dpr ${r.dpr})\n` +
+      `--vh applied        ${r.vh}\nbottom inset        ${r.inset}px\ntab bar ends at     ${r.tabsEnd}`;
+    $('#insetVal').textContent = r.inset + ' px';
+  };
+  showLayout();
+  const nudge = d => { setInset(getInset() + d); setTimeout(showLayout, 120); };
+  $('#insetUp').onclick = () => nudge(16);
+  $('#insetDown').onclick = () => nudge(-16);
+  $('#insetAuto').onclick = () => { setInset(0); setTimeout(showLayout, 120); toast('Bottom inset cleared'); };
   $('#reloadBtn').onclick = e => { e.target.disabled = true; e.target.textContent = 'Reloading…'; hardRefresh(); };
   $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
@@ -896,13 +918,37 @@ function hideDialog() {
 // visualViewport and the vh units each over-report under an overlaying toolbar, and they
 // disagree with each other. So rather than trust any of them, measure where the tab bar
 // actually landed and shrink the app until it is on screen. Self-correcting beats guessing.
+const getInset = () => { try { return Math.max(0, Math.min(220, +localStorage.getItem('sw_inset') || 0)); } catch (e) { return 0; } };
+function setInset(px) {
+  px = Math.max(0, Math.min(220, Math.round(px)));
+  try { localStorage.setItem('sw_inset', px); } catch (e) {}
+  document.documentElement.style.setProperty('--inset', px + 'px');
+  window.dispatchEvent(new Event('resize'));
+  return px;
+}
+// What each height API claims, for diagnosing a browser whose toolbar overlays the page.
+function layoutReport() {
+  const vv = window.visualViewport, t = document.getElementById('tabs');
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:-9999px;width:1px;height:100svh';
+  document.body.appendChild(probe);
+  const svh = Math.round(probe.getBoundingClientRect().height);
+  probe.remove();
+  return { win: Math.round(innerHeight), vv: vv ? Math.round(vv.height) : 0,
+           doc: document.documentElement.clientHeight, svh,
+           tabsEnd: t ? Math.round(t.getBoundingClientRect().bottom) : 0,
+           vh: getComputedStyle(document.documentElement).getPropertyValue('--vh').trim(),
+           inset: getInset(), scr: Math.round(screen.height), dpr: +(devicePixelRatio || 1).toFixed(2) };
+}
+
 function trackViewport() {
+  document.documentElement.style.setProperty('--inset', getInset() + 'px');
   const vv = window.visualViewport, root = document.documentElement;
   let applied = 0;
 
   const measure = () => {
     const cands = [vv && vv.height, window.innerHeight, root.clientHeight].filter(n => n > 200);
-    return cands.length ? Math.round(Math.min.apply(null, cands)) : 0;
+    return cands.length ? Math.round(Math.min.apply(null, cands)) - getInset() : 0;
   };
   const set = h => { if (h > 200 && h !== applied) { applied = h; root.style.setProperty('--vh', h + 'px'); } };
 

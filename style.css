@@ -276,3 +276,11 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 @supports (height:100svh){
   #app{height:min(100svh, var(--vh, 100svh));max-height:min(100svh, var(--vh, 100svh))}
 }
+/* A player-set inset, for browsers whose own toolbar covers the bottom of the page. */
+@supports (height:100svh){
+  #app{height:min(calc(100svh - var(--inset,0px)), var(--vh, 100svh));
+       max-height:min(calc(100svh - var(--inset,0px)), var(--vh, 100svh))}
+}
+/* An early rule set #app{min-height:100vh}. min-height beats max-height in CSS, so it pinned the
+   app to the LARGE viewport (toolbars hidden) and pushed the tab bar underneath them. */
+#app{min-height:0}
