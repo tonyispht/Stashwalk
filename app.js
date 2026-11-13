@@ -414,6 +414,7 @@ async function runDiag() {
     lines.push(`${tileIndex.size.toLocaleString()} map tiles available`);
     let n = 0; TILES.forEach(t => n += t.length);
     lines.push(`${TILES.size} tile(s) downloaded, ${n.toLocaleString()} places in memory`);
+    lines.push(`build ${window.ASSET_V || 'unknown'}`);
     if (pos) {
       await loadTiles(pos.lat, pos.lon, radiusM());
       const within = placesWithin(pos.lat, pos.lon, radiusM());
@@ -533,7 +534,11 @@ function renderMe() {
     h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${got ? a.icon : '🔒'}</div><div><b>${esc(a.n)}</b> <small style="display:inline;color:var(--acc2)">${got ? '· title: ' + esc(a.t) : ''}</small>
       <small>${esc(a.d)}${got ? '' : ` (${v}/${a.goal})`}</small>${got ? '' : `<div class="bar"><i style="width:${v / a.goal * 100}%"></i></div>`}</div></div>`;
   });
-  h += `</div><div class="card"><b>Place list</b><p class="fine">Chest locations ship with the game - no internet service is needed to find them.</p>
+  h += `</div><div class="card"><b>This build</b>
+    <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>. Use this if an update does not seem to have arrived -
+    it reloads everything from scratch without touching your sign-in or settings.</p>
+    <button class="btn sm" id="reloadBtn">Hard refresh</button></div>
+    <div class="card"><b>Place list</b><p class="fine">Chest locations ship with the game - no internet service is needed to find them.</p>
     <button class="btn sm ghost" id="diagBtn">Show details</button><pre id="diagOut" class="diag" hidden></pre></div>
     <div class="card"><b>Settings</b>
     <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
@@ -551,6 +556,7 @@ function renderMe() {
   if (window.QRCode) { try { new QRCode($('#qr'), { text: link, width: 176, height: 176, colorDark: '#0f1a14', colorLight: '#ffffff' }); } catch (e) {} }
   else $('#qr').outerHTML = '<p class="fine">QR code library unavailable offline – use the link.</p>';
   $('#diagBtn').onclick = runDiag;
+  $('#reloadBtn').onclick = e => { e.target.disabled = true; e.target.textContent = 'Reloading…'; hardRefresh(); };
   $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
@@ -559,6 +565,19 @@ function renderMe() {
   $('#impFile').onchange = importSave;
   $('#outBtn').onclick = () => { try { localStorage.removeItem('stashwalk_session'); } catch (e) {} location.href = location.pathname; };
 }
+// A full reload that defeats the browser cache. Scripts and styles are version-stamped, but
+// index.html itself can be served stale, which pins you to an old build - a changing query
+// string forces a fresh copy. Sign-in and settings are left alone.
+async function hardRefresh() {
+  try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); } } catch (e) {}
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+  const u = new URL(location.href);
+  u.searchParams.set('r', Date.now().toString(36));
+  location.replace(u.toString());
+}
+
 function exportSave() {
   const data = DB.remote ? { _t: 'stashwalk-player', key: KEY, player: P } : { _t: 'stashwalk-local', db: DB.dump() };
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));

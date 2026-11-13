@@ -103,6 +103,12 @@ brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears ab
 with an Open button, the list row reads YOU'RE HERE, and the map icon becomes tappable.
 Toggle the ticking off under Me -> Settings.
 
+## Hard refresh
+Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
+version-stamped, but index.html itself can be served from cache and pin a player to an old build;
+the button adds a changing query parameter to force a fresh copy, clears the Cache API, and drops
+stale tile data. Sign-in, settings and any ?ref= invite parameter survive it.
+
 ## Layout and performance notes
 - The app is a fixed-height flex column sized from `--vh`, which app.js keeps in step with
   `visualViewport.height`. Mobile toolbars slide in and out and 100dvh does not always follow, so
