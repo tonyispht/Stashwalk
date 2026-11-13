@@ -76,9 +76,13 @@ function makeChest(meta, day) {
 }
 function refreshChest(cur, meta, day) {
   // Wild (auto-generated) items rotate daily. Items left by players stay until somebody swaps them.
-  const wildSlots = Object.keys(cur.items || {}).filter(s => cur.items[s].w);
+  const items = {};
+  Object.keys(cur.items || {}).forEach(s => { const it = cur.items[s]; if (it && BY_ID[it.id]) items[s] = it; });
+  const wildSlots = Object.keys(items).filter(s => items[s].w);
+  // Make sure the chest is never left empty, even if its stored record was damaged or partial.
+  SLOT_IDS.slice(0, C.CHEST_SLOTS).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
   const fresh = wildItems(meta.id, day, kindInfo(cur.kind || meta.kind)[2], wildSlots);
-  cur.items = Object.assign({}, cur.items, fresh); cur.day = day; return cur;
+  cur.items = Object.assign(items, fresh); cur.day = day; return cur;
 }
 
 // ---------------- player state ----------------
@@ -202,7 +206,7 @@ async function boot(key, p) {
   KEY = key; P = p;
   try { inviteCount = (await DB.get('invites/' + key)) || 0; } catch (e) { inviteCount = 0; }
   $('#auth').hidden = true; $('#app').hidden = false;
-  $('#rangeFt').textContent = C.UNLOCK_FT; $('#dev').hidden = !DEV;
+  $('#dev').hidden = !DEV;
   initMap(); renderHeader(); renderAll(); checkAch(); show('explore');
   startGPS(true);
   if (P.daily.last !== dayKey()) { show('daily'); setTimeout(() => toast('🎁 Your daily reward is ready!', 'gold'), 300); }
@@ -368,7 +372,7 @@ function startGPS(quiet) {
     err => gpsMsg(err.code === 1 ? 'Location blocked – allow it in your browser settings (HTTPS required)' : 'Can\'t get a GPS fix yet…', 'bad'),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
-function gpsMsg(t, cls) { const g = $('#gps'); g.className = 'gps ' + (cls || ''); $('#gpsText').textContent = t; }
+function gpsMsg(t, cls) { const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
   gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(pos.acc * FT)} ft`, 'ok');
@@ -404,6 +408,14 @@ function kindOf(t) {
 }
 const anyOf = ps => Promise.any ? Promise.any(ps) : new Promise((res, rej) => { let n = ps.length; const errs = []; ps.forEach(p => p.then(res, e => { errs.push(e); if (!--n) rej({ errors: errs }); })); });
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+async function fetchWorkerOSM(lat, lon) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch(DB.osmBase + '/osm?lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4), { signal: ctl.signal });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'server said ' + r.status); }
+    const j = await r.json(); return (j.value || []).map(m => Object.assign({ src: 'osm' }, m));
+  } finally { clearTimeout(t); }
+}
 async function fetchOSM(lat, lon, R) {
   R = Math.min(R, 24140);   // park data is pulled out to ~15 miles; landmarks cover the rest of the country
   const ck = 'sw_osm2_' + lat.toFixed(2) + '_' + lon.toFixed(2) + '_' + Math.round(R / 1000); let raw = null;
@@ -439,7 +451,11 @@ async function loadNearby() {
     res.forEach(o => o && Object.keys(o).forEach(id => found.set(id, Object.assign({ id, src: 'player' }, o[id]))));
   } catch (e) {}
   chests = [...found.values()]; refreshChestViews();
-  try { (await fetchOSM(pos.lat, pos.lon, lastR)).forEach(m => { if (!found.has(m.id)) found.set(m.id, m); }); chests = [...found.values()]; }
+  try {
+    const list = DB.osmBase ? await fetchWorkerOSM(pos.lat, pos.lon) : await fetchOSM(pos.lat, pos.lon, lastR);
+    list.forEach(m => { if (!found.has(m.id)) found.set(m.id, m); });
+    chests = [...found.values()];
+  }
   catch (e) { osmErr = e.message || 'offline'; lastLoad = null; }
   loading = false; refreshChestViews();
   if (pos && radiusM() > lastR * 1.05) loadNearby();   // slider was raised while loading
@@ -466,6 +482,7 @@ function renderNearby() {
   if (!pos) { el.innerHTML = '<div class="empty">Turn on GPS to see chests around you.</div>'; $('#radInfo').textContent = ''; return; }
   const all = inRadius(), list = all.slice(0, 60), today = dayKey();
   $('#radInfo').textContent = `${all.length} chest${all.length === 1 ? '' : 's'} within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
+  $('#panelTitle').textContent = all.length ? `${all.length} chest${all.length === 1 ? '' : 's'} nearby` : 'Chests nearby';
   if (!list.length) {
     const nearest = chests.map(c => Object.assign({ d: dist(pos, c) }, c)).sort((a, b) => a.d - b.d)[0];
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
@@ -491,7 +508,9 @@ async function openChest(id) {
   } catch (e) { toast('Could not open chest: ' + e.message, 'bad'); }
 }
 function showChest(meta, chest) {
-  const today = dayKey(), done = P.exch[meta.id] === today, slots = Object.keys(chest.items || {}).sort();
+  const today = dayKey(), done = P.exch[meta.id] === today;
+  const slots = Object.keys(chest.items || {}).filter(s => chest.items[s] && BY_ID[chest.items[s].id]).sort();
+  if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
   modal(`<div class="chestfx" id="chestfx">📦</div><h3 style="text-align:center">${esc(meta.name)}</h3>

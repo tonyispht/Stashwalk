@@ -40,19 +40,25 @@
   </header>
 
   <main>
-    <section id="v-explore" class="view">
-      <div class="gps" id="gps"><span id="gpsText">Location is off</span><button class="btn sm" id="gpsBtn">Enable GPS</button></div>
-      <div id="map"></div>
-      <div class="row2">
-        <button class="btn sm ghost" id="locateBtn">📍 Center on me</button>
-        <button class="btn sm ghost" id="refreshBtn">🔄 Refresh chests</button>
-        <button class="btn sm" id="hideBtn">🫳 Hide a chest here</button>
+    <section id="v-explore" class="view explore">
+      <div id="maprow">
+        <div id="map"></div>
+        <div class="gpspill" id="gps"><span id="gpsText">Location is off</span><button class="btn xs" id="gpsBtn">Enable GPS</button></div>
+        <div class="mapbtns">
+          <button class="iconbtn" id="locateBtn" title="Center on me">📍</button>
+          <button class="iconbtn" id="refreshBtn" title="Refresh chests">🔄</button>
+        </div>
       </div>
-      <div class="radius"><label for="rad">Show chests within <b id="rVal">25 mi</b></label><input type="range" id="rad" min="1" max="250" step="1" value="25"><small id="radInfo"></small></div>
-      <div id="dev" class="dev" hidden>DEV MODE – tap the map to teleport. <button class="btn sm ghost" id="tpNear">Teleport to nearest chest</button></div>
-      <h2 class="sec">Chests nearby</h2>
-      <div id="nearby" class="list"></div>
-      <p class="fine pad">Chests open when you're within <b id="rangeFt">5</b> ft. Please only visit public areas – parks, campgrounds, trails – and stay safe.</p>
+      <div class="panel">
+        <div class="ctl">
+          <input type="range" id="rad" min="1" max="250" step="1" value="25" aria-label="Show chests within">
+          <b id="rVal">25 mi</b>
+          <button class="btn sm" id="hideBtn">🫳 Hide</button>
+        </div>
+        <div class="phead"><b id="panelTitle">Chests nearby</b><small id="radInfo"></small></div>
+        <div id="dev" class="dev" hidden>DEV – tap map to teleport. <button class="btn sm ghost" id="tpNear">Nearest chest</button></div>
+        <div id="nearby" class="list"></div>
+      </div>
     </section>
 
     <section id="v-pack" class="view" hidden>

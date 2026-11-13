@@ -76,6 +76,7 @@ window.DB = (function () {
 
   return {
     remote,
+    osmBase: W,
     async get(p) { return W ? wget(p) : base ? rget(p) : lget(p); },
     async set(p, v) { return W ? wset(p, v) : base ? rset(p, v) : lset(p, v); },
     // Read several children of a prefix at once, e.g. getMany('cells', ['3_-2','3_-1']) -> [obj, obj]

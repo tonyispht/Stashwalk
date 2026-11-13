@@ -56,6 +56,36 @@ function validate(segs, value) {
   }
   return false;
 }
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+function osmKind(t) {
+  if (t.tourism === 'camp_site') return 'camp'; if (t.tourism === 'picnic_site' || t.leisure === 'picnic_table') return 'picnic';
+  if (t.tourism === 'viewpoint') return 'view'; if (t.natural === 'peak') return 'peak'; if (t.leisure === 'playground') return 'play';
+  if (t.leisure === 'fire_pit' || t.amenity === 'bbq') return 'fire'; if (t.amenity === 'shelter') return 'shelter';
+  if (t.leisure === 'nature_reserve') return 'reserve'; return 'park';
+}
+const KIND_NAME = { camp: 'Campsite', picnic: 'Picnic Spot', view: 'Viewpoint', peak: 'Summit', play: 'Playground', fire: 'Fire Ring', shelter: 'Trail Shelter', reserve: 'Nature Reserve', park: 'Park' };
+async function osmFetch(lat, lon) {
+  const a = `(around:6000,${lat},${lon})`, b = `(around:28000,${lat},${lon})`;
+  const q = `[out:json][timeout:20];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
+    `nwr${b}[tourism=camp_site];nwr${b}[leisure=nature_reserve][name];nwr${b}[natural=peak][name];);out center 220;`;
+  for (const ep of OVERPASS) {
+    try {
+      const r = await fetch(ep + '?data=' + encodeURIComponent(q), { cf: { cacheTtl: 604800, cacheEverything: true } });
+      if (!r.ok) continue;
+      const j = await r.json(); if (!j || !j.elements) continue;
+      const out = [];
+      for (const el of j.elements) {
+        const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
+        if (la == null || lo == null) continue;
+        const t = el.tags || {}, k = osmKind(t);
+        out.push({ id: 'osm_' + el.type[0] + el.id, name: String(t.name || KIND_NAME[k] || 'Park').slice(0, 60), lat: la, lon: lo, kind: k });
+        if (out.length >= 220) break;
+      }
+      if (out.length) return out;
+    } catch (e) {}
+  }
+  return null;
+}
 const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 3000 };
 
 export default {
@@ -75,6 +105,21 @@ export default {
       if (url.pathname === '/verify' && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
         return json({ ok: !!(await verify(env, b.user, b.hash)) }, 200, cors);
+      }
+
+      // Park/campground lookup, proxied + cached so players never hit the slow public API directly.
+      if (url.pathname === '/osm' && req.method === 'GET') {
+        const lat = +url.searchParams.get('lat'), lon = +url.searchParams.get('lon');
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad coords' }, 400, cors);
+        // Snap to a ~11km grid so everyone in an area shares one cached answer.
+        const cl = Math.round(lat * 10) / 10, co = Math.round(lon * 10) / 10, ck = 'osm/' + cl.toFixed(1) + '_' + co.toFixed(1);
+        const hit = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind(ck).first();
+        if (hit && Date.now() - hit.v < 30 * 86400000) return json({ value: JSON.parse(hit.val), cached: true }, 200, cors);
+        const list = await osmFetch(cl, co);
+        if (!list) return json(hit ? { value: JSON.parse(hit.val), cached: true, stale: true } : { error: 'park data unavailable' }, hit ? 200 : 503, cors);
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = excluded.v')
+          .bind(ck, JSON.stringify(list), Date.now()).run();
+        return json({ value: list, cached: false }, 200, cors);
       }
 
       if (url.pathname === '/many' && req.method === 'GET') {          // batched read of hidden-chest index cells
