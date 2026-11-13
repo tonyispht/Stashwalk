@@ -4,7 +4,7 @@ Plain static files. Upload the folder to any static host (GitHub Pages, Netlify 
 GPS needs HTTPS (those hosts all provide it; `localhost` also works for testing).
 
 ## Files
-index.html, style.css, app.js (game), items.js (550 items), locations.js (landmark chests), db.js (storage), config.js (settings)
+index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), items.js (550 items), locations.js (landmark chests), db.js (storage), config.js (settings)
 
 ## 1. Local mode (default, zero setup)
 Everything saves in the player's browser. Works instantly, but chests/trades are only shared between accounts on the same device.
@@ -27,3 +27,6 @@ Note: this is a casual game, not a hardened one – a determined player could st
 
 ## Test without walking
 Open `index.html?dev=1` – tap the map to teleport, or use "Teleport to nearest chest".
+
+## Sound, effects, fullscreen
+Sounds are synthesized in the browser (no audio files). Header buttons toggle sound (🔊) and fullscreen (⛶); Me tab → Settings also toggles visual effects/vibration. Fullscreen turns on at login by default. Effects default off if the device asks for reduced motion.

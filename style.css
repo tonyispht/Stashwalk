@@ -104,3 +104,37 @@ select{background:var(--card2);border:1px solid #2c4d3b;border-radius:10px;paddi
 .radius label{display:block;font-size:13px;color:var(--mut)}.radius b{color:var(--acc2)}
 .radius input[type=range]{padding:0;border:0;background:none;accent-color:var(--acc);height:28px}
 .radius small{color:var(--mut);font-size:12px}
+
+/* ---- effects ---- */
+#fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:90}
+.flash{position:fixed;inset:0;pointer-events:none;z-index:89;animation:flashA .65s ease-out forwards}
+@keyframes flashA{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+.ibtn{border:0;color:var(--ink);cursor:pointer;font-size:15px;padding:4px 9px}
+.tg{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #234230;cursor:pointer}
+.tg input{width:22px;height:22px;accent-color:var(--acc);flex:none;padding:0}
+.revealbox{position:relative;width:170px;height:170px;margin:4px auto;display:grid;place-items:center}
+.revealbox .tile.big{position:relative;z-index:2;animation:revealIn .6s cubic-bezier(.2,1.4,.4,1) backwards}
+.revealbox .rays{position:absolute;inset:-30px;border-radius:50%;z-index:1;opacity:.55;background:repeating-conic-gradient(from 0deg,var(--rc) 0 10deg,transparent 10deg 30deg);-webkit-mask:radial-gradient(circle,#000 20%,transparent 68%);mask:radial-gradient(circle,#000 20%,transparent 68%);animation:spin 14s linear infinite;--rc:var(--r0)}
+.revealbox.r1 .rays{--rc:var(--r1)}.revealbox.r2 .rays{--rc:var(--r2)}.revealbox.r3 .rays{--rc:var(--r3)}.revealbox.r4 .rays{--rc:var(--r4);opacity:.8}
+.revealbox.r0 .rays{opacity:.18}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes revealIn{0%{transform:scale(.2) rotate(-25deg);opacity:0}70%{transform:scale(1.12) rotate(4deg)}100%{transform:none;opacity:1}}
+.chestfx{font-size:64px;text-align:center;animation:chestShake .55s ease-in-out;filter:drop-shadow(0 6px 14px #f2b84b55)}
+@keyframes chestShake{0%,100%{transform:rotate(0)}15%{transform:rotate(-12deg) scale(1.05)}35%{transform:rotate(11deg) scale(1.08)}55%{transform:rotate(-8deg)}75%{transform:rotate(5deg) scale(1.1)}}
+.popin .tile{animation:tilePop .4s cubic-bezier(.2,1.5,.4,1) backwards}
+@keyframes tilePop{from{transform:scale(0) rotate(-20deg);opacity:0}}
+.chest.near{animation:nearPulse 1.8s ease-in-out infinite}
+@keyframes nearPulse{50%{box-shadow:0 0 0 3px #f2b84b55,0 0 30px #f2b84b55}}
+.cm.near span{animation:markPulse 1.4s ease-in-out infinite}
+@keyframes markPulse{50%{transform:scale(1.25);box-shadow:0 0 24px var(--acc)}}
+.day.now{animation:dayPulse 1.6s ease-in-out infinite}
+@keyframes dayPulse{50%{transform:scale(1.12);box-shadow:0 0 0 3px var(--acc),0 0 22px #f2b84b88}}
+.claim .btn{animation:claimGlow 1.6s ease-in-out infinite}
+@keyframes claimGlow{50%{box-shadow:0 0 24px #f2b84b99;transform:scale(1.02)}}
+.btn:active,.tile:active,.tabs button:active{transform:scale(.94)}
+.tabs button.on i{animation:tabHop .35s ease-out}
+@keyframes tabHop{40%{transform:translateY(-5px) scale(1.2)}}
+.sheet{animation:up .22s cubic-bezier(.2,1.2,.4,1)}
+.tile.r4::before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 35%,#fff6 50%,transparent 65%);transform:translateX(-120%);animation:shine 3.2s ease-in-out infinite;pointer-events:none}
+@keyframes shine{50%,100%{transform:translateX(120%)}}
+@media (prefers-reduced-motion:reduce){.chest.near,.cm.near span,.day.now,.claim .btn,.revealbox .rays,.tile.r4,.tile.r4::before{animation:none}}

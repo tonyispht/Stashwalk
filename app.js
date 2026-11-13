@@ -29,6 +29,7 @@ const dayKey = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() +
 const utcDay = () => Math.floor(Date.now() / 86400000);
 function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
 function toast(msg, kind) {
+  if (kind === 'bad') FX.sfx('error');
   const t = document.createElement('div'); t.className = 'toast ' + (kind || ''); t.textContent = msg;
   $('#toasts').appendChild(t); setTimeout(() => t.classList.add('out'), 3200); setTimeout(() => t.remove(), 3700);
 }
@@ -45,6 +46,7 @@ function tile(it, o = {}) {
     `<span class="em" style="filter:hue-rotate(${it.h}deg)">${it.e}</span>` +
     (o.count > 1 ? `<b class="cnt">×${o.count}</b>` : '') + (o.big ? '' : `<i class="nm">${esc(it.n)}</i>`) + '</div>';
 }
+const revealBox = it => `<div class="revealbox r${it.r}"><i class="rays"></i>${tile(it, { big: true })}</div>`;
 const badge = r => `<span class="badge" style="background:${RAR[r].c}">${RAR[r].n}</span>`;
 
 // ---------------- rolling items ----------------
@@ -143,7 +145,7 @@ function statView() {
 function checkAch() {
   const s = statView(), got = [];
   ACH.forEach(a => { if (!P.ach[a.id] && a.get(s) >= a.goal) { P.ach[a.id] = Date.now(); got.push(a); } });
-  got.forEach((a, i) => setTimeout(() => toast(`🏅 ${a.n} – new title: ${a.t}`, 'gold'), 600 * i + 400));
+  got.forEach((a, i) => setTimeout(() => { toast(`🏅 ${a.n} – new title: ${a.t}`, 'gold'); FX.sfx('ach'); FX.confetti(['#ffb02e', '#ffd98a', '#ffffff'], 45); FX.vibe([30, 40, 30]); }, 600 * i + 400));
   if (got.length) save();
 }
 
@@ -179,12 +181,17 @@ async function login(name, pw) {
   return { key, hash: u.hash, p };
 }
 function remember(key, hash) { try { localStorage.setItem('stashwalk_session', JSON.stringify({ key, hash })); } catch (e) {} }
+function armFs() {
+  if (!FX.prefs.fs || !FX.fsSupported || FX.inFs()) return;
+  toast('Tap anywhere to go fullscreen');
+  document.addEventListener('pointerdown', () => { FX.unlock(); if (FX.prefs.fs) FX.enterFs(); }, { once: true });
+}
 async function resume() {
   try {
     const s = JSON.parse(localStorage.getItem('stashwalk_session') || 'null'); if (!s) return false;
     const u = await DB.get('users/' + s.key); if (!u || u.hash !== s.hash) return false;
     const p = normalize((await DB.get('players/' + s.key)) || newPlayer(u.name));
-    await boot(s.key, p); return true;
+    await boot(s.key, p); armFs(); return true;
   } catch (e) { return false; }
 }
 async function boot(key, p) {
@@ -231,7 +238,7 @@ function renderPack() {
 function showItem(id) {
   const it = BY_ID[id]; if (!it) return;
   const own = P.inv[id] || 0, first = P.dex[id];
-  modal(`<div style="text-align:center">${tile(it, { big: true })}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
+  modal(`<div style="text-align:center">${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px"><i>${esc(it.flavor)}</i></p>
     <p class="fine">${first ? 'First collected ' + new Date(first).toLocaleDateString() : 'Not collected yet'} · In your pack: ${own}</p>
     <button class="btn ghost" onclick="document.getElementById('modal').onclick({target:document.getElementById('modal')})">Close</button></div>`);
@@ -278,9 +285,10 @@ function claimDaily() {
   P.daily.streak = P.daily.last && daysBetween(P.daily.last, today) === 1 ? P.daily.streak + 1 : 1;
   P.daily.max = Math.max(P.daily.max || 0, P.daily.streak); P.daily.n++; P.daily.last = today;
   const isNew = !P.dex[it.id]; addItem(it.id); save(); checkAch(); renderAll();
-  modal(`<div style="text-align:center"><p class="sub">Day ${day} reward</p>${tile(it, { big: true })}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
+  FX.sfx('daily');
+  modal(`<div style="text-align:center"><p class="sub">Day ${day} reward</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
-    <button class="btn big" id="okBtn">Nice!</button></div>`, m => { $('#okBtn', m).onclick = closeModal; });
+    <button class="btn big" id="okBtn">Nice!</button></div>`, m => { $('#okBtn', m).onclick = closeModal; FX.reveal(it.r, $('.tile.big', m), true); });
 }
 
 // ---- me ----
@@ -300,7 +308,11 @@ function renderMe() {
     h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${got ? a.icon : '🔒'}</div><div><b>${esc(a.n)}</b> <small style="display:inline;color:var(--acc2)">${got ? '· title: ' + esc(a.t) : ''}</small>
       <small>${esc(a.d)}${got ? '' : ` (${v}/${a.goal})`}</small>${got ? '' : `<div class="bar"><i style="width:${v / a.goal * 100}%"></i></div>`}</div></div>`;
   });
-  h += `</div><div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
+  h += `</div><div class="card"><b>Settings</b>
+    <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
+    <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
+    ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
+    <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
     <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
     <button class="btn sm ghost" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>`;
   $('#meBox').innerHTML = h;
@@ -309,6 +321,9 @@ function renderMe() {
   const sb = $('#shareBtn'); if (sb) sb.onclick = () => navigator.share({ title: 'Stashwalk', text: 'Come find loot with me on Stashwalk!', url: link }).catch(() => {});
   if (window.QRCode) { try { new QRCode($('#qr'), { text: link, width: 176, height: 176, colorDark: '#0f1a14', colorLight: '#ffffff' }); } catch (e) {} }
   else $('#qr').outerHTML = '<p class="fine">QR code library unavailable offline – use the link.</p>';
+  $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
+  $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
+  const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
   $('#expBtn').onclick = exportSave; $('#impBtn').onclick = () => $('#impFile').click();
   $('#impFile').onchange = importSave;
   $('#outBtn').onclick = () => { try { localStorage.removeItem('stashwalk_session'); } catch (e) {} location.href = location.pathname; };
@@ -365,7 +380,7 @@ function setPos(lat, lon, acc, manual) {
 function markNear() {
   chests.forEach(c => {
     const d = dist(pos, c);
-    if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); try { navigator.vibrate && navigator.vibrate(200); } catch (e) {} }
+    if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); FX.sfx('ping'); FX.vibe(200); }
     if (d > unlockM(c) * 3) delete nearSeen[c.id];
   });
 }
@@ -468,21 +483,23 @@ async function openChest(id) {
   try {
     const day = utcDay();
     const r = await DB.tx('chests/' + id, cur => !cur ? makeChest(meta, day) : ((cur.day || 0) < day ? refreshChest(cur, meta, day) : undefined));
-    P.stats.visited[id] = 1; save(); checkAch(); showChest(meta, r.value);
+    P.stats.visited[id] = 1; save(); checkAch(); FX.sfx('open'); FX.vibe(60); showChest(meta, r.value);
   } catch (e) { toast('Could not open chest: ' + e.message, 'bad'); }
 }
 function showChest(meta, chest) {
   const today = dayKey(), done = P.exch[meta.id] === today, slots = Object.keys(chest.items || {}).sort();
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
-  modal(`<h3>${kindInfo(meta.kind)[1]} ${esc(meta.name)}</h3>
+  modal(`<div class="chestfx" id="chestfx">📦</div><h3 style="text-align:center">${esc(meta.name)}</h3>
     <p class="sub">${done ? 'You already traded here today – you can look, but come back tomorrow to swap.' : 'Pick one item to take, then one of yours to leave behind. One trade per chest per day.'}</p>
     <div class="lbl">Inside the chest</div>
-    <div class="grid" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
+    <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
     ${done ? '' : `<div class="lbl">Your pack</div><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
     <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button><button class="btn" id="swapBtn" disabled>Choose items</button></div>`}
     ${done ? '<div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>' : ''}`, m => {
     $('#cancelBtn', m).onclick = closeModal;
+    $$('#chestGrid .tile', m).forEach((t, i) => { t.style.animationDelay = (550 + i * 110) + 'ms'; });
+    setTimeout(() => { const f = $('#chestfx', m); if (f) { f.textContent = '🎁'; const p = FX.centerOf(f); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#ffffff'], 26); } }, 560);
     if (done) return;
     const swap = $('#swapBtn', m);
     const upd = () => { swap.disabled = !(selGet && selGive); swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} → ${BY_ID[chest.items[selGet].id].n}` : 'Choose items'; };
@@ -506,8 +523,9 @@ async function doTrade(meta, slot, getId, giveId) {
   removeItem(giveId); const isNew = !P.dex[getId]; addItem(getId);
   P.exch[meta.id] = dayKey(); P.stats.ex = (P.stats.ex || 0) + 1; if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
   const it = BY_ID[getId]; save(); checkAch(); renderAll();
-  modal(`<div style="text-align:center"><p class="sub">You traded and received</p>${tile(it, { big: true })}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
-    <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf! ' : ''}${esc(BY_ID[giveId].n)} stays in the chest for the next explorer.</p><button class="btn big" id="okBtn">Great</button></div>`, m => { $('#okBtn', m).onclick = closeModal; });
+  FX.sfx('coin');
+  modal(`<div style="text-align:center"><p class="sub">You traded and received</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
+    <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf! ' : ''}${esc(BY_ID[giveId].n)} stays in the chest for the next explorer.</p><button class="btn big" id="okBtn">Great</button></div>`, m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => FX.reveal(it.r, $('.tile.big', m)), 280); });
 }
 
 // ---- hiding a chest ----
@@ -534,7 +552,7 @@ function hideDialog() {
         await DB.set('cells/' + cellKey(pos.lat, pos.lon) + '/' + id, { name, lat: pos.lat, lon: pos.lon, kind: 'player' });
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
       removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
-      chests.push(Object.assign({ src: 'player' }, meta)); save(); checkAch(); closeModal(); refreshChestViews(); renderAll(); toast('📦 Chest hidden! Other players can find it now.', 'gold');
+      chests.push(Object.assign({ src: 'player' }, meta)); save(); checkAch(); closeModal(); refreshChestViews(); renderAll(); toast('📦 Chest hidden! Other players can find it now.', 'gold'); FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 30);
     };
   });
 }
@@ -546,10 +564,21 @@ function wire() {
   const ref = getRef(); if (ref) { try { sessionStorage.setItem('sw_ref', ref); } catch (e) {} const i = $('#invited'); i.hidden = false; i.textContent = '🎉 ' + ref + ' invited you – you get a bonus item!'; }
   $('#authTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.t; $$('#authTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#aGo').textContent = mode === 'reg' ? 'Start playing' : 'Log in'; $('#aErr').textContent = ''; };
   $('#authForm').onsubmit = async e => {
-    e.preventDefault(); const name = $('#aName').value.trim(), pw = $('#aPass').value, btn = $('#aGo'); btn.disabled = true; $('#aErr').textContent = '';
-    try { const r = await (mode === 'reg' ? register(name, pw) : login(name, pw)); remember(r.key, r.hash); await boot(r.key, r.p); }
+    e.preventDefault(); FX.unlock(); if (FX.prefs.fs) FX.enterFs(); const name = $('#aName').value.trim(), pw = $('#aPass').value, btn = $('#aGo'); btn.disabled = true; $('#aErr').textContent = '';
+    try { const r = await (mode === 'reg' ? register(name, pw) : login(name, pw)); remember(r.key, r.hash); await boot(r.key, r.p); FX.sfx('welcome'); }
     catch (err) { $('#aErr').textContent = err.message || 'Something went wrong'; } btn.disabled = false;
   };
+  document.addEventListener('click', e => {
+    const t = e.target.closest('button, .tile, .chest'); if (!t || t.disabled || t.id === 'hSnd') return;
+    if (t.closest('#tabs')) FX.sfx('tab'); else if (t.id !== 'claimBtn') FX.sfx('tap');
+  }, true);
+  const sync = () => {
+    $('#hSnd').textContent = FX.prefs.snd ? '🔊' : '🔇'; $('#hFs').textContent = FX.inFs() ? '🗗' : '⛶'; $('#hFs').hidden = !FX.fsSupported;
+    const sf = $('#setFs'); if (sf) sf.checked = FX.inFs();
+  };
+  FX.onChange(sync); sync();
+  $('#hSnd').onclick = () => { FX.set('snd', !FX.prefs.snd); FX.sfx('coin'); };
+  $('#hFs').onclick = () => FX.toggleFs();
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };
   $('#gpsBtn').onclick = () => startGPS();
   $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };

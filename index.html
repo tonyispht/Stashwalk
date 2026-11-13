@@ -12,6 +12,7 @@
 <body>
 <div id="toasts"></div>
 <div id="modal"></div>
+<canvas id="fx"></canvas>
 
 <!-- LOGIN / SIGN UP -->
 <section id="auth" class="auth">
@@ -35,7 +36,7 @@
 <div id="app" hidden>
   <header class="top">
     <div class="who"><div class="av" id="hAv">?</div><div><b id="hName">-</b><small id="hTitle">-</small></div></div>
-    <div class="chips"><span class="chip" id="hStreak">🔥 0</span><span class="chip" id="hPack">🎒 0</span></div>
+    <div class="chips"><button class="chip ibtn" id="hSnd" title="Sound">🔊</button><button class="chip ibtn" id="hFs" title="Fullscreen">⛶</button><span class="chip" id="hStreak">🔥 0</span><span class="chip" id="hPack">🎒 0</span></div>
   </header>
 
   <main>
@@ -93,6 +94,7 @@
 <script src="items.js"></script>
 <script src="locations.js"></script>
 <script src="db.js"></script>
+<script src="fx.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
