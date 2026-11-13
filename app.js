@@ -605,7 +605,8 @@ function renderMe() {
     $('#layoutOut').textContent =
       `window.innerHeight  ${r.win}\nvisualViewport      ${r.vv}\ndocument client     ${r.doc}\n` +
       `100svh              ${r.svh}\nscreen              ${r.scr} (dpr ${r.dpr})\n` +
-      `--vh applied        ${r.vh}\nbottom inset        ${r.inset}px\ntab bar ends at     ${r.tabsEnd}`;
+      `--vh applied        ${r.vh}\nbottom inset        ${r.inset}px\ntab bar ends at     ${r.tabsEnd}\n` +
+      `width ${r.winW} of screen ${r.scrW}\npage zoom           ~${r.zoom}%${r.zoom > 112 ? '  <-- set this to 100%' : ''}\npinch scale         ${r.scale}`;
     $('#insetVal').textContent = r.inset + ' px';
   };
   showLayout();
@@ -1056,7 +1057,9 @@ function layoutReport() {
            doc: document.documentElement.clientHeight, svh,
            tabsEnd: t ? Math.round(t.getBoundingClientRect().bottom) : 0,
            vh: getComputedStyle(document.documentElement).getPropertyValue('--vh').trim(),
-           inset: getInset(), scr: Math.round(screen.height), dpr: +(devicePixelRatio || 1).toFixed(2) };
+           inset: getInset(), scr: Math.round(screen.height), dpr: +(devicePixelRatio || 1).toFixed(2),
+           zoom: Math.round(zoomFactor() * 100), scale: +((window.visualViewport && visualViewport.scale) || 1).toFixed(2),
+           winW: Math.round(innerWidth), scrW: Math.round((screen && screen.width) || 0) };
 }
 
 function trackViewport() {
@@ -1097,8 +1100,42 @@ function trackViewport() {
   setInterval(enforce, 1500);          // cheap: one getBoundingClientRect, only acts when wrong
 }
 
+// Long-press menus, text selection and accidental drags all interfere with tapping chests
+// and items. Inputs and the diagnostics block stay selectable so copying still works.
+const SELECTABLE = 'input,textarea,select,.diag,#inviteLink';
+function lockInteractions() {
+  const allowed = e => !!(e.target && e.target.closest && e.target.closest(SELECTABLE));
+  document.addEventListener('contextmenu', e => { if (!allowed(e)) e.preventDefault(); });
+  document.addEventListener('selectstart', e => { if (!allowed(e)) e.preventDefault(); });
+  document.addEventListener('dragstart', e => { if (!allowed(e)) e.preventDefault(); });
+  // Pinch and double-tap zoom, for browsers that ignore the viewport meta.
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  let lastTap = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTap < 320 && !allowed(e)) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
+}
+
+// Page zoom is a browser setting a page cannot change, so the most we can do is notice and say so.
+function zoomFactor() {
+  const w = window.innerWidth, sw = (screen && screen.width) || 0;
+  if (!w || !sw || window.innerHeight < window.innerWidth) return 1;   // skip in landscape
+  const z = sw / w;
+  return z > 0.5 && z < 4 ? z : 1;
+}
+function checkZoom() {
+  const z = zoomFactor();
+  if (z <= 1.12) return;
+  try { if (sessionStorage.getItem('sw_zoomwarn')) return; sessionStorage.setItem('sw_zoomwarn', '1'); } catch (e) {}
+  toast(`Browser zoom looks like ${Math.round(z * 100)}% - set it to 100% so nothing is cut off`, 'bad');
+}
+
 function wire() {
   trackViewport();
+  lockInteractions();
+  setTimeout(checkZoom, 2500);
   let mode = 'reg';
   $('#modeNote').textContent = DB.remote ? 'Shared world: you play alongside everyone else.' : 'Local mode: your progress is saved on this device.';
   const ref = getRef(); if (ref) { try { sessionStorage.setItem('sw_ref', ref); } catch (e) {} const i = $('#invited'); i.hidden = false; i.textContent = '🎉 ' + ref + ' invited you – you get a bonus item!'; }

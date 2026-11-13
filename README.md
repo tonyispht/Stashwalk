@@ -122,6 +122,14 @@ version-stamped, but index.html itself can be served from cache and pin a player
 the button adds a changing query parameter to force a fresh copy, clears the Cache API, and drops
 stale tile data. Sign-in, settings and any ?ref= invite parameter survive it.
 
+## Input locking and zoom
+Text selection, long-press context menus and drags are disabled outside real inputs (inputs, the
+invite link and the diagnostics block stay selectable so copying works). Pinch and double-tap zoom
+are blocked via the viewport meta, touch-action and a touchend guard.
+Browser PAGE zoom is a browser setting that a page cannot change. The game detects it
+(screen.width vs innerWidth in portrait) and warns once per session; the Me tab readout shows the
+estimate. If a player reports things being cut off, check that figure first.
+
 ## Layout and performance notes
 - The app is a fixed-height flex column sized from `--vh`, clamped against `100svh`. Every API for
   "visible height" over-reports on some mobile browser with an overlaying toolbar, and they

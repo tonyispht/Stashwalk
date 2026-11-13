@@ -294,3 +294,10 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .fitem small{display:block;font-size:11.5px;color:var(--mut)}
 .chestfoot{display:flex;gap:8px;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid #234230}
 .btn.danger{color:var(--bad)}
+
+/* No text selection, long-press menus or drags outside real inputs - they fight with tapping
+   chests and items. Double-tap zoom is suppressed with touch-action. */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+img,.tile,.em,.ci,.chest,.recipe,.mrow,.fitem{-webkit-user-drag:none;user-drag:none}
+input,textarea,select,.diag,#inviteLink{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
