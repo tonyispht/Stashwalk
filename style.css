@@ -266,3 +266,13 @@ body.modal-open .tile.r4::before{animation:none!important}
 .chest > div{min-width:0}
 .chest .cd{white-space:nowrap}
 .chest .btn.sm{white-space:nowrap}
+
+/* Mobile browsers with a bottom toolbar (Brave, Chrome) overlay it on top of the page instead of
+   shrinking the viewport, so innerHeight and visualViewport both over-report. 100svh is the
+   "small viewport" - the height that assumes those bars are showing - so the tab bar always fits.
+   The JS --vh is kept only as a clamp for anything svh misses, and as a fallback for old browsers. */
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+#app{height:var(--vh,100vh);max-height:none}
+@supports (height:100svh){
+  #app{height:min(100svh, var(--vh, 100svh));max-height:min(100svh, var(--vh, 100svh))}
+}

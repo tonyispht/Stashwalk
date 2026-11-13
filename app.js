@@ -878,8 +878,9 @@ function hideDialog() {
 function trackViewport() {
   const vv = window.visualViewport;
   const set = () => {
-    const h = Math.round(vv ? vv.height : window.innerHeight);
-    if (h > 200) document.documentElement.style.setProperty('--vh', h + 'px');
+    // Take the smallest honest measure available; CSS clamps it against 100svh as well.
+    const cands = [vv && vv.height, window.innerHeight, document.documentElement.clientHeight].filter(n => n > 200);
+    if (cands.length) document.documentElement.style.setProperty('--vh', Math.round(Math.min.apply(null, cands)) + 'px');
   };
   set();
   addEventListener('resize', set);
