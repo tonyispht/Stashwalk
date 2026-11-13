@@ -67,5 +67,11 @@ The Worker is the better option: Firebase in this mode is wide open to anyone wi
 ## Test without walking
 Open `index.html?dev=1` – tap the map to teleport, or use "Teleport to nearest chest".
 
+## Finding and opening a chest
+Walk toward it. Within GEIGER_FT (250 ft) the game starts ticking like a Geiger counter, faster and
+brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears above the chest list
+with an Open button, the list row reads YOU'RE HERE, and the map icon becomes tappable.
+Toggle the ticking off under Me -> Settings.
+
 ## Sound, effects, fullscreen
 Sounds are synthesized in the browser (no audio files). Header buttons toggle sound (🔊) and fullscreen (⛶); Me tab → Settings also toggles visual effects/vibration. Fullscreen turns on at login by default. Effects default off if the device asks for reduced motion.

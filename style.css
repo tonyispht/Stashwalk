@@ -168,3 +168,12 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 @media (min-height:760px){.panel{max-height:42%}}
 
 .diag{white-space:pre-wrap;word-break:break-word;background:#0f1a14;border:1px solid #2a4a39;border-radius:10px;padding:10px;margin:10px 0 0;font-size:11.5px;line-height:1.5;color:var(--ink);font-family:ui-monospace,Menlo,Consolas,monospace}
+
+/* banner for the chest you can open right now */
+.herebar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 12px 6px;padding:10px 12px;
+  border-radius:12px;background:linear-gradient(135deg,#3a2f0f,#1f3d2d);border:1px solid var(--acc);animation:claimGlow 1.8s ease-in-out infinite}
+.herebar b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.herebar .btn{flex:none}
+.chest .cd{line-height:1.15}
+/* the player dot is decoration - taps must reach the chest marker beneath it */
+.me-icon,.me-dot{pointer-events:none!important}

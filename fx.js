@@ -3,8 +3,13 @@ window.FX = (function () {
   const RAR = window.RARITIES || [];
   const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const get = (k, d) => { try { const v = localStorage.getItem('sw_' + k); return v === null ? d : v === '1'; } catch (e) { return d; } };
-  const prefs = { snd: get('snd', true), fx: get('fx', !reduce), fs: get('fs', true) };
-  function set(k, v) { prefs[k] = !!v; try { localStorage.setItem('sw_' + k, v ? '1' : '0'); } catch (e) {} listeners.forEach(f => f()); }
+  const prefs = { snd: get('snd', true), fx: get('fx', !reduce), fs: get('fs', true), geiger: get('geiger', true) };
+  function set(k, v) {
+    prefs[k] = !!v;
+    try { localStorage.setItem('sw_' + k, v ? '1' : '0'); } catch (e) {}
+    if ((k === 'geiger' || k === 'snd') && !v) { clearTimeout(gTimer); gTimer = null; gOn = false; }
+    listeners.forEach(f => f());
+  }
   const listeners = [];
 
   // ---------------- audio ----------------
@@ -59,6 +64,35 @@ window.FX = (function () {
     if (!prefs.snd) return; try { if (!unlock() || !SFX[name]) return; SFX[name](ac.currentTime + 0.01, arg); } catch (e) {}
   }
   const vibe = p => { if (prefs.fx) try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+
+  // ---------------- proximity ticking (Geiger counter) ----------------
+  // Fed a distance each time GPS updates; clicks get faster, louder and brighter as it shrinks.
+  let gTimer = null, gDist = Infinity, gMax = 76, gOn = false;
+  function geigerClick(closeness) {
+    if (!unlock()) return;
+    const t = ac.currentTime + 0.005;
+    // short filtered noise burst - a counter tick, not a beep
+    noise(t, 0.028 + 0.012 * closeness, 0.05 + 0.13 * closeness, 800 + 4200 * closeness, 350 + 900 * closeness);
+    if (closeness > 0.82) tone(1800 + 900 * closeness, t, 0.03, 'square', 0.03 * closeness);
+  }
+  function geigerTick() {
+    if (!prefs.geiger || !prefs.snd || !(gDist <= gMax)) { gTimer = null; gOn = false; return; }
+    const c = Math.max(0, Math.min(1, 1 - gDist / gMax));
+    try { geigerClick(c); } catch (e) {}
+    if (c > 0.9 && prefs.fx) { try { navigator.vibrate && navigator.vibrate(12); } catch (e) {} }
+    // ~1.1s between clicks at the edge of range, ~11/second right on top of it
+    const gap = 1150 - 1060 * Math.pow(c, 0.65);
+    gTimer = setTimeout(geigerTick, Math.max(90, gap));
+  }
+  // distM: metres to the nearest chest (0 = in range). maxM: how far out the ticking starts.
+  function geiger(distM, maxM) {
+    gDist = distM; gMax = maxM || 76;
+    if (!prefs.geiger || !prefs.snd || !(distM <= gMax)) { clearTimeout(gTimer); gTimer = null; gOn = false; return; }
+    if (!gTimer) { gOn = true; geigerTick(); }
+  }
+  function geigerDemo() {                       // a short sweep so the toggle shows what it does
+    let d = 76; const id = setInterval(() => { d -= 7; geiger(Math.max(0, d), 76); if (d <= 0) { clearInterval(id); setTimeout(() => geiger(Infinity, 76), 900); } }, 260);
+  }
 
   // ---------------- visual effects ----------------
   let cv, g2, parts = [], raf = 0, W = 0, H = 0, dpr = 1;
@@ -122,5 +156,5 @@ window.FX = (function () {
   function toggleFs() { if (inFs()) { set('fs', false); exitFs(); } else { set('fs', true); enterFs(); } }
   ['fullscreenchange', 'webkitfullscreenchange'].forEach(e => document.addEventListener(e, () => listeners.forEach(f => f())));
 
-  return { prefs, set, sfx, unlock, burst, confetti, flash, reveal, vibe, centerOf, fsSupported, inFs, enterFs, exitFs, toggleFs, onChange: f => listeners.push(f) };
+  return { prefs, set, sfx, unlock, geiger, geigerDemo, geigerOn: () => gOn, burst, confetti, flash, reveal, vibe, centerOf, fsSupported, inFs, enterFs, exitFs, toggleFs, onChange: f => listeners.push(f) };
 })();

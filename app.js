@@ -347,6 +347,7 @@ function renderMe() {
     <div class="card"><b>Settings</b>
     <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
+    <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Proximity ticking near chests</span></label>
     ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
     <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
     <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
@@ -360,6 +361,7 @@ function renderMe() {
   $('#diagBtn').onclick = runDiag;
   $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
+  $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
   $('#expBtn').onclick = exportSave; $('#impBtn').onclick = () => $('#impFile').click();
   $('#impFile').onchange = importSave;
@@ -392,6 +394,10 @@ function initMap() {
   map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
   if (DEV) map.on('click', e => setPos(e.latlng.lat, e.latlng.lng, 2, true));
+  const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
+  [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
+  addEventListener('resize', fix); addEventListener('orientationchange', () => setTimeout(fix, 300));
+  if (window.ResizeObserver) { try { new ResizeObserver(fix).observe($('#map')); } catch (e) {} }
 }
 function startGPS(quiet) {
   if (!navigator.geolocation) { gpsMsg('This browser has no GPS support', 'bad'); return; }
@@ -401,12 +407,16 @@ function startGPS(quiet) {
     err => gpsMsg(err.code === 1 ? 'Location blocked – allow it in your browser settings (HTTPS required)' : 'Can\'t get a GPS fix yet…', 'bad'),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
-function gpsMsg(t, cls) { const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
+function gpsMsg(t, cls) {
+  if (cls === 'bad') FX.geiger(Infinity, 1); const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
   gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(pos.acc * FT)} ft`, 'ok');
   if (window.L && map) {
-    if (!meMarker) { meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16, 16] }), zIndexOffset: 1000 }).addTo(map); accCircle = L.circle([lat, lon], { radius: pos.acc, weight: 1, color: '#3b9cff', fillOpacity: .08 }).addTo(map); }
+    if (!meMarker) {
+      meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'me-icon', html: '<div class="me-dot"></div>', iconSize: [16, 16] }), zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);
+      accCircle = L.circle([lat, lon], { radius: pos.acc, weight: 1, color: '#3b9cff', fillOpacity: .08, interactive: false }).addTo(map);
+    }
     else { meMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(pos.acc); }
     if (first) map.setView([lat, lon], 16); else if (manual) map.setView([lat, lon], 18);
     updateRadiusCircle();
@@ -415,6 +425,10 @@ function setPos(lat, lon, acc, manual) {
   if (view === 'explore') renderNearby(); markNear();
 }
 function markNear() {
+  // Distance to the closest chest drives the ticking, so it speeds up as you walk in.
+  let best = Infinity;
+  chests.forEach(c => { const d = dist(pos, c) - unlockM(c); if (d < best) best = d; });
+  FX.geiger(Math.max(0, best), C.GEIGER_FT * 0.3048);
   chests.forEach(c => {
     const d = dist(pos, c);
     if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); FX.sfx('ping'); FX.vibe(200); }
@@ -470,7 +484,7 @@ function placesWithin(lat, lon, rM) {
     const t = TILES.get(k); if (!t) continue;
     for (const p of t) {
       if (Math.abs(p.lat - lat) > dLat || Math.abs(p.lon - lon) > dLon) continue;
-      const d = dist(here, p); if (d <= rM) out.push(Object.assign({ d }, p));
+      const d = dist(here, p); if (d <= rM) out.push(Object.assign({}, p, { d }));
     }
   }
   out.sort((x, y) => x.d - y.d);
@@ -479,7 +493,7 @@ function placesWithin(lat, lon, rM) {
 // Nearest chest in any tile we already hold, however far - so an empty screen still points somewhere.
 function nearestLoaded(lat, lon) {
   const here = { lat, lon }; let best = null;
-  TILES.forEach(t => t.forEach(p => { const d = dist(here, p); if (!best || d < best.d) best = Object.assign({ d }, p); }));
+  TILES.forEach(t => t.forEach(p => { const d = dist(here, p); if (!best || d < best.d) best = Object.assign({}, p, { d }); }));
   return best;
 }
 async function loadNearby() {
@@ -502,18 +516,27 @@ function updateRadiusCircle() {
 }
 function inRadius() {
   if (!pos) return []; const R = radiusM();
-  return chests.map(c => Object.assign({ d: dist(pos, c) }, c)).filter(c => c.d <= R).sort((a, b) => a.d - b.d);
+  return chests.map(c => Object.assign({}, c, { d: dist(pos, c) })).filter(c => c.d <= R).sort((a, b) => a.d - b.d);
 }
 function refreshChestViews() {
   if (view === 'explore') renderNearby();
   if (!map || !window.L) return; markers.forEach(m => m.remove()); markers = [];
   inRadius().slice(0, 200).forEach(c => {
     const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
-    markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => toast(`${c.name} – ${fmtDist(dist(pos, c))} away`)));
+    markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => {
+      const d = dist(pos, c);
+      if (d <= unlockM(c)) return openChest(c.id);                       // close enough - just open it
+      toast(`${c.name} – ${fmtDist(d)} ${dirName(pos, c)}. Walk closer to open it.`);
+      const row = $('[data-open="' + c.id + '"]');
+      if (row && row.closest('.chest')) row.closest('.chest').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }));
   });
 }
 function renderNearby() {
   const el = $('#nearby');
+  const hb = $('#hereBar'), here = pos ? inRadius().filter(c => c.d <= unlockM(c)) : [];
+  hb.hidden = !here.length;
+  if (here.length) hb.innerHTML = '<b>📦 ' + esc(here[0].name) + '</b><button class="btn sm" data-open="' + esc(here[0].id) + '">Open chest</button>';
   if (!pos) { el.innerHTML = '<div class="empty">Turn on GPS to see chests around you.</div>'; $('#radInfo').textContent = ''; return; }
   const all = inRadius(), list = all.slice(0, 60), today = dayKey();
   $('#radInfo').textContent = `${all.length} chest${all.length === 1 ? '' : 's'} within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
@@ -521,15 +544,15 @@ function renderNearby() {
   if (!list.length) {
     // Look past the radius so an empty screen still points somewhere worth walking.
     const nearest = [nearestLoaded(pos.lat, pos.lon)].concat(
-      chests.map(c => Object.assign({ d: dist(pos, c) }, c))).filter(Boolean).sort((a, b) => a.d - b.d)[0];
+      chests.map(c => Object.assign({}, c, { d: dist(pos, c) }))).filter(Boolean).sort((a, b) => a.d - b.d)[0];
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
       (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
   }
   el.innerHTML = list.map(c => {
     const near = c.d <= unlockM(c), done = P.exch[c.id] === today;
     return `<div class="chest${near ? ' near' : ''}"><div class="ci">${kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${kindInfo(c.kind)[0]}${done ? ' · ✓ traded today' : ''}</small></div>
-      <div class="cd">${near ? 'HERE' : fmtDist(c.d) + '<br><small>' + dirName(pos, c) + '</small>'}</div>
-      <button class="btn sm" data-open="${esc(c.id)}" ${near ? '' : 'disabled'}>Open</button></div>`;
+      <div class="cd">${near ? "YOU'RE<br>HERE" : fmtDist(c.d) + '<br><small>' + dirName(pos, c) + '</small>'}</div>
+      <button class="btn sm" data-open="${esc(c.id)}" ${near ? '' : 'disabled'}>${near ? 'OPEN' : 'Open'}</button></div>`;
   }).join('') + (all.length > list.length ? `<div class="empty">+ ${all.length - list.length} more – lower the radius to focus on the closest.</div>` : '');
 }
 
@@ -652,7 +675,8 @@ function wire() {
     if (map && window.L) map.fitBounds(L.latLng(pos.lat, pos.lon).toBounds(radiusM() * 2), { padding: [8, 8] });
     if (radiusM() > lastR * 1.05 && !loading) { lastLoad = null; loadNearby(); }
   };
-  $('#nearby').onclick = e => { const b = e.target.closest('[data-open]'); if (b && !b.disabled) openChest(b.dataset.open); };
+  const openFrom = e => { const b = e.target.closest('[data-open]'); if (b && !b.disabled) openChest(b.dataset.open); };
+  $('#nearby').onclick = openFrom; $('#hereBar').onclick = openFrom;
   $('#packGrid').onclick = e => { const t = e.target.closest('.tile'); if (t) showItem(t.dataset.id); };
   $('#dexGrid').onclick = e => { const t = e.target.closest('.tile'); if (!t) return; if (P.dex[t.dataset.id]) showItem(t.dataset.id); else toast('Not collected yet – find it in a chest!'); };
   $('#dexFilters').onclick = e => { const b = e.target.closest('button'); if (b) { dexFilter = b.dataset.f; renderDex(); } };
