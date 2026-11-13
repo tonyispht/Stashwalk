@@ -340,3 +340,13 @@ button.who:active{transform:scale(.96)}
 .ios .chest.near,.ios .herebar,.ios .cm.near span{animation:none}
 .ios .sheet{animation:none}
 .ios .revealbox .tile.big{animation-duration:.4s}
+
+/* ---- install / offline (build 202611131530) ---- */
+.offpill{background:#7a2b2b;color:#ffd9d9;border-color:#a33}
+ol.steps{margin:10px 0 14px;padding-left:22px;color:var(--mut);font-size:14px;line-height:1.75;text-align:left}
+ol.steps li{margin-bottom:4px}
+ol.steps b{color:var(--ink)}
+.codebox{background:#0c1711;border:1px solid #2d5a42;border-radius:10px;padding:12px 10px;text-align:center;margin-top:10px}
+.codebox code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:19px;letter-spacing:1.5px;
+  color:var(--acc2);word-break:break-all;-webkit-user-select:all;user-select:all}
+button.linky{background:none;border:0;padding:0;color:var(--acc2);text-decoration:underline;font:inherit;cursor:pointer}

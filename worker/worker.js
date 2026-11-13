@@ -42,8 +42,10 @@ function validate(segs, value) {
   const top = segs[0], isObj = v => v && typeof v === 'object' && !Array.isArray(v);
   if (top === 'users') {
     if (segs.length !== 2 || !isObj(value)) return false;
+    const optStr = (v, max) => v === undefined || (typeof v === 'string' && v.length <= max);
     return /^[A-Za-z0-9_-]{3,16}$/.test(value.name || '') && value.name.toLowerCase() === segs[1] &&
-      typeof value.salt === 'string' && value.salt.length <= 64 && typeof value.hash === 'string' && value.hash.length <= 128;
+      typeof value.salt === 'string' && value.salt.length <= 64 && typeof value.hash === 'string' && value.hash.length <= 128 &&
+      optStr(value.rsalt, 64) && optStr(value.rhash, 128);
   }
   if (top === 'players') return segs.length === 2 && isObj(value);
   if (top === 'invites') return segs.length === 2 && Number.isInteger(value) && value >= 0 && value < 1e6;
@@ -177,6 +179,60 @@ export default {
         return json({ ok: true, counted: true, referrer: ref, total: row ? JSON.parse(row.val) : 1 }, 200, cors);
       }
 
+      // ---- account recovery -------------------------------------------------------
+      // A player's only way back in if they forget their password. The code itself is never
+      // stored: only a hash of it, derived in the browser exactly like the password.
+
+      // Attach (or replace) a recovery code on an account you are already signed in to.
+      if (url.pathname === '/setrec' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const rsalt = String(b.rsalt || ''), rhash = String(b.rhash || '');
+        if (rsalt.length < 4 || rsalt.length > 64 || rhash.length < 16 || rhash.length > 128) return json({ error: 'bad code' }, 400, cors);
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + me).first();
+        if (!row) return json({ error: 'no account' }, 404, cors);
+        let u; try { u = JSON.parse(row.val); } catch (e) { return json({ error: 'bad record' }, 500, cors); }
+        u.rsalt = rsalt; u.rhash = rhash;
+        await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ?').bind(JSON.stringify(u), 'users/' + me).run();
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('rl/' + me).run();
+        return json({ ok: true }, 200, cors);
+      }
+
+      // Set a new password using the recovery code. The old code is spent in the process.
+      if (url.pathname === '/recover' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        const who = String(b.user || '').toLowerCase();
+        if (!SEG.test(who)) return json({ error: 'bad name' }, 400, cors);
+        const tries = String(b.rhash || ''), salt = String(b.salt || ''), hash = String(b.hash || '');
+        const rsalt = String(b.rsalt || ''), rhash = String(b.rhash2 || '');
+        if (!tries || salt.length < 4 || salt.length > 64 || hash.length < 16 || hash.length > 128 ||
+            rsalt.length < 4 || rsalt.length > 64 || rhash.length < 16 || rhash.length > 128)
+          return json({ error: 'bad request' }, 400, cors);
+
+        // Guessing a code must not be worth trying.
+        const WINDOW = 3600000, MAX = 6;
+        const rl = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('rl/' + who).first();
+        let fails = 0, since = Date.now();
+        if (rl) { try { const o = JSON.parse(rl.val); if (Date.now() - o.t < WINDOW) { fails = o.n; since = o.t; } } catch (e) {} }
+        if (fails >= MAX) return json({ error: 'too many attempts, try again later' }, 429, cors);
+
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + who).first();
+        const bump = async () => {
+          await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
+            .bind('rl/' + who, JSON.stringify({ n: fails + 1, t: since })).run();
+        };
+        if (!row) { await bump(); return json({ error: 'wrong code' }, 401, cors); }
+        let u; try { u = JSON.parse(row.val); } catch (e) { return json({ error: 'bad record' }, 500, cors); }
+        if (!u.rhash) return json({ error: 'this account has no recovery code' }, 400, cors);
+        if (!same(u.rhash, tries)) { await bump(); return json({ error: 'wrong code' }, 401, cors); }
+
+        u.salt = salt; u.hash = hash; u.rsalt = rsalt; u.rhash = rhash;   // new password, fresh code
+        await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ?').bind(JSON.stringify(u), 'users/' + who).run();
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('rl/' + who).run();
+        return json({ ok: true, name: u.name }, 200, cors);
+      }
+
       // Chests the community has flagged often enough to drop.
       if (url.pathname === '/blocked' && req.method === 'GET') {
         const { results } = await env.DB.prepare("SELECT path FROM kv WHERE path LIKE 'block/%' LIMIT 3000").all();
@@ -220,7 +276,8 @@ export default {
           const row = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind(path).first();
           if (row) {
             let value = JSON.parse(row.val);
-            if (segs[0] === 'users' && segs.length === 2) value = { name: value.name, salt: value.salt };   // never expose password hashes
+            // never expose password hashes; the salts are not secret and are needed to sign in
+            if (segs[0] === 'users' && segs.length === 2) value = { name: value.name, salt: value.salt, rsalt: value.rsalt || '', hasR: !!value.rhash };
             return json({ value, v: row.v }, 200, cors);
           }
           const { results } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? LIMIT 3000').bind(path + '/%').all();

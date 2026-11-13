@@ -4,7 +4,7 @@ Plain static files. Upload the folder to any static host (GitHub Pages, Netlify 
 GPS needs HTTPS (those hosts all provide it; `localhost` also works for testing).
 
 ## Files
-index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), worker/ (optional shared-world backend), items.js (550 items), places/ (263,565 chest locations as map tiles), tools/ (dataset builders), db.js (storage), config.js (settings)
+index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), sw.js (service worker: install + offline), manifest.webmanifest, icons/, worker/ (optional shared-world backend), items.js (550 items), places/ (263,565 chest locations as map tiles), tools/ (dataset builders), db.js (storage), config.js (settings)
 
 ## 1. Local mode (default, zero setup)
 Everything saves in the player's browser. Works instantly, but chests/trades are only shared between accounts on the same device.
@@ -129,6 +129,53 @@ Walk toward it. Within GEIGER_FT (250 ft) the game starts ticking like a Geiger 
 brighter the closer you get. Inside UNLOCK_FT (20 ft) an amber banner appears above the chest list
 with an Open button, the list row reads YOU'RE HERE, and the map icon becomes tappable.
 The ticking is OFF by default; turn it on under Me -> Settings.
+
+## Install as an app, and playing without a signal
+`manifest.webmanifest` plus `sw.js` make the game installable. Installed, it opens from the home
+screen with no browser bars - which is also the dependable fix for the tab bar hiding behind a
+browser toolbar. Me -> "Install & offline" has the button; Chrome fires `beforeinstallprompt`,
+which is captured and held until the player taps it, and iOS gets the Share -> Add to Home Screen
+walkthrough instead because Safari only offers it from its own menu.
+
+Three caches, listed by `caches.keys()`:
+
+| cache | holds | lifetime |
+|---|---|---|
+| `stashwalk-shell-<VERSION>` | app code, Leaflet, the icons | replaced on every deploy |
+| `stashwalk-places-v1` | park/campground tiles already fetched | kept (files never change; the `?v=` stamp is stripped from the cache key so a deploy does not re-download them) |
+| `stashwalk-maptiles-v1` | map images already viewed | kept, capped at 600, oldest dropped first |
+
+**`VERSION` in sw.js must match `window.ASSET_V` in index.html.** Bump both on every deploy, or the
+shell cache will not be replaced. A new version does not take over a running page: the player gets
+a toast and an "Update now" button in Me. Hard refresh unregisters the worker and deletes every
+cache, so it is still the escape hatch if a build ever goes wrong.
+
+Requests to the Cloudflare Worker are never cached - the shared world has to be live. Without a
+connection the game opens from the stored copy of the player record (`sw_snap_<key>` in
+localStorage) and the pack, shelf, achievements and already-seen map still work; opening chests,
+trading, daily rewards, hiding, merging and crafting all refuse with "… needs a connection",
+because those change state other players can see. A 📴 chip appears in the header while offline,
+and the record is re-read from the server when the connection returns.
+
+## Account recovery
+No email address is collected, so a forgotten password would otherwise mean a lost account. Every
+account is created with a recovery code: 16 Crockford base32 characters (no I, L, O or U), shown
+once at signup and again under Me -> Account recovery on the device that made it. Only a hash is
+stored, derived in the browser by the same PBKDF2 routine as the password, with its own salt
+(`rsalt`/`rhash` on the user record). `GET /kv/users/<name>` exposes `name`, `salt`, `rsalt` and a
+`hasR` flag - never a hash.
+
+Two Worker endpoints:
+
+- `POST /setrec` - signed in, attaches or replaces a code. Used by "New code" and by the one-time
+  prompt for accounts created before codes existed.
+- `POST /recover` - name plus code hash plus a new password hash. On success the password is
+  replaced **and the code is spent**: the client sends a fresh `rsalt`/`rhash2` in the same request,
+  so a code can never be used twice. Six wrong attempts in an hour return 429 (`rl/<name>` row).
+
+Entry is forgiving: lower case, spaces and the usual lookalikes (`O`->`0`, `I`/`L`->`1`, `U`->`V`)
+are all normalised before hashing. Resetting a password invalidates the session on every other
+device, since those hold the old hash.
 
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are

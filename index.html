@@ -5,9 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1a14">
 <title>Stashwalk – digital geocaching</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stashwalk">
+<meta name="description" content="Digital geocaching. Walk to real parks and campgrounds, open the chest, swap one item for another.">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=202611131357">
+<link rel="stylesheet" href="style.css?v=202611131530">
 </head>
 <body>
 <div id="toasts"></div>
@@ -28,6 +36,7 @@
       <button class="btn big" id="aGo">Start playing</button>
       <p class="err" id="aErr"></p>
     </form>
+    <p class="fine" id="forgotRow" hidden><button type="button" class="linky" id="forgotBtn">Forgot your password?</button></p>
     <p class="fine">Names are 3–16 letters, numbers, - or _. Passwords can be short and simple.<br><span id="modeNote"></span></p>
   </div>
 </section>
@@ -36,7 +45,7 @@
 <div id="app" hidden>
   <header class="top">
     <button class="who" id="hWho"><div class="av" id="hAv">?</div><div><b id="hName">-</b><small id="hTitle">-</small></div></button>
-    <div class="chips"><button class="chip ibtn" id="hSnd" title="Sound">🔊</button><button class="chip ibtn" id="hFs" title="Fullscreen">⛶</button><span class="chip" id="hStreak">🔥 0</span><span class="chip" id="hPack">🎒 0</span></div>
+    <div class="chips"><span class="chip offpill" id="hOff" hidden title="No connection">📴</span><button class="chip ibtn" id="hSnd" title="Sound">🔊</button><button class="chip ibtn" id="hFs" title="Fullscreen">⛶</button><span class="chip" id="hStreak">🔥 0</span><span class="chip" id="hPack">🎒 0</span></div>
   </header>
 
   <main>
@@ -101,12 +110,12 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>window.ASSET_V="202611131357"</script>
-<script src="config.js?v=202611131357"></script>
-<script src="items.js?v=202611131357"></script>
-<script src="relics.js?v=202611131357"></script>
-<script src="db.js?v=202611131357"></script>
-<script src="fx.js?v=202611131357"></script>
-<script src="app.js?v=202611131357"></script>
+<script>window.ASSET_V="202611131530"</script>
+<script src="config.js?v=202611131530"></script>
+<script src="items.js?v=202611131530"></script>
+<script src="relics.js?v=202611131530"></script>
+<script src="db.js?v=202611131530"></script>
+<script src="fx.js?v=202611131530"></script>
+<script src="app.js?v=202611131530"></script>
 </body>
 </html>

@@ -107,6 +107,35 @@ window.DB = (function () {
       if (!r.ok) throw new Error('refer ' + r.status);
       return r.json();
     },
+    // ---- account recovery ----
+    // Attach a recovery code to the account you are signed in to.
+    async setRecovery(rsalt, rhash) {
+      if (!W) {                                        // local mode: the record is right here
+        const key = auth ? auth.user : null; if (!key) throw new Error('not logged in');
+        const u = lget('users/' + key); if (!u) throw new Error('no account');
+        u.rsalt = rsalt; u.rhash = rhash; lset('users/' + key, u); return { ok: true };
+      }
+      const r = await fetch(W + '/setrec', { method: 'POST', headers: whead(), body: JSON.stringify({ rsalt, rhash }) });
+      if (r.status === 404) throw new Error('the server has not been updated for recovery codes yet');
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'could not save code');
+      return r.json();
+    },
+    // Swap a correct recovery code for a new password. Spends the old code.
+    async recover(body) {
+      if (!W) {
+        const key = String(body.user || '').toLowerCase();
+        const u = lget('users/' + key); if (!u) throw new Error('wrong code');
+        if (!u.rhash) throw new Error('this account has no recovery code');
+        if (u.rhash !== body.rhash) throw new Error('wrong code');
+        u.salt = body.salt; u.hash = body.hash; u.rsalt = body.rsalt; u.rhash = body.rhash2;
+        lset('users/' + key, u); return { ok: true, name: u.name };
+      }
+      const r = await fetch(W + '/recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (r.status === 404) throw new Error('the server has not been updated for recovery codes yet');
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'could not reset');
+      return j;
+    },
     async verify(user, hash) {                       // does this name+hash belong to a real account?
       if (W) { try { const r = await fetch(W + '/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, hash }) }); return !!(await r.json()).ok; } catch (e) { return false; } }
       const u = await this.get('users/' + String(user).toLowerCase()); return !!u && u.hash === hash;

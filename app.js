@@ -147,6 +147,7 @@ function mergeOptions() {
   return out.sort((a, b) => b.from.r - a.from.r || a.from.n.localeCompare(b.from.n));
 }
 function doMerge(id) {
+  if (needNet('Merging')) return;
   const it = BY_ID[id];
   if (!it || P.inv[id] < C.MERGE_COUNT || it.r >= 4) return toast('Not enough to merge', 'bad');
   if (workshopLevel() < it.r + 1) return toast(`Workshop level ${it.r + 1} needed for that`, 'bad');
@@ -173,6 +174,7 @@ function recipeState(relic) {
   return { locked: workshopLevel() < relic.lvl, parts, ready: parts.every(p => p.pick) };
 }
 function doCraft(id) {
+  if (needNet('Crafting')) return;
   const relic = BY_ID[id]; if (!relic || !relic.crafted) return;
   const st = recipeState(relic);
   if (st.locked) return toast(`Workshop level ${relic.lvl} needed`, 'bad');
@@ -210,7 +212,17 @@ function normalize(p) {
 let saveTimer = null;
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => DB.set('players/' + KEY, P).catch(() => toast('Could not sync – check your connection', 'bad')), 150);
+  snapshot();
+  saveTimer = setTimeout(() => DB.set('players/' + KEY, P)
+    .then(() => { if (OFFLINE) backOnline(); })
+    .catch(() => { goOffline(); toast('Could not sync – check your connection', 'bad'); }), 150);
+}
+// A copy of your record kept on the device, so the game still opens with no signal.
+function snapshot() {
+  try { if (KEY && P) localStorage.setItem('sw_snap_' + KEY, JSON.stringify({ t: Date.now(), p: P })); } catch (e) {}
+}
+function snapshotOf(key) {
+  try { const o = JSON.parse(localStorage.getItem('sw_snap_' + key) || 'null'); return o && o.p ? o : null; } catch (e) { return null; }
 }
 function packCount() { return Object.values(P.inv).reduce((a, b) => a + b, 0); }
 function addItem(id) { P.inv[id] = (P.inv[id] || 0) + 1; if (!P.dex[id]) P.dex[id] = Date.now(); }
@@ -339,6 +351,156 @@ function checkAch() {
   if (got.length) save();
 }
 
+// ---------------- account recovery ----------------
+// No email address is collected, so a forgotten password would otherwise mean a lost
+// account. Instead every account gets a one-off code. Only a hash of it is ever stored,
+// derived in the browser the same way the password is.
+const RC_ALPHA = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';          // Crockford base32: no I, L, O or U
+function makeRecoveryCode() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  let out = ''; for (let i = 0; i < 16; i++) out += RC_ALPHA[b[i] % 32];
+  return out.replace(/(.{4})(?=.)/g, '$1-');
+}
+// Accept what people actually type: lower case, spaces, and the usual lookalikes.
+function normCode(c) {
+  return String(c || '').toUpperCase().replace(/[^0-9A-Z]/g, '')
+    .replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
+}
+function saveLocalCode(key, code) { try { localStorage.setItem('sw_rec_' + key, code); } catch (e) {} }
+function localCode(key) { try { return localStorage.getItem('sw_rec_' + key) || ''; } catch (e) { return ''; } }
+
+// pfx keeps the modal copy and the Me-tab copy from sharing element ids
+function codeBox(code, pfx) {
+  const p = pfx || 'rec';
+  return `<div class="codebox"><code id="${p}Code">${esc(code)}</code></div>
+    <div class="row2" style="padding:0;margin-top:8px">
+      <button class="btn sm" id="${p}Copy">Copy</button>
+      <button class="btn sm ghost" id="${p}Save">Save as file</button></div>`;
+}
+function wireCodeBox(m, name, code, pfx) {
+  const p = pfx || 'rec';
+  const c = $('#' + p + 'Copy', m); if (c) c.onclick = () => {
+    try { navigator.clipboard.writeText(code); } catch (e) {}
+    toast('Recovery code copied');
+  };
+  const d = $('#' + p + 'Save', m); if (d) d.onclick = () => {
+    const txt = `Stashwalk recovery code\n\nPlayer: ${name}\nCode:   ${code}\n\n` +
+      `Keep this somewhere safe. It is the only way back into the account if the password\n` +
+      `is forgotten. Using it sets a new password and gives you a new code.\n`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+    a.download = 'stashwalk-recovery-' + name + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+}
+function showRecoveryCode(name, code, firstTime) {
+  modal(`<h3>🔑 Your recovery code</h3>
+    <p class="sub">${firstTime ? 'Save this now.' : 'Here is your new code.'} There is no email address on your account,
+    so this code is the only way back in if you forget your password.</p>
+    ${codeBox(code)}
+    <p class="fine" style="margin-top:12px">Screenshot it, or put it in your notes or password manager.
+    You can see it again under <b>Me ▸ Account recovery</b> on this device.</p>
+    <button class="btn big" id="okBtn">I have saved it</button>`,
+    m => { wireCodeBox(m, name, code); $('#okBtn', m).onclick = closeModal; });
+}
+// Make a new code for the account you are signed in to. Any older code stops working.
+async function regenRecovery(btn) {
+  if (needNet('Setting a recovery code')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+  try {
+    const code = makeRecoveryCode(), rsalt = randHex(), rhash = await hashPw(normCode(code), rsalt);
+    await DB.setRecovery(rsalt, rhash);
+    saveLocalCode(KEY, code);
+    showRecoveryCode(P.name, code, false);
+    renderMe();
+  } catch (e) {
+    toast(e.message || 'Could not save the code', 'bad');
+    if (btn) { btn.disabled = false; btn.textContent = 'New code'; }
+  }
+}
+// Older accounts were made before codes existed, so ask once.
+async function nudgeRecovery() {
+  if (OFFLINE || !KEY) return;
+  try { if (localStorage.getItem('sw_recnudge_' + KEY)) return; } catch (e) { return; }
+  let u = null; try { u = await DB.get('users/' + KEY); } catch (e) { return; }
+  if (!u || u.hasR) return;
+  try { localStorage.setItem('sw_recnudge_' + KEY, '1'); } catch (e) {}
+  modal(`<h3>🔑 Set up a recovery code</h3>
+    <p class="sub">Your account was created before these existed. Without one, a forgotten password
+    means losing ${esc(P.name)} and everything in the pack - there is no email address to reset it with.</p>
+    <p class="fine">It takes one tap. You will get a code to keep somewhere safe.</p>
+    <div class="row2" style="padding:0"><button class="btn big" id="recNow">Create my code</button>
+    <button class="btn ghost big" id="recLater">Later</button></div>`,
+    m => { $('#recNow', m).onclick = () => { closeModal(); regenRecovery(null); }; $('#recLater', m).onclick = closeModal; });
+}
+
+// The "forgot password" flow on the sign-in screen.
+function forgotDialog() {
+  modal(`<h3>Reset your password</h3>
+    <p class="sub">Enter your name and the recovery code you were given when the account was made.</p>
+    <form id="fgForm" autocomplete="off">
+      <input id="fgName" placeholder="Player name" maxlength="16" autocapitalize="off" spellcheck="false" required>
+      <input id="fgCode" placeholder="Recovery code" maxlength="32" autocapitalize="characters" spellcheck="false" required>
+      <input id="fgPass" type="password" placeholder="New password" maxlength="64" required>
+      <button class="btn big" id="fgGo">Reset password</button>
+      <p class="err" id="fgErr"></p>
+    </form>
+    <p class="fine">Using the code sets a new password and replaces the code with a fresh one.
+    If you do not have a code, the account cannot be recovered - nothing on the server can identify you without it.</p>`,
+    m => {
+      const f = $('#fgForm', m);
+      f.onsubmit = async e => {
+        e.preventDefault();
+        const btn = $('#fgGo', m), err = $('#fgErr', m);
+        const name = $('#fgName', m).value.trim(), raw = $('#fgCode', m).value, pw = $('#fgPass', m).value;
+        err.textContent = ''; btn.disabled = true; btn.textContent = 'Checking…';
+        try {
+          if (pw.length < 3) throw new Error('Password needs at least 3 characters');
+          const key = name.toLowerCase();
+          const u = await DB.get('users/' + key);
+          if (!u) throw new Error('No player with that name');
+          if (!u.hasR) throw new Error('That account has no recovery code');
+          const rhash = await hashPw(normCode(raw), u.rsalt || '');
+          const salt = randHex(), hash = await hashPw(pw, salt);
+          const code2 = makeRecoveryCode(), rsalt2 = randHex(), rhash2 = await hashPw(normCode(code2), rsalt2);
+          await DB.recover({ user: key, rhash, salt, hash, rsalt: rsalt2, rhash2 });
+          saveLocalCode(key, code2);
+          closeModal();
+          toast('Password reset – signing you in');
+          const r = await login(name, pw);
+          remember(r.key, r.hash);
+          await boot(r.key, r.p);
+          setTimeout(() => showRecoveryCode(r.p.name, code2, false), 700);
+        } catch (ex) {
+          err.textContent = ex.message || 'Could not reset';
+          btn.disabled = false; btn.textContent = 'Reset password';
+        }
+      };
+    });
+}
+
+// ---------------- offline ----------------
+// The world lives on the server, so trading needs a connection. Everything that is only
+// about you - pack, shelf, achievements, the map - keeps working without one.
+let OFFLINE = false;
+function setOffPill() { const el = $('#hOff'); if (el) el.hidden = !OFFLINE; }
+function goOffline(quiet) {
+  if (OFFLINE) return; OFFLINE = true; setOffPill();
+  if (!quiet) toast('📴 Offline – you can look around, but trading needs a connection');
+}
+async function backOnline() {
+  if (!OFFLINE) return;
+  OFFLINE = false; setOffPill();
+  toast('📶 Back online');
+  try { if (KEY) { const fresh = await DB.get('players/' + KEY); if (fresh) { P = normalize(fresh); snapshot(); renderAll(); } } } catch (e) { goOffline(true); }
+}
+// Guard for anything that changes the shared world or your saved record.
+function needNet(what) {
+  if (!OFFLINE && navigator.onLine !== false) return false;
+  toast((what || 'That') + ' needs a connection', 'bad');
+  return true;
+}
+
 // ---------------- auth ----------------
 async function hashPw(pw, salt) {
   if (window.crypto && crypto.subtle) {
@@ -354,8 +516,12 @@ async function register(name, pw) {
   if (!/^[A-Za-z0-9_-]{3,16}$/.test(name)) throw new Error('Name must be 3–16 letters, numbers, - or _');
   if (pw.length < 3) throw new Error('Password needs at least 3 characters');
   const key = name.toLowerCase(), salt = randHex(), hash = await hashPw(pw, salt);
-  const r = await DB.tx('users/' + key, cur => cur ? undefined : { name, salt, hash, created: Date.now() });
+  // A recovery code is minted with the account - it is the only way back in if the
+  // password is forgotten, since there is no email address to send a reset to.
+  const code = makeRecoveryCode(), rsalt = randHex(), rhash = await hashPw(normCode(code), rsalt);
+  const r = await DB.tx('users/' + key, cur => cur ? undefined : { name, salt, hash, rsalt, rhash, created: Date.now() });
   if (!r.changed) throw new Error('That name is already taken');
+  saveLocalCode(key, code);
   DB.setAuth(key, hash);
   let ref = getRef(); if (ref && ref.toLowerCase() === key) ref = '';
   // The tally is not touched here: the server credits the referrer only once this player has
@@ -364,7 +530,7 @@ async function register(name, pw) {
   const p = newPlayer(name, ref ? ref.toLowerCase() : '');
   const starter = grantStarter(p, ref ? 1 : 0);
   await DB.set('players/' + key, p);
-  return { key, hash, p, starter };
+  return { key, hash, p, starter, code };
 }
 async function login(name, pw) {
   const key = name.toLowerCase(), u = await DB.get('users/' + key);
@@ -384,19 +550,33 @@ function armFs() {
   document.addEventListener('pointerdown', () => { FX.unlock(); if (FX.prefs.fs) FX.enterFs(); }, { once: true });
 }
 async function resume() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('stashwalk_session') || 'null'); } catch (e) {}
+  if (!s) return false;
   try {
-    const s = JSON.parse(localStorage.getItem('stashwalk_session') || 'null'); if (!s) return false;
     const u = await DB.get('users/' + s.key); if (!u || !(await DB.verify(s.key, s.hash))) return false;
     DB.setAuth(s.key, s.hash);
     const p = normalize((await DB.get('players/' + s.key)) || newPlayer(u.name));
     await boot(s.key, p); armFs(); return true;
-  } catch (e) { return false; }
+  } catch (e) {
+    // No connection. If this device has a copy of the record, open the game anyway.
+    const snap = snapshotOf(s.key);
+    if (!snap) return false;
+    DB.setAuth(s.key, s.hash);
+    goOffline(true);
+    await boot(s.key, normalize(snap.p)); armFs();
+    toast('📴 Offline – showing your last saved pack. Trading needs a connection.');
+    return true;
+  }
 }
 async function boot(key, p) {
   KEY = key; P = p;
   try { inviteCount = (await DB.get('invites/' + key)) || 0; } catch (e) { inviteCount = 0; }
   setTimeout(() => refreshInvites(), 1200);
   setTimeout(() => checkFeed(), 2200);
+  setTimeout(() => maybeNudgeInstall(), 4000);
+  setTimeout(() => nudgeRecovery(), 2600);
+  snapshot();                       // keep a copy on the device for offline launches
   $('#auth').hidden = true; $('#app').hidden = false;
   $('#dev').hidden = !DEV;
   initMap(); renderHeader(); renderAll(); checkAch(); show('explore');
@@ -433,16 +613,17 @@ function renderAll() {
 }
 
 // First thing a new player sees: the items they can start trading with.
-function showStarter(ids) {
+function showStarter(ids, then) {
   const items = ids.map(id => BY_ID[id]).filter(Boolean);
-  if (!items.length) return;
+  if (!items.length) { if (then) then(); return; }
   const best = items.reduce((a, b) => (b.r > a.r ? b : a));
   modal(`<div style="text-align:center"><h3>Welcome to Stashwalk</h3>
     <p class="sub">Here's your starting pack. Walk to a chest and swap any of these for what's inside.</p>
     <div class="grid" style="justify-content:center">${items.map(it => tile(it)).join('')}</div>
     <p class="fine" style="margin-top:12px">Everything you ever collect stays on your Shelf, even after you trade it away.</p>
     <button class="btn big" id="okBtn" style="margin-top:12px">Let's go</button></div>`,
-    m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => { FX.sfx('reveal', best.r); FX.confetti(['#ffd98a', '#f2b84b', '#ffffff'], 40); }, 250); });
+    m => { $('#okBtn', m).onclick = () => { closeModal(); if (then) setTimeout(then, 320); };
+           setTimeout(() => { FX.sfx('reveal', best.r); FX.confetti(['#ffd98a', '#f2b84b', '#ffffff'], 40); }, 250); });
 }
 
 // ---- pack ----
@@ -588,6 +769,7 @@ function renderDaily() {
   const b = $('#claimBtn'); if (b) b.onclick = claimDaily;
 }
 function claimDaily() {
+  if (needNet('Claiming your reward')) return;
   const today = dayKey(); if (P.daily.last === today) return;
   const day = (P.daily.n % 28) + 1, it = rollItem(Math.random, 1, TIERS[day - 1]);
   P.daily.streak = P.daily.last && daysBetween(P.daily.last, today) === 1 ? P.daily.streak + 1 : 1;
@@ -600,6 +782,35 @@ function claimDaily() {
 }
 
 // ---- me ----
+// The account-recovery card in the Me tab.
+function recoveryCard() {
+  const code = localCode(KEY);
+  return `<div class="card"><b>Account recovery</b>
+    <p class="fine">There is no email address on your account, so this code is the only way back in
+    if you forget your password. Keep it somewhere safe.</p>
+    ${code ? codeBox(code, 'mine') + '<p class="fine" style="margin-top:8px">Shown from this device. Make a new one if you think someone else has seen it – the old one stops working.</p>'
+           : '<p class="fine" style="color:var(--acc2)"><b>Not stored on this device.</b> Your code still works if you wrote it down. Make a new one if you did not.</p>'}
+    <button class="btn sm ghost" id="recNew" style="margin-top:10px">New code</button></div>`;
+}
+
+// The install / offline card in the Me tab.
+function appCard() {
+  const standalone = isStandalone();
+  let action;
+  if (PWA.waiting) action = `<button class="btn big" id="updBtn">⬇️ Update now</button>`;
+  else if (standalone) action = `<p class="fine" style="color:var(--acc2);margin:0"><b>✅ Installed</b> – running as an app.</p>`;
+  else if (canInstall() || iosInstallable()) action = `<button class="btn big" id="insBtn">📲 Install Stashwalk</button>`;
+  else action = `<p class="fine" style="margin:0">Your browser can add this to your home screen from its own menu.</p>`;
+  return `<div class="card"><b>Install &amp; offline</b>
+    <p class="fine">Installed, Stashwalk opens straight from your home screen with no browser bars –
+    which is also the reliable fix for the tab bar hiding behind them.</p>
+    ${action}
+    <p class="fine" style="margin-top:12px"><b>Without a signal</b> you can still open the game and look at your
+    pack, your shelf, your achievements and the map wherever you have already been.
+    Opening chests, trading and daily rewards all need a connection, because those chests are shared with every other player.</p>
+    <p class="fine">${OFFLINE ? '📴 <b>Offline right now.</b>' : '📶 Connected.'} Map and park data stored on this device.</p></div>`;
+}
+
 function renderMe() {
   const s = statView(), unlocked = ACH.filter(a => P.ach[a.id]);
   const titles = ['Newcomer'].concat(unlocked.map(a => a.t));
@@ -624,7 +835,7 @@ function renderMe() {
       <div class="achbar"><span class="bar"><i style="width:${got ? 100 : pct}%" class="${got ? 'done' : ''}"></i></span>
         <u>${got ? '✓ earned' : v + ' / ' + a.goal}</u></div></div></div>`;
   });
-  h += `</div><div class="card"><b>This build</b>
+  h += `</div>${recoveryCard()}${appCard()}<div class="card"><b>This build</b>
     <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>. Use this if an update does not seem to have arrived -
     it reloads everything from scratch without touching your sign-in or settings.</p>
     <button class="btn sm" id="reloadBtn">Hard refresh</button>
@@ -674,6 +885,10 @@ function renderMe() {
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
+  const rc = $('#recNew'); if (rc) rc.onclick = e => regenRecovery(e.target);
+  const rcode = localCode(KEY); if (rcode) wireCodeBox($('#meBox'), P.name, rcode, 'mine');
+  const ib = $('#insBtn'); if (ib) ib.onclick = doInstall;
+  const ub = $('#updBtn'); if (ub) ub.onclick = e => { e.target.disabled = true; e.target.textContent = 'Updating…'; applyUpdate(); };
   $('#expBtn').onclick = exportSave; $('#impBtn').onclick = () => $('#impFile').click();
   $('#impFile').onchange = importSave;
   $('#outBtn').onclick = () => { try { localStorage.removeItem('stashwalk_session'); } catch (e) {} location.href = location.pathname; };
@@ -684,11 +899,103 @@ function renderMe() {
 async function hardRefresh() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); } } catch (e) {}
   try {
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {}
+  try {
     Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k));
   } catch (e) {}
   const u = new URL(location.href);
   u.searchParams.set('r', Date.now().toString(36));
   location.replace(u.toString());
+}
+
+// ---------------- install & offline support ----------------
+// Registering the service worker does two things: the game opens straight from the
+// home screen with no browser bars, and the code, park list and map tiles you have
+// already seen stay available with no signal.
+const PWA = {
+  evt: null,          // Chrome's install prompt, captured until the player asks for it
+  reg: null,
+  waiting: null,      // a newer version sitting ready
+  installed: false
+};
+function isStandalone() {
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+           window.matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+  } catch (e) { return false; }
+}
+function canInstall() { return !!PWA.evt && !isStandalone(); }
+function iosInstallable() { return isIOS() && !isStandalone(); }
+
+function registerSW() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  navigator.serviceWorker.register('sw.js?v=' + (window.ASSET_V || '1'), { scope: './' }).then(reg => {
+    PWA.reg = reg;
+    if (reg.waiting && navigator.serviceWorker.controller) updateReady(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing; if (!w) return;
+      w.addEventListener('statechange', () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) updateReady(w);
+      });
+    });
+  }).catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return; reloading = true;
+    if (PWA.applying) location.reload();
+  });
+  // Check for a new build whenever the game comes back to the foreground.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && PWA.reg) PWA.reg.update().catch(() => {});
+  });
+}
+function updateReady(worker) {
+  PWA.waiting = worker;
+  toast('✨ New version ready – open Me to update');
+  if (!$('#v-me').hidden) renderMe();
+}
+function applyUpdate() {
+  if (!PWA.waiting) return hardRefresh();
+  PWA.applying = true;
+  PWA.waiting.postMessage('skipWaiting');
+  setTimeout(() => location.reload(), 1200);     // in case controllerchange never fires
+}
+async function doInstall() {
+  if (iosInstallable()) return iosInstallHelp();
+  if (!PWA.evt) return toast('Your browser will offer this from its own menu', 'bad');
+  const e = PWA.evt; PWA.evt = null;
+  try { e.prompt(); const r = await e.userChoice; if (r && r.outcome === 'accepted') toast('Installing…'); } catch (err) {}
+  renderMe();
+}
+function iosInstallHelp() {
+  modal(`<h3>Add Stashwalk to your home screen</h3>
+    <p class="sub">It opens like a normal app – no address bar eating the screen, and it still
+    works where there is no signal.</p>
+    <ol class="steps"><li>Tap the <b>Share</b> button at the bottom of Safari <span class="em">⬆️</span></li>
+    <li>Scroll down and tap <b>Add to Home Screen</b></li>
+    <li>Tap <b>Add</b></li></ol>
+    <p class="fine">Safari only offers this from its own Share menu, so a button here cannot do it for you.</p>
+    <button class="btn big" id="okBtn">Got it</button>`, m => { $('#okBtn', m).onclick = closeModal; });
+}
+// Suggested once, after the player has actually played a little.
+function maybeNudgeInstall() {
+  if (isStandalone()) return;
+  if (!canInstall() && !iosInstallable()) return;
+  try { if (localStorage.getItem('sw_nudged')) return; } catch (e) { return; }
+  if ((P.stats && Object.keys(P.stats.visited || {}).length) < 1) return;
+  try { localStorage.setItem('sw_nudged', '1'); } catch (e) {}
+  setTimeout(() => {
+    modal(`<h3>📲 Put Stashwalk on your home screen</h3>
+      <p class="sub">You walk around with this. Installed, it opens full screen with no browser bars,
+      and your pack, shelf and the map keep working when the signal drops.</p>
+      <div class="row2" style="padding:0"><button class="btn big" id="insNow">Install</button>
+      <button class="btn ghost big" id="insLater">Not now</button></div>`,
+      m => { $('#insNow', m).onclick = () => { closeModal(); doInstall(); }; $('#insLater', m).onclick = closeModal; });
+  }, 1500);
 }
 
 function exportSave() {
@@ -959,6 +1266,7 @@ function renderNearby(force) {
 
 // ---- opening a chest ----
 async function openChest(id) {
+  if (needNet('Opening a chest')) return;
   const meta = chests.find(c => c.id === id); if (!meta || !pos) return;
   if (dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
   toast('Opening…');
@@ -1011,6 +1319,7 @@ function showChest(meta, chest) {
   });
 }
 async function doTrade(meta, slot, getId, giveId) {
+  if (needNet('Trading')) return;
   if (P.exch[meta.id] === dayKey()) return toast('One trade per chest per day', 'bad');
   if (getId === giveId) return toast('Pick a different item to trade for', 'bad');
   if (!P.inv[giveId]) return toast('You no longer have that item', 'bad');
@@ -1054,6 +1363,7 @@ function donateDialog(meta, chest) {
     });
 }
 async function doDonate(meta, slot, giveId) {
+  if (needNet('Leaving a gift')) return;
   if (!P.inv[giveId]) return toast('You no longer have that item', 'bad');
   let ok = false;
   try {
@@ -1077,6 +1387,7 @@ async function doDonate(meta, slot, giveId) {
 
 // Reporting a chest that should not be in the game.
 function flagDialog(meta) {
+  if (needNet('Flagging a chest')) return;
   modal(`<h3>\u{1F6A9} Report this chest</h3>
     <p class="sub">Report <b>${esc(meta.name)}</b> if it is on private property, unsafe to reach, or not a real public place.
     Once ${C.FLAGS_TO_REMOVE} different players report it, it is removed for everyone.</p>
@@ -1104,6 +1415,7 @@ function flagDialog(meta) {
 
 // ---- hiding a chest ----
 function hideDialog() {
+  if (needNet('Hiding a chest')) return;
   if (!pos) return toast('Turn on GPS first', 'bad');
   const today = dayKey(); if (P.hideDay !== today) { P.hideDay = today; P.hideN = 0; }
   if (P.hideN >= C.HIDE_PER_DAY) return toast(`You can hide ${C.HIDE_PER_DAY} chests per day`, 'bad');
@@ -1201,7 +1513,7 @@ function trackViewport() {
 
 // Long-press menus, text selection and accidental drags all interfere with tapping chests
 // and items. Inputs and the diagnostics block stay selectable so copying still works.
-const SELECTABLE = 'input,textarea,select,.diag,#inviteLink';
+const SELECTABLE = 'input,textarea,select,.diag,#inviteLink,.codebox,.codebox code';
 function lockInteractions() {
   const allowed = e => !!(e.target && e.target.closest && e.target.closest(SELECTABLE));
   document.addEventListener('contextmenu', e => { if (!allowed(e)) e.preventDefault(); });
@@ -1238,16 +1550,26 @@ function wire() {
   trackViewport();
   lockInteractions();
   setTimeout(checkZoom, 2500);
+  registerSW();
+  // Chrome hands us the install prompt once; we hold it until the player asks.
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); PWA.evt = e; if (!$('#v-me').hidden) renderMe(); });
+  window.addEventListener('appinstalled', () => { PWA.evt = null; PWA.installed = true; toast('📦 Stashwalk installed'); if (!$('#v-me').hidden) renderMe(); });
+  window.addEventListener('offline', () => goOffline());
+  window.addEventListener('online', () => backOnline());
+  if (navigator.onLine === false) goOffline(true);
   let mode = 'reg';
   $('#modeNote').textContent = DB.remote ? 'Shared world: you play alongside everyone else.' : 'Local mode: your progress is saved on this device.';
   const ref = getRef(); if (ref) { try { sessionStorage.setItem('sw_ref', ref); } catch (e) {} const i = $('#invited'); i.hidden = false; i.textContent = '🎉 ' + ref + ' invited you – you get a bonus item!'; }
-  $('#authTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.t; $$('#authTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#aGo').textContent = mode === 'reg' ? 'Start playing' : 'Log in'; $('#aErr').textContent = ''; };
+  $('#authTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.t; $$('#authTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#aGo').textContent = mode === 'reg' ? 'Start playing' : 'Log in'; $('#aErr').textContent = ''; $('#forgotRow').hidden = mode !== 'login'; };
+  $('#forgotBtn').onclick = forgotDialog;
   $('#authForm').onsubmit = async e => {
     e.preventDefault(); FX.unlock(); if (FX.prefs.fs) FX.enterFs(); const name = $('#aName').value.trim(), pw = $('#aPass').value, btn = $('#aGo'); btn.disabled = true; $('#aErr').textContent = '';
     try {
       const r = await (mode === 'reg' ? register(name, pw) : login(name, pw));
       remember(r.key, r.hash); await boot(r.key, r.p); FX.sfx('welcome');
-      if (r.starter && r.starter.length) showStarter(r.starter);
+      const after = r.code ? () => showRecoveryCode(r.p.name, r.code, true) : null;
+      if (r.starter && r.starter.length) showStarter(r.starter, after);
+      else if (after) after();
       else if (mode === 'login') toast('Welcome back, ' + r.p.name);
     }
     catch (err) { $('#aErr').textContent = err.message || 'Something went wrong'; } btn.disabled = false;
@@ -1295,5 +1617,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween };
+window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+  claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
+  isStandalone, canInstall, appCard, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
