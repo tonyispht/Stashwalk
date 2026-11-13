@@ -9,7 +9,7 @@ window.GEO_CONFIG = {
 
   // Preferred shared mode: your Cloudflare Worker URL (see README.md, "Shared world with Cloudflare").
   // e.g. "https://stashwalk.YOURNAME.workers.dev"   (when set, DB_URL above is ignored)
-  WORKER_URL: "",
+  WORKER_URL: "https://stashwalk.tonyispht.workers.dev",
 
   UNLOCK_FT: 5,            // how close (feet) you must be to a chest to open it
   DEFAULT_RADIUS_MI: 25,   // starting value of the "show chests within" slider (1-250 mi)
