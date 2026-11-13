@@ -1,0 +1,131 @@
+// Stashwalk shared-world backend: one Cloudflare Worker + one free D1 (SQLite) database.
+// Stores a flat key/value table; the game talks to it through db.js. See README.md for setup.
+//
+// Bindings/variables needed:
+//   DB               (D1 database binding)
+//   ALLOWED_ORIGINS  (text, comma separated, e.g. https://tonyispht.github.io)  - only these sites may call the Worker
+
+const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites']);
+const SEG = /^[A-Za-z0-9_-]{1,64}$/;
+const ITEM_ID = /^\d{1,3}_[0-4]$/;
+let ready = false;
+
+const json = (obj, status, cors) => new Response(JSON.stringify(obj), {
+  status: status || 200, headers: Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cors)
+});
+async function init(db) {
+  if (ready) return;
+  await db.prepare('CREATE TABLE IF NOT EXISTS kv (path TEXT PRIMARY KEY, val TEXT NOT NULL, v INTEGER NOT NULL DEFAULT 1)').run();
+  ready = true;
+}
+const segsOf = p => p.split('/').filter(Boolean);
+const goodPath = segs => segs.length >= 2 && segs.length <= 3 && TOP.has(segs[0]) && segs.every(s => SEG.test(s));
+function same(a, b) { if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
+
+async function verify(env, user, hash) {
+  user = String(user || '').toLowerCase(); if (!SEG.test(user) || !hash) return null;
+  const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + user).first();
+  if (!row) return null;
+  try { return same(JSON.parse(row.val).hash, String(hash)) ? user : null; } catch (e) { return null; }
+}
+function tree(rows, prefix) {                      // rebuild nested object from child rows
+  const out = {};
+  for (const r of rows) {
+    const rel = r.path.slice(prefix.length + 1).split('/'); let o = out;
+    rel.slice(0, -1).forEach(k => { if (typeof o[k] !== 'object' || o[k] === null) o[k] = {}; o = o[k]; });
+    try { o[rel[rel.length - 1]] = JSON.parse(r.val); } catch (e) {}
+  }
+  return out;
+}
+function validate(segs, value) {
+  const top = segs[0], isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  if (top === 'users') {
+    if (segs.length !== 2 || !isObj(value)) return false;
+    return /^[A-Za-z0-9_-]{3,16}$/.test(value.name || '') && value.name.toLowerCase() === segs[1] &&
+      typeof value.salt === 'string' && value.salt.length <= 64 && typeof value.hash === 'string' && value.hash.length <= 128;
+  }
+  if (top === 'players') return segs.length === 2 && isObj(value);
+  if (top === 'invites') return segs.length === 2 && Number.isInteger(value) && value >= 0 && value < 1e6;
+  if (top === 'cells') return segs.length === 3 && isObj(value) && typeof value.name === 'string' && value.name.length <= 60 &&
+    Number.isFinite(value.lat) && Number.isFinite(value.lon) && typeof value.kind === 'string' && value.kind.length <= 16;
+  if (top === 'chests') {
+    if (segs.length !== 2 || !isObj(value) || !isObj(value.items)) return false;
+    const slots = Object.keys(value.items); if (slots.length < 1 || slots.length > 8) return false;
+    return slots.every(s => /^[a-h]$/.test(s) && isObj(value.items[s]) && ITEM_ID.test(String(value.items[s].id)) &&
+      (value.items[s].by === undefined || (typeof value.items[s].by === 'string' && value.items[s].by.length <= 16)));
+  }
+  return false;
+}
+const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 3000 };
+
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url), origin = req.headers.get('Origin') || '';
+    const allowed = (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+    const okOrigin = !origin || allowed.length === 0 || allowed.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    const cors = { 'Access-Control-Allow-Origin': okOrigin && origin ? origin : 'null', 'Access-Control-Allow-Methods': 'GET,PUT,POST,OPTIONS',
+                   'Access-Control-Allow-Headers': 'Content-Type,X-User,X-Hash', 'Vary': 'Origin' };
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+    if (!okOrigin) return json({ error: 'origin not allowed' }, 403, cors);
+    if (!env.DB) return json({ error: 'D1 binding "DB" is missing' }, 500, cors);
+    try {
+      await init(env.DB);
+      if (url.pathname === '/' ) return json({ ok: true, app: 'stashwalk' }, 200, cors);
+
+      if (url.pathname === '/verify' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        return json({ ok: !!(await verify(env, b.user, b.hash)) }, 200, cors);
+      }
+
+      if (url.pathname === '/many' && req.method === 'GET') {          // batched read of hidden-chest index cells
+        const keys = (url.searchParams.get('keys') || '').split(',').filter(k => /^-?\d+_-?\d+$/.test(k)).slice(0, 25);
+        if (!keys.length) return json({ value: {} }, 200, cors);
+        const sql = 'SELECT path, val FROM kv WHERE ' + keys.map(() => 'path LIKE ?').join(' OR ') + ' LIMIT 3000';
+        const { results } = await env.DB.prepare(sql).bind(...keys.map(k => 'cells/' + k + '/%')).all();
+        const out = {}; keys.forEach(k => { out[k] = tree(results.filter(r => r.path.startsWith('cells/' + k + '/')), 'cells/' + k); });
+        return json({ value: out }, 200, cors);
+      }
+
+      if (url.pathname.startsWith('/kv/')) {
+        const segs = segsOf(decodeURIComponent(url.pathname.slice(4))); if (!goodPath(segs)) return json({ error: 'bad path' }, 400, cors);
+        const path = segs.join('/');
+
+        if (req.method === 'GET') {
+          const row = await env.DB.prepare('SELECT val, v FROM kv WHERE path = ?').bind(path).first();
+          if (row) {
+            let value = JSON.parse(row.val);
+            if (segs[0] === 'users' && segs.length === 2) value = { name: value.name, salt: value.salt };   // never expose password hashes
+            return json({ value, v: row.v }, 200, cors);
+          }
+          const { results } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? LIMIT 3000').bind(path + '/%').all();
+          return json({ value: results.length ? tree(results, path) : null, v: 0 }, 200, cors);
+        }
+
+        if (req.method === 'PUT') {
+          const raw = await req.text(); if (raw.length > (limit[segs[0]] || 1000) + 200) return json({ error: 'too large' }, 413, cors);
+          let body; try { body = JSON.parse(raw); } catch (e) { return json({ error: 'bad json' }, 400, cors); }
+          const value = body.value, ifv = body.ifv;
+          if (!validate(segs, value)) return json({ error: 'invalid data' }, 400, cors);
+          if (JSON.stringify(value).length > limit[segs[0]]) return json({ error: 'too large' }, 413, cors);
+
+          if (segs[0] === 'users') {                                   // accounts can only be created, never overwritten
+            const r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind(path, JSON.stringify(value)).run();
+            return r.meta.changes ? json({ ok: true, v: 1 }, 200, cors) : json({ error: 'exists' }, 409, cors);
+          }
+          const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+          if (!me) return json({ error: 'not logged in' }, 401, cors);
+          if (segs[0] === 'players' && segs[1] !== me) return json({ error: 'not your record' }, 403, cors);
+
+          const str = JSON.stringify(value); let r;
+          if (ifv === 0) r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind(path, str).run();
+          else if (Number.isInteger(ifv)) r = await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ? AND v = ?').bind(str, path, ifv).run();
+          else r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind(path, str).run();
+          return r.meta.changes ? json({ ok: true }, 200, cors) : json({ error: 'version conflict' }, 409, cors);
+        }
+      }
+      return json({ error: 'not found' }, 404, cors);
+    } catch (e) {
+      return json({ error: 'server error' }, 500, cors);
+    }
+  }
+};

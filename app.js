@@ -166,6 +166,7 @@ async function register(name, pw) {
   const key = name.toLowerCase(), salt = randHex(), hash = await hashPw(pw, salt);
   const r = await DB.tx('users/' + key, cur => cur ? undefined : { name, salt, hash, created: Date.now() });
   if (!r.changed) throw new Error('That name is already taken');
+  DB.setAuth(key, hash);
   let ref = getRef(); if (ref && ref.toLowerCase() === key) ref = '';
   if (ref) { const u = await DB.get('users/' + ref.toLowerCase()); if (!u) ref = ''; else await DB.tx('invites/' + ref.toLowerCase(), c => (c || 0) + 1); }
   const p = newPlayer(name, ref ? ref.toLowerCase() : '');
@@ -176,9 +177,11 @@ async function register(name, pw) {
 async function login(name, pw) {
   const key = name.toLowerCase(), u = await DB.get('users/' + key);
   if (!u) throw new Error('No player with that name');
-  if (await hashPw(pw, u.salt) !== u.hash) throw new Error('Wrong password');
+  const hash = await hashPw(pw, u.salt);
+  if (!(await DB.verify(key, hash))) throw new Error('Wrong password');
+  DB.setAuth(key, hash);
   const p = normalize((await DB.get('players/' + key)) || newPlayer(u.name));
-  return { key, hash: u.hash, p };
+  return { key, hash, p };
 }
 function remember(key, hash) { try { localStorage.setItem('stashwalk_session', JSON.stringify({ key, hash })); } catch (e) {} }
 function armFs() {
@@ -189,7 +192,8 @@ function armFs() {
 async function resume() {
   try {
     const s = JSON.parse(localStorage.getItem('stashwalk_session') || 'null'); if (!s) return false;
-    const u = await DB.get('users/' + s.key); if (!u || u.hash !== s.hash) return false;
+    const u = await DB.get('users/' + s.key); if (!u || !(await DB.verify(s.key, s.hash))) return false;
+    DB.setAuth(s.key, s.hash);
     const p = normalize((await DB.get('players/' + s.key)) || newPlayer(u.name));
     await boot(s.key, p); armFs(); return true;
   } catch (e) { return false; }
@@ -431,7 +435,7 @@ async function loadNearby() {
   const found = new Map();
   SEEDS.forEach(s => found.set(s.id, Object.assign({ src: 'seed' }, s)));
   try {
-    const res = await Promise.all(cellsAround(pos.lat, pos.lon, lastR).map(k => DB.get('cells/' + k)));
+    const res = await DB.getMany('cells', cellsAround(pos.lat, pos.lon, lastR));
     res.forEach(o => o && Object.keys(o).forEach(id => found.set(id, Object.assign({ id, src: 'player' }, o[id]))));
   } catch (e) {}
   chests = [...found.values()]; refreshChestViews();

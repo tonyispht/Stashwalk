@@ -7,6 +7,10 @@ window.GEO_CONFIG = {
   // chests and swaps (still no server of yours to run). See README.md, step 2.
   DB_URL: "",
 
+  // Preferred shared mode: your Cloudflare Worker URL (see README.md, "Shared world with Cloudflare").
+  // e.g. "https://stashwalk.YOURNAME.workers.dev"   (when set, DB_URL above is ignored)
+  WORKER_URL: "",
+
   UNLOCK_FT: 5,            // how close (feet) you must be to a chest to open it
   DEFAULT_RADIUS_MI: 25,   // starting value of the "show chests within" slider (1-250 mi)
   LANDMARK_UNLOCK_FT: 300, // landmark chests (locations.js) use approximate coordinates, so they open from a wider ring

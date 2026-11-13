@@ -1,0 +1,12 @@
+# Only needed if you deploy with the wrangler CLI instead of the Cloudflare dashboard.
+name = "stashwalk"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://tonyispht.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stashwalk-db"
+database_id = "PASTE-YOUR-D1-DATABASE-ID-HERE"

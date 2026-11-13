@@ -1,11 +1,12 @@
 // Tiny key/value "file database" with two backends behind one API.
 //  - LOCAL : one JSON blob in the browser's localStorage (no server, single device)
-//  - SHARED: Firebase Realtime Database REST API (no server of yours; all players share one world)
+//  - SHARED: Cloudflare Worker + D1 (cfg.WORKER_URL)  or  Firebase Realtime Database REST API (cfg.DB_URL)
 // API: DB.get(path) DB.set(path,val) DB.tx(path, fn) -> {value, changed}
 window.DB = (function () {
   const cfg = window.GEO_CONFIG || {};
   const base = (cfg.DB_URL || '').replace(/\/+$/, '');
-  const remote = !!base;
+  const W = (cfg.WORKER_URL || '').replace(/\/+$/, '');   // Cloudflare Worker backend (preferred when set)
+  const remote = !!(base || W);
   const LS = 'stashwalk_db_v1';
   const parts = p => p.split('/').filter(Boolean);
 
@@ -53,11 +54,45 @@ window.DB = (function () {
     throw new Error('db busy, try again');
   }
 
+  // ---------- cloudflare worker ----------
+  let auth = null;
+  const wurl = p => W + '/kv/' + parts(p).join('/');
+  const whead = () => Object.assign({ 'Content-Type': 'application/json' }, auth ? { 'X-User': auth.user, 'X-Hash': auth.hash } : {});
+  const wput = (p, body) => fetch(wurl(p), { method: 'PUT', headers: whead(), body: JSON.stringify(body) });
+  async function wget(p) { const r = await fetch(wurl(p)); if (!r.ok) throw new Error('db read ' + r.status); return (await r.json()).value; }
+  async function wset(p, v) { const r = await wput(p, { value: v }); if (!r.ok) throw new Error(r.status === 401 ? 'please log in again' : 'db write ' + r.status); }
+  async function wtx(p, fn) {
+    for (let i = 0; i < 6; i++) {
+      const g = await fetch(wurl(p)); if (!g.ok) throw new Error('db read ' + g.status);
+      const j = await g.json(), nv = fn(j.value === undefined ? null : j.value);
+      if (nv === undefined) return { value: j.value, changed: false };
+      const r = await wput(p, { value: nv, ifv: j.v || 0 });
+      if (r.ok) return { value: nv, changed: true };
+      if (r.status === 409 && p.startsWith('users/')) return { value: j.value, changed: false };
+      if (r.status !== 409) throw new Error(r.status === 401 ? 'please log in again' : 'db write ' + r.status);
+    }
+    throw new Error('db busy, try again');
+  }
+
   return {
     remote,
-    async get(p) { return remote ? rget(p) : lget(p); },
-    async set(p, v) { return remote ? rset(p, v) : lset(p, v); },
+    async get(p) { return W ? wget(p) : base ? rget(p) : lget(p); },
+    async set(p, v) { return W ? wset(p, v) : base ? rset(p, v) : lset(p, v); },
+    // Read several children of a prefix at once, e.g. getMany('cells', ['3_-2','3_-1']) -> [obj, obj]
+    async getMany(prefix, keys) {
+      if (W && prefix === 'cells') {
+        const r = await fetch(W + '/many?keys=' + encodeURIComponent(keys.join(','))); if (!r.ok) throw new Error('db read ' + r.status);
+        const o = (await r.json()).value || {}; return keys.map(k => o[k] || null);
+      }
+      return Promise.all(keys.map(k => this.get(prefix + '/' + k)));
+    },
+    setAuth(user, hash) { auth = { user: String(user).toLowerCase(), hash }; },
+    async verify(user, hash) {                       // does this name+hash belong to a real account?
+      if (W) { try { const r = await fetch(W + '/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, hash }) }); return !!(await r.json()).ok; } catch (e) { return false; } }
+      const u = await this.get('users/' + String(user).toLowerCase()); return !!u && u.hash === hash;
+    },
     async tx(p, fn) {
+      if (W) return wtx(p, fn);
       if (remote) return rtx(p, fn);
       const cur = lget(p), nv = fn(cur);
       if (nv === undefined) return { value: cur, changed: false };
