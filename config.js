@@ -11,7 +11,7 @@ window.GEO_CONFIG = {
   // e.g. "https://stashwalk.YOURNAME.workers.dev"   (when set, DB_URL above is ignored)
   WORKER_URL: "https://stashwalk.tonyispht.workers.dev",
 
-  UNLOCK_FT: 5,            // how close (feet) you must be to a chest to open it
+  UNLOCK_FT: 20,           // how close (feet) you must be to a chest to open it
   DEFAULT_RADIUS_MI: 25,   // starting value of the "show chests within" slider (1-250 mi)
   LANDMARK_UNLOCK_FT: 300, // landmark chests (locations.js) use approximate coordinates, so they open from a wider ring
   MAX_OSM_CHESTS: 150,     // cap on auto-found park/campground chests

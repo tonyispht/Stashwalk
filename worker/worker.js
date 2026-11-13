@@ -56,7 +56,14 @@ function validate(segs, value) {
   }
   return false;
 }
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
+  'https://overpass.osm.jp/api/interpreter'
+];
+const UA = 'StashwalkGame/1.0 (browser game)';
 function osmKind(t) {
   if (t.tourism === 'camp_site') return 'camp'; if (t.tourism === 'picnic_site' || t.leisure === 'picnic_table') return 'picnic';
   if (t.tourism === 'viewpoint') return 'view'; if (t.natural === 'peak') return 'peak'; if (t.leisure === 'playground') return 'play';
@@ -64,36 +71,54 @@ function osmKind(t) {
   if (t.leisure === 'nature_reserve') return 'reserve'; return 'park';
 }
 const KIND_NAME = { camp: 'Campsite', picnic: 'Picnic Spot', view: 'Viewpoint', peak: 'Summit', play: 'Playground', fire: 'Fire Ring', shelter: 'Trail Shelter', reserve: 'Nature Reserve', park: 'Park' };
+const host = u => u.split('/')[2];
+
+// One attempt at one mirror. Always settles - never left hanging.
+async function askOverpass(ep, q, ms) {
+  const t0 = Date.now();
+  try {
+    const r = await fetch(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, 'Accept': 'application/json' },
+      body: 'data=' + encodeURIComponent(q),
+      signal: AbortSignal.timeout(ms)
+    });
+    const dt = Date.now() - t0;
+    if (!r.ok) return { ep, note: host(ep) + ': HTTP ' + r.status + ' in ' + dt + 'ms ' + (await r.text()).slice(0, 100).replace(/\s+/g, ' ') };
+    const txt = await r.text();
+    let j; try { j = JSON.parse(txt); } catch (e) { return { ep, note: host(ep) + ': not JSON in ' + dt + 'ms: ' + txt.slice(0, 100).replace(/\s+/g, ' ') }; }
+    if (!j.elements) return { ep, note: host(ep) + ': no elements in ' + dt + 'ms' };
+    return { ep, note: host(ep) + ': ok, ' + j.elements.length + ' raw in ' + dt + 'ms', elements: j.elements };
+  } catch (e) {
+    return { ep, note: host(ep) + ': ' + String(e && e.name === 'TimeoutError' ? 'timed out' : (e && e.message) || 'threw').slice(0, 100) + ' after ' + (Date.now() - t0) + 'ms' };
+  }
+}
+// Ask every mirror at once and take the first usable answer.
+async function raceOverpass(q, ms, diag) {
+  const results = await Promise.all(OVERPASS.map(ep => askOverpass(ep, q, ms)));
+  results.forEach(r => diag && diag.push(r.note));
+  const win = results.find(r => r.elements && r.elements.length);
+  return win ? win.elements : null;
+}
+function compact(elements, cap) {
+  const out = [];
+  for (const el of elements) {
+    const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
+    if (la == null || lo == null) continue;
+    const t = el.tags || {}, k = osmKind(t);
+    out.push({ id: 'osm_' + el.type[0] + el.id, name: String(t.name || KIND_NAME[k] || 'Park').slice(0, 60), lat: +la.toFixed(5), lon: +lo.toFixed(5), kind: k });
+    if (out.length >= cap) break;
+  }
+  return out;
+}
 async function osmFetch(lat, lon, diag) {
   const a = `(around:6000,${lat},${lon})`, b = `(around:28000,${lat},${lon})`;
-  const q = `[out:json][timeout:20];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
+  const q = `[out:json][timeout:18];(nwr${a}[tourism~"camp_site|picnic_site|viewpoint"];nwr${a}[leisure~"park|playground|picnic_table|fire_pit|nature_reserve"];nwr${a}[amenity~"shelter|bbq"];nwr${a}[natural=peak];` +
     `nwr${b}[tourism=camp_site];nwr${b}[leisure=nature_reserve][name];nwr${b}[natural=peak][name];);out center 220;`;
-  for (const ep of OVERPASS) {
-    // Overpass rejects anonymous clients, so identify ourselves like a normal app would.
-    const headers = { 'User-Agent': 'Stashwalk/1.0 (browser game; contact via github.com/tonyispht/Stashwalk)', 'Accept': 'application/json' };
-    for (const mode of ['post', 'get']) {
-      try {
-        const r = mode === 'post'
-          ? await fetch(ep, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, headers), body: 'data=' + encodeURIComponent(q) })
-          : await fetch(ep + '?data=' + encodeURIComponent(q), { headers, cf: { cacheTtl: 604800, cacheEverything: true } });
-        if (!r.ok) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120).replace(/\s+/g, ' ')); continue; }
-        const txt = await r.text();
-        let j; try { j = JSON.parse(txt); } catch (e) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': not JSON: ' + txt.slice(0, 120).replace(/\s+/g, ' ')); continue; }
-        if (!j || !j.elements) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': no elements'); continue; }
-        const out = [];
-        for (const el of j.elements) {
-          const la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon;
-          if (la == null || lo == null) continue;
-          const t = el.tags || {}, k = osmKind(t);
-          out.push({ id: 'osm_' + el.type[0] + el.id, name: String(t.name || KIND_NAME[k] || 'Park').slice(0, 60), lat: la, lon: lo, kind: k });
-          if (out.length >= 220) break;
-        }
-        if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': ok, ' + out.length + ' places');
-        if (out.length) return out;
-      } catch (e) { if (diag) diag.push(ep.split('/')[2] + ' ' + mode + ': ' + (e && e.message ? e.message : 'threw').slice(0, 120)); }
-    }
-  }
-  return null;
+  const els = await raceOverpass(q, 20000, diag);
+  if (!els) return null;
+  const out = compact(els, 220);
+  return out.length ? out : null;
 }
 const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 3000 };
 
@@ -117,6 +142,12 @@ export default {
       }
 
       // Park/campground lookup, proxied + cached so players never hit the slow public API directly.
+      if (url.pathname === '/probe' && req.method === 'GET') {
+        const diag = [];
+        const els = await raceOverpass('[out:json][timeout:10];node(around:300,30.2,-82.35)[natural];out 3;', 12000, diag);
+        return json({ reachable: !!els, tried: diag }, 200, cors);
+      }
+
       if (url.pathname === '/osm' && req.method === 'GET') {
         const lat = +url.searchParams.get('lat'), lon = +url.searchParams.get('lon');
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad coords' }, 400, cors);
