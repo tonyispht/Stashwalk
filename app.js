@@ -892,19 +892,45 @@ function hideDialog() {
 }
 
 // ---------------- wiring ----------------
-// Mobile browsers change the visible height as their toolbars slide in and out, and 100dvh
-// does not always follow. Track it directly so the tab bar stays put.
+// Every API for "how tall is the visible page" lies on some mobile browser: innerHeight,
+// visualViewport and the vh units each over-report under an overlaying toolbar, and they
+// disagree with each other. So rather than trust any of them, measure where the tab bar
+// actually landed and shrink the app until it is on screen. Self-correcting beats guessing.
 function trackViewport() {
-  const vv = window.visualViewport;
-  const set = () => {
-    // Take the smallest honest measure available; CSS clamps it against 100svh as well.
-    const cands = [vv && vv.height, window.innerHeight, document.documentElement.clientHeight].filter(n => n > 200);
-    if (cands.length) document.documentElement.style.setProperty('--vh', Math.round(Math.min.apply(null, cands)) + 'px');
+  const vv = window.visualViewport, root = document.documentElement;
+  let applied = 0;
+
+  const measure = () => {
+    const cands = [vv && vv.height, window.innerHeight, root.clientHeight].filter(n => n > 200);
+    return cands.length ? Math.round(Math.min.apply(null, cands)) : 0;
   };
-  set();
-  addEventListener('resize', set);
-  addEventListener('orientationchange', () => setTimeout(set, 250));
-  if (vv) { vv.addEventListener('resize', set); vv.addEventListener('scroll', set); }
+  const set = h => { if (h > 200 && h !== applied) { applied = h; root.style.setProperty('--vh', h + 'px'); } };
+
+  // Did the tab bar end up below the fold? Then the reported height was too generous.
+  const enforce = () => {
+    const tabs = document.getElementById('tabs'), app = document.getElementById('app');
+    if (!tabs || !app || app.hidden) return;
+    const over = Math.round(tabs.getBoundingClientRect().bottom - window.innerHeight);
+    if (over > 1) set((applied || measure() || window.innerHeight) - over);
+    else if (over < -1 && applied) {
+      // Room opened up again (toolbar hidden, or fullscreen): take it back, then re-check.
+      set(measure());
+      requestAnimationFrame(() => {
+        const again = Math.round(document.getElementById('tabs').getBoundingClientRect().bottom - window.innerHeight);
+        if (again > 1) set(applied - again);
+      });
+    }
+  };
+
+  const update = () => { set(measure()); requestAnimationFrame(enforce); };
+  update();
+  [0, 120, 400, 1000, 2000].forEach(ms => setTimeout(update, ms));
+  addEventListener('resize', update);
+  addEventListener('orientationchange', () => setTimeout(update, 300));
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach(e =>
+    document.addEventListener(e, () => [60, 300, 700].forEach(ms => setTimeout(update, ms))));
+  if (vv) { vv.addEventListener('resize', update); vv.addEventListener('scroll', update); }
+  setInterval(enforce, 1500);          // cheap: one getBoundingClientRect, only acts when wrong
 }
 
 function wire() {

@@ -110,9 +110,11 @@ the button adds a changing query parameter to force a fresh copy, clears the Cac
 stale tile data. Sign-in, settings and any ?ref= invite parameter survive it.
 
 ## Layout and performance notes
-- The app is a fixed-height flex column sized from `--vh`, which app.js keeps in step with
-  `visualViewport.height`. Mobile toolbars slide in and out and 100dvh does not always follow, so
-  this is what keeps the tab bar pinned.
+- The app is a fixed-height flex column sized from `--vh`, clamped against `100svh`. Every API for
+  "visible height" over-reports on some mobile browser with an overlaying toolbar, and they
+  disagree with each other, so app.js also MEASURES where the tab bar actually landed and shrinks
+  `--vh` until it is on screen (and gives the space back when the toolbar hides). Self-correcting
+  rather than trusting innerHeight, visualViewport or any vh unit.
 - The chest list updates distances in place and only rebuilds its HTML when the set of chests
   changes; it is throttled to 400 ms (with a trailing render) and skipped entirely while a dialog
   is open. Rebuilding 60 rows on every GPS fix was what made reveal animations stutter.
