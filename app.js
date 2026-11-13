@@ -256,17 +256,20 @@ async function runDiag() {
   out.hidden = false; btn.disabled = true; out.textContent = 'Loading…';
   const lines = [];
   try {
-    await loadPlaces();
-    lines.push(`${PLACES.length.toLocaleString()} places built into the game`);
-    const by = {}; PLACES.forEach(p => by[p.kind] = (by[p.kind] || 0) + 1);
-    lines.push(Object.keys(by).sort((a, b) => by[b] - by[a]).map(k => `  ${kindInfo(k)[0]}: ${by[k]}`).join('\n'));
+    await loadTileIndex();
+    lines.push(`${tileIndex.size.toLocaleString()} map tiles available`);
+    let n = 0; TILES.forEach(t => n += t.length);
+    lines.push(`${TILES.size} tile(s) downloaded, ${n.toLocaleString()} places in memory`);
     if (pos) {
-      const n = placesWithin(pos.lat, pos.lon, radiusM()).length;
-      lines.push(`${n} within your ${radiusMi} mi radius`);
-      const all = placesWithin(pos.lat, pos.lon, 400000);
-      if (all.length) lines.push(`nearest: ${all[0].name} - ${fmtDist(all[0].d)}`);
+      await loadTiles(pos.lat, pos.lon, radiusM());
+      const within = placesWithin(pos.lat, pos.lon, radiusM());
+      lines.push(`${within.length} within your ${radiusMi} mi radius`);
+      const by = {}; within.forEach(p => by[p.kind] = (by[p.kind] || 0) + 1);
+      if (within.length) lines.push(Object.keys(by).sort((a, b) => by[b] - by[a]).map(k => `  ${kindInfo(k)[0]}: ${by[k]}`).join('\n'));
+      const nr = nearestLoaded(pos.lat, pos.lon);
+      if (nr) lines.push(`nearest: ${nr.name} - ${fmtDist(nr.d)}`);
     } else lines.push('turn on GPS to see what is near you');
-  } catch (e) { lines.push('place list failed to load: ' + (e.message || e)); }
+  } catch (e) { lines.push('place tiles failed to load: ' + (e.message || e)); }
   if (DB.osmBase) {
     try { const r = await fetch(DB.osmBase + '/'); lines.push('shared database: ' + (r.ok ? 'connected' : 'error ' + r.status)); }
     catch (e) { lines.push('shared database: unreachable'); }
@@ -426,37 +429,64 @@ function cellsAround(lat, lon, rM) {
   for (let a = a0; a <= a1; a++) for (let b = b0; b <= b1; b++) if (out.length < 25) out.push(a + '_' + b);
   return out;
 }
-// Every chest location ships with the game (places.json, built from the public-domain Recreation
-// Information Database). No outside service is contacted, so chests work offline and never break.
-let PLACES = null, placesLoading = null;
+// Chest locations ship with the game as map tiles (places/<lat>_<lon>.json, one per degree),
+// built from Overture Maps and the Recreation Information Database. Only the tiles around the
+// player are downloaded, and each is kept for the session. No outside service is ever contacted.
+const TILES = new Map();
+let tileIndex = null, tileIndexErr = '';
 const placeId = (lat, lon) => 'r' + Math.round(lat * 1e4).toString(36).replace('-', 'm') + '_' + Math.round(lon * 1e4).toString(36).replace('-', 'm');
-function loadPlaces() {
-  if (PLACES) return Promise.resolve(PLACES);
-  if (!placesLoading) placesLoading = fetch('places.json' + (window.ASSET_V ? '?v=' + window.ASSET_V : ''))
-    .then(r => { if (!r.ok) throw new Error('places ' + r.status); return r.json(); })
-    .then(raw => {
-      PLACES = raw.map(a => ({ id: placeId(a[1], a[2]), name: a[0], lat: a[1], lon: a[2], kind: a[3], src: 'ridb' }));
-      return PLACES;
-    })
-    .catch(e => { placesLoading = null; throw e; });
-  return placesLoading;
+const assetV = () => (window.ASSET_V ? '?v=' + window.ASSET_V : '');
+
+async function loadTileIndex() {
+  if (tileIndex) return tileIndex;
+  const r = await fetch('places/index.json' + assetV());
+  if (!r.ok) throw new Error('place index ' + r.status);
+  tileIndex = new Set(await r.json());
+  return tileIndex;
+}
+// Tiles covering the radius, nearest first so the cap always keeps the most useful ones.
+function tilesFor(lat, lon, rM) {
+  const dLat = rM / 111320, dLon = rM / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180))), out = [];
+  for (let a = Math.floor(lat - dLat); a <= Math.floor(lat + dLat); a++)
+    for (let b = Math.floor(lon - dLon); b <= Math.floor(lon + dLon); b++)
+      out.push({ k: a + '_' + b, d: Math.abs(a + 0.5 - lat) + Math.abs(b + 0.5 - lon) });
+  out.sort((x, y) => x.d - y.d);
+  return out.slice(0, C.MAX_TILES).map(t => t.k);
+}
+async function loadTiles(lat, lon, rM) {
+  await loadTileIndex();
+  const want = tilesFor(lat, lon, rM).filter(k => tileIndex.has(k) && !TILES.has(k));
+  await Promise.all(want.map(async k => {
+    try {
+      const r = await fetch('places/' + k + '.json' + assetV());
+      TILES.set(k, r.ok ? (await r.json()).map(a => ({ id: placeId(a[1], a[2]), name: a[0], lat: a[1], lon: a[2], kind: a[3], src: 'place' })) : []);
+    } catch (e) { TILES.set(k, []); }
+  }));
 }
 function placesWithin(lat, lon, rM) {
-  if (!PLACES) return [];
   const dLat = rM / 111320, dLon = rM / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
   const here = { lat, lon }, out = [];
-  for (const p of PLACES) {                       // bounding box first, exact distance only for survivors
-    if (Math.abs(p.lat - lat) > dLat || Math.abs(p.lon - lon) > dLon) continue;
-    const d = dist(here, p); if (d <= rM) out.push(Object.assign({ d }, p));
+  for (const k of tilesFor(lat, lon, rM)) {
+    const t = TILES.get(k); if (!t) continue;
+    for (const p of t) {
+      if (Math.abs(p.lat - lat) > dLat || Math.abs(p.lon - lon) > dLon) continue;
+      const d = dist(here, p); if (d <= rM) out.push(Object.assign({ d }, p));
+    }
   }
   out.sort((x, y) => x.d - y.d);
   return out.slice(0, C.MAX_PLACES);
 }
+// Nearest chest in any tile we already hold, however far - so an empty screen still points somewhere.
+function nearestLoaded(lat, lon) {
+  const here = { lat, lon }; let best = null;
+  TILES.forEach(t => t.forEach(p => { const d = dist(here, p); if (!best || d < best.d) best = Object.assign({ d }, p); }));
+  return best;
+}
 async function loadNearby() {
   if (!pos || loading) return; loading = true; osmErr = ''; lastLoad = { lat: pos.lat, lon: pos.lon }; lastR = radiusM();
   const found = new Map();
-  try { await loadPlaces(); placesWithin(pos.lat, pos.lon, lastR).forEach(p => found.set(p.id, p)); }
-  catch (e) { osmErr = 'place list failed to load'; lastLoad = null; }
+  try { await loadTiles(pos.lat, pos.lon, lastR); placesWithin(pos.lat, pos.lon, lastR).forEach(p => found.set(p.id, p)); }
+  catch (e) { osmErr = 'place list failed to load'; tileIndexErr = e.message || 'error'; lastLoad = null; }
   chests = [...found.values()]; refreshChestViews();
   try {                                            // chests other players hid, from the shared database
     const res = await DB.getMany('cells', cellsAround(pos.lat, pos.lon, lastR));
@@ -490,8 +520,8 @@ function renderNearby() {
   $('#panelTitle').textContent = all.length ? `${all.length} chest${all.length === 1 ? '' : 's'} nearby` : 'Chests nearby';
   if (!list.length) {
     // Look past the radius so an empty screen still points somewhere worth walking.
-    const nearest = (PLACES ? placesWithin(pos.lat, pos.lon, 800000) : []).concat(
-      chests.map(c => Object.assign({ d: dist(pos, c) }, c))).sort((a, b) => a.d - b.d)[0];
+    const nearest = [nearestLoaded(pos.lat, pos.lon)].concat(
+      chests.map(c => Object.assign({ d: dist(pos, c) }, c))).filter(Boolean).sort((a, b) => a.d - b.d)[0];
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
       (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
   }

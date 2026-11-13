@@ -4,7 +4,7 @@ Plain static files. Upload the folder to any static host (GitHub Pages, Netlify 
 GPS needs HTTPS (those hosts all provide it; `localhost` also works for testing).
 
 ## Files
-index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), worker/ (optional shared-world backend), items.js (550 items), places.json (14,323 chest locations), tools/ (dataset builder), db.js (storage), config.js (settings)
+index.html, style.css, app.js (game), fx.js (sound/visual effects/fullscreen), worker/ (optional shared-world backend), items.js (550 items), places/ (263,565 chest locations as map tiles), tools/ (dataset builders), db.js (storage), config.js (settings)
 
 ## 1. Local mode (default, zero setup)
 Everything saves in the player's browser. Works instantly, but chests/trades are only shared between accounts on the same device.
@@ -46,17 +46,21 @@ Instead of the Worker you can paste a Firebase Realtime Database URL into `DB_UR
 The Worker is the better option: Firebase in this mode is wide open to anyone with the URL.
 
 ## Locations
-- `places.json`: 14,323 real US locations shipped with the game - campgrounds, day-use and picnic
-  sites, trailheads, visitor centers, wildlife refuges and recreation areas. Built from the
-  Recreation Information Database (RIDB) full export, the federal system of record behind
-  Recreation.gov. RIDB is a U.S. Government work and is in the public domain.
-  Coverage is FEDERAL land only: no city or state parks, no private campgrounds. Towns far from
-  federal land will have few or no chests - players can hide their own there.
-- No internet service is queried to find chests. The list is downloaded once (~800 KB, ~250 KB
-  gzipped), cached by the browser, and works offline after that.
-- Players can hide their own chests (2/day) at their exact spot; those live in your database.
-- Rebuilding the list: download https://ridb.recreation.gov/downloads/RIDBFullExport_V1_JSON.zip
-  and re-run the build (see tools/build_places.py).
+- `places/`: 263,565 real US locations, split into 1,896 map tiles of one degree each
+  (`places/<lat>_<lon>.json`, plus `index.json` listing which exist). The game downloads only the
+  tiles around the player - typically 1-5 files, a few KB each - and keeps them for the session.
+- 187,701 parks, 50,409 nature reserves and protected areas, 17,053 campgrounds, 7,249 playgrounds,
+  plus picnic sites, summits, viewpoints, trail shelters and visitor centers.
+- Sources, both free and openly licensed:
+  - Overture Maps (base theme, land_use) - ODbL, derived largely from OpenStreetMap.
+  - Recreation Information Database (RIDB) full export - U.S. Government work, public domain.
+- Excluded deliberately: cemeteries, schools, hospitals, prisons, churches, golf courses, military
+  land, airports, quarries, landfills and private/residential land - by type code and again by name.
+- NO internet service is queried to find chests. Tiles are static files served with the game.
+- Players can hide their own chests (2/day); those live in your database.
+- Rebuilding: `tools/overture_extract.py` pulls from Overture's public S3 bucket (needs duckdb),
+  `tools/build_places.py` parses the RIDB export, `tools/build_tiles.py` merges, de-duplicates and
+  writes the tiles.
 - Opening a chest needs you within UNLOCK_FT (20 ft) in config.js. Phone GPS is often only accurate
   to ~10-30 ft, so raise it if players can't unlock.
 
