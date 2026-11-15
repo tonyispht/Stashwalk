@@ -177,6 +177,42 @@ Entry is forgiving: lower case, spaces and the usual lookalikes (`O`->`0`, `I`/`
 are all normalised before hashing. Resetting a password invalidates the session on every other
 device, since those hold the old hash.
 
+## Item plates
+Every item is an emoji on a generated plate, so the five rarities of one object no longer
+look identical. Rarity picks the material - plain stone, mossy green, a blue sheen, a purple
+starfield, then gold with rays - and `plateVars()` in app.js derives the angle, highlight
+position and a faint accent tint from the base object's index, so each of the 110 objects
+sits on its own variation. Craft-only relics get a violet pinstripe of their own, keyed off
+their id (they all share `base: -1`, so without that they would come out identical).
+
+It is all static CSS gradients: painted once, no filters, nothing per frame. The emoji is
+no longer hue-rotated - the plate carries rarity now, which also removes a filter from every
+tile on screen.
+
+Uncollected items on the shelf keep a dimmed version of their rarity, so a missing Legendary
+reads as gold rather than one more black blob. They use `sr0`-`sr4` rather than `r0`-`r4`
+on purpose: the live Legendary glow and shine must not run on hundreds of shelf tiles.
+
+One trap worth remembering: the silhouette is `filter: brightness(0)` on the emoji, and the
+iOS performance rule that switches emoji filters off has to stay scoped
+`.ios .tile:not(.sil) .em` - unscoped, it cancels the silhouettes and reveals every
+uncollected item on iPhones.
+
+## Chest opening
+A drawn chest rather than an emoji: the lid rotates open, light spills out of it, and the
+items rise in turn. The stagger tightens as a chest holds more items
+(`min(55, 200 / (n - 1))` ms) so a full eight-slot chest finishes in about the same time as
+a four-slot one. iOS gets shorter timings and no nudge. Everything is transforms and opacity.
+
+## Map style
+Dark by default, toggled in Me -> Settings. The tiles are OpenStreetMap's own either way -
+the dark look is a CSS filter (`invert` plus a 180 degree hue rotation, which keeps road
+labels light-on-dark instead of vanishing) applied only to `.leaflet-tile-pane`. Markers,
+the player dot and the attribution sit in sibling Leaflet panes and keep their real colours.
+Doing it this way means no second tile service, no second set of cached tiles, and nothing
+that can start demanding an API key. CARTO's dark basemap was the obvious choice and now
+watermarks keyless requests, which is exactly the dependency this avoids.
+
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
 version-stamped, but index.html itself can be served from cache and pin a player to an old build;

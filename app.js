@@ -44,11 +44,25 @@ function closeModal() {
   document.body.classList.remove('modal-open');
   if (view === 'explore') renderNearby(true);         // catch up on anything skipped while it was open
 }
+// Every item gets its own plate: rarity decides the material, the base object decides
+// the angle, the highlight and a faint accent tint. Deterministic, so an item always
+// looks the same, and it is all painted once - no filters, no per-frame cost.
+function plateVars(it) {
+  // relics share base -1, so fall back to their own id - otherwise all 20 would
+  // be handed the same angle, highlight and tint and look identical
+  const b = it.base >= 0 ? it.base : 150 + (parseInt(String(it.id).replace(/\D/g, ''), 10) || 0) * 7;
+  const hue = (b * 47) % 360;
+  return `--a:${(b * 37) % 360}deg;--sx:${24 + (b * 13) % 52}%;--sy:${18 + (b * 29) % 48}%;` +
+         `--ac:hsla(${hue},72%,62%,.20);--ac2:hsla(${hue},72%,48%,.13)`;
+}
 function tile(it, o = {}) {
-  if (o.sil) return `<div class="tile sil" data-id="${it.id}"><span class="em">${it.e}</span></div>`;
-  return `<div class="tile r${it.r}${o.sel ? ' sel' : ''}${o.big ? ' big' : ''}" data-id="${it.id}" data-slot="${o.slot || ''}" title="${esc(it.n)}">` +
+  const pv = plateVars(it);
+  // Silhouettes use their own rarity classes, so the shelf never runs the live
+  // Legendary glow and shine on hundreds of tiles at once.
+  if (o.sil) return `<div class="tile sil sr${it.r}" data-id="${it.id}" style="${pv}"><span class="em">${it.e}</span></div>`;
+  return `<div class="tile r${it.r}${it.crafted ? ' cr' : ''}${o.sel ? ' sel' : ''}${o.big ? ' big' : ''}" data-id="${it.id}" data-slot="${o.slot || ''}" title="${esc(it.n)}" style="${pv}">` +
     (o.by ? `<span class="by">${esc(o.by)}</span>` : '') +
-    `<span class="em" style="filter:hue-rotate(${it.h}deg)">${it.e}</span>` +
+    `<span class="em">${it.e}</span>` +
     (o.count > 1 ? `<b class="cnt">×${o.count}</b>` : '') + (o.big ? '' : `<i class="nm">${esc(it.n)}</i>`) + '</div>';
 }
 const revealBox = it => `<div class="revealbox r${it.r}"><i class="rays"></i>${tile(it, { big: true })}</div>`;
@@ -854,6 +868,7 @@ function renderMe() {
     <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
     <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Proximity ticking near chests</span></label>
+    <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
     ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
     <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
     <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
@@ -884,6 +899,7 @@ function renderMe() {
   $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
+  $('#setMap').onchange = e => { FX.set('darkmap', e.target.checked); applyBasemap(); toast(e.target.checked ? 'Dark map on' : 'Standard map on'); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
   const rc = $('#recNew'); if (rc) rc.onclick = e => regenRecovery(e.target);
   const rcode = localCode(KEY); if (rcode) wireCodeBox($('#meBox'), P.name, rcode, 'mine');
@@ -1020,10 +1036,25 @@ function importSave(e) {
 let map, meMarker, accCircle, pos = null, chests = [], markers = [], watchId = null, lastLoad = null, loading = false, nearSeen = {}, radCircle = null, lastR = 0, osmErr = '';
 let radiusMi = 25; try { radiusMi = +localStorage.getItem('sw_radius') || C.DEFAULT_RADIUS_MI || 25; } catch (e) {}
 const radiusM = () => radiusMi * 1609.344;
+// Dark by default: the standard bright map fights a dark green game, and chest
+// markers are much easier to pick out against it. Switchable in Me > Settings.
+// The tiles are OpenStreetMap's own either way - the dark look is a CSS filter on
+// the tile layer, so there is no second tile service to depend on, nothing to cache
+// twice, and the markers (a separate Leaflet pane) are untouched by it.
+let baseLayer = null;
+function applyBasemap() {
+  if (!map || !window.L) return;
+  if (!baseLayer) {
+    baseLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+    baseLayer.setZIndex(0);
+  }
+  $('#map').classList.toggle('darkmap', !!FX.prefs.darkmap);
+}
 function initMap() {
   if (map || !window.L) { if (!window.L) $('#map').innerHTML = '<div class="nomap">Map unavailable offline – the chest list below still works.</div>'; return; }
   map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  applyBasemap();
   if (DEV) map.on('click', e => setPos(e.latlng.lat, e.latlng.lng, 2, true));
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
   [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
@@ -1294,7 +1325,8 @@ function showChest(meta, chest) {
   if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
-  modal(`<div class="chestfx" id="chestfx">📦</div><h3 style="text-align:center">${esc(meta.name)}</h3>
+  modal(`<div class="chestopen" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
+    <h3 style="text-align:center">${esc(meta.name)}</h3>
     <p class="sub">${done ? 'You already traded here today – you can look, but come back tomorrow to swap.' : 'Pick one item to take, then one of yours to leave behind. One trade per chest per day.'}</p>
     <div class="lbl">Inside the chest</div>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
@@ -1308,8 +1340,20 @@ function showChest(meta, chest) {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
-    $$('#chestGrid .tile', m).forEach((t, i) => { t.style.animationDelay = (550 + i * 110) + 'ms'; });
-    setTimeout(() => { const f = $('#chestfx', m); if (f) { f.textContent = '🎁'; const p = FX.centerOf(f); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#ffffff'], 26); } }, 560);
+    // Lid lifts, light spills out, then the items rise one after another. The whole
+    // sequence lands in well under a second so it never feels like waiting.
+    const ios = document.body.classList.contains('ios');
+    const tiles = $$('#chestGrid .tile', m), start = ios ? 300 : 360;
+    // squeeze the stagger as slots grow, so a full eight-slot chest still finishes
+    // in about the same time as a four-slot one rather than crawling
+    const step = Math.min(ios ? 42 : 55, 200 / Math.max(1, tiles.length - 1));
+    tiles.forEach((t, i) => { t.style.animationDelay = Math.round(start + i * step) + 'ms'; });
+    setTimeout(() => {
+      const f = $('#chestfx', m); if (!f) return;
+      f.classList.add('lit');
+      const p = FX.centerOf(f);
+      FX.burst(p.x, p.y - 10, ['#ffd98a', '#f2b84b', '#ffffff'], ios ? 12 : 20);
+    }, 300);
     if (done) return;
     const swap = $('#swapBtn', m);
     const upd = () => { swap.disabled = !(selGet && selGive); swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} → ${BY_ID[chest.items[selGet].id].n}` : 'Choose items'; };
@@ -1619,5 +1663,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

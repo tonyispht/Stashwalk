@@ -119,10 +119,6 @@ select{background:var(--card2);border:1px solid #2c4d3b;border-radius:10px;paddi
 .revealbox.r0 .rays{opacity:.18}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes revealIn{0%{transform:scale(.2) rotate(-25deg);opacity:0}70%{transform:scale(1.12) rotate(4deg)}100%{transform:none;opacity:1}}
-.chestfx{font-size:64px;text-align:center;animation:chestShake .55s ease-in-out;filter:drop-shadow(0 6px 14px #f2b84b55)}
-@keyframes chestShake{0%,100%{transform:rotate(0)}15%{transform:rotate(-12deg) scale(1.05)}35%{transform:rotate(11deg) scale(1.08)}55%{transform:rotate(-8deg)}75%{transform:rotate(5deg) scale(1.1)}}
-.popin .tile{animation:tilePop .4s cubic-bezier(.2,1.5,.4,1) backwards}
-@keyframes tilePop{from{transform:scale(0) rotate(-20deg);opacity:0}}
 .chest.near{animation:nearPulse 1.8s ease-in-out infinite}
 @keyframes nearPulse{50%{box-shadow:0 0 0 3px #f2b84b55,0 0 30px #f2b84b55}}
 .cm.near span{animation:markPulse 1.4s ease-in-out infinite}
@@ -334,7 +330,7 @@ button.who:active{transform:scale(.96)}
 
 /* ---- lighter effects on iOS, where filters and blurs are far more expensive ---- */
 .ios .top{backdrop-filter:none;-webkit-backdrop-filter:none;background:#0f1a14}
-.ios .tile .em{filter:none!important}
+.ios .tile:not(.sil) .em{filter:none!important}
 .ios .revealbox .rays{background:radial-gradient(circle,var(--rc) 0%,transparent 68%);-webkit-mask:none;mask:none;animation:none;opacity:.35}
 .ios .tile.r4,.ios .tile.r4::before{animation:none}
 .ios .chest.near,.ios .herebar,.ios .cm.near span{animation:none}
@@ -350,3 +346,106 @@ ol.steps b{color:var(--ink)}
 .codebox code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:19px;letter-spacing:1.5px;
   color:var(--acc2);word-break:break-all;-webkit-user-select:all;user-select:all}
 button.linky{background:none;border:0;padding:0;color:var(--acc2);text-decoration:underline;font:inherit;cursor:pointer}
+
+/* ================= item plates (build 202611151415) =================
+   Rarity sets the material, the base object sets --a/--sx/--sy/--ac, so the five
+   versions of one object no longer look identical. All static paint. */
+.tile{background:
+  radial-gradient(circle at var(--sx,42%) var(--sy,34%), var(--ac,#ffffff12), transparent 58%),
+  linear-gradient(var(--a,160deg), #20392b, #132520)}
+.tile.r1{background:
+  radial-gradient(circle at var(--sx) var(--sy), var(--ac), transparent 60%),
+  radial-gradient(circle at 50% 122%, #5ec27a33, transparent 62%),
+  linear-gradient(var(--a), #1d3f2c, #11291e)}
+.tile.r2{background:
+  linear-gradient(calc(var(--a) + 55deg), transparent 38%, #4aa3ff2b 50%, transparent 62%),
+  radial-gradient(circle at var(--sx) var(--sy), var(--ac), transparent 58%),
+  radial-gradient(circle at 50% 120%, #4aa3ff36, transparent 60%),
+  linear-gradient(var(--a), #1b3348, #0f1e2b)}
+.tile.r3{background:
+  radial-gradient(1.6px 1.6px at 22% 24%, #ffffffcc, transparent 100%),
+  radial-gradient(1.4px 1.4px at 74% 32%, #ffffff99, transparent 100%),
+  radial-gradient(1.5px 1.5px at 38% 74%, #ffffff88, transparent 100%),
+  radial-gradient(circle at 50% 52%, #b46bff3d, transparent 66%),
+  radial-gradient(circle at var(--sx) var(--sy), var(--ac), transparent 56%),
+  linear-gradient(var(--a), #2d1f47, #160f29);
+  box-shadow:0 0 12px #b46bff44, inset 0 0 0 1px #ffffff1a}
+.tile.r4{background:
+  radial-gradient(1.7px 1.7px at 18% 28%, #fff, transparent 100%),
+  radial-gradient(1.4px 1.4px at 68% 19%, #ffe9b0, transparent 100%),
+  radial-gradient(1.6px 1.6px at 81% 63%, #fff, transparent 100%),
+  radial-gradient(1.3px 1.3px at 29% 77%, #ffe9b0, transparent 100%),
+  conic-gradient(from var(--a) at 50% 56%, #ffb02e20, transparent 22%, #ffb02e20 42%, transparent 62%, #ffb02e20 82%, transparent 100%),
+  radial-gradient(circle at 50% 56%, #ffb02e42, transparent 62%),
+  linear-gradient(var(--a), #3a2c12, #1c1608)}
+/* craft-only relics read as their own material, whatever rarity they carry */
+.tile.cr{background:
+  radial-gradient(1.5px 1.5px at 26% 30%, #e3d6ff, transparent 100%),
+  radial-gradient(1.5px 1.5px at 72% 67%, #e3d6ff, transparent 100%),
+  repeating-linear-gradient(calc(var(--a) + 90deg), #ffffff09 0 2px, transparent 2px 7px),
+  radial-gradient(circle at 50% 50%, #6a5acd55, transparent 68%),
+  linear-gradient(var(--a), #2a2550, #141229);
+  border-color:#8d7ce6}
+@keyframes glow{50%{box-shadow:0 0 18px #ffb02e99, inset 0 0 0 1px #ffffff26}}
+
+/* uncollected: the plate is dimmed but the rarity still shows, so a missing
+   Legendary reads as gold rather than as one more black blob */
+.tile.sil{border-color:#27412f;background:linear-gradient(var(--a,160deg), #16241d, #0c1712)}
+.tile.sil::before{content:"";position:absolute;inset:0;border-radius:12px;
+  background:radial-gradient(circle at 50% 58%, var(--src,#8fa39a), transparent 62%);opacity:.13;pointer-events:none}
+.tile.sil.sr1{border-color:#2b4d38;--src:var(--r1)}
+.tile.sil.sr2{border-color:#27405a;--src:var(--r2)}
+.tile.sil.sr3{border-color:#3d2d59;--src:var(--r3)}
+.tile.sil.sr4{border-color:#584723;--src:var(--r4)}
+.tile.sil.sr4::before{opacity:.2}
+/* note: the .ios rule that disables emoji filters is scoped with :not(.sil) above -
+   without that it cancels the silhouette and reveals every uncollected item. */
+
+/* ================= chest opening =================
+   A drawn chest rather than an emoji: the lid lifts, light spills out of it, then
+   the items rise in turn. Transforms and opacity only, so it stays smooth. */
+.chestopen{position:relative;width:92px;height:78px;margin:2px auto 12px;
+  animation:chestNudge .24s ease-in-out}
+@keyframes chestNudge{40%{transform:translateY(2px) rotate(-2.5deg)}75%{transform:translateY(-1px) rotate(2deg)}}
+.chestopen i{position:absolute;display:block}
+.chestopen .cbox{left:7px;right:7px;bottom:0;height:46px;border-radius:5px 5px 8px 8px;
+  background:linear-gradient(#7b4f2a,#54331a);border:2px solid #b07d24;
+  box-shadow:inset 0 2px 0 #9a6135, inset 0 -4px 7px #00000055}
+.chestopen .cbox::after{content:"";position:absolute;left:50%;top:-5px;transform:translateX(-50%);
+  width:19px;height:21px;border-radius:4px;background:linear-gradient(#e9b74a,#b07d24);
+  box-shadow:0 0 0 1px #00000033}
+.chestopen .clid{left:5px;right:5px;bottom:43px;height:27px;border-radius:14px 14px 3px 3px;
+  background:linear-gradient(#8a5a30,#653f21);border:2px solid #b07d24;
+  box-shadow:inset 0 3px 0 #a36a3a;
+  transform-origin:14% 100%;animation:lidOpen .46s cubic-bezier(.3,1.45,.5,1) .14s both}
+@keyframes lidOpen{from{transform:rotate(0)}to{transform:rotate(-54deg)}}
+.chestopen .cbeam{left:50%;bottom:38px;width:128px;height:128px;border-radius:50%;
+  background:radial-gradient(circle at 50% 100%, #ffd98ad9, #ffd98a00 62%);
+  opacity:0;animation:beamUp .8s ease-out .24s both}
+@keyframes beamUp{0%{opacity:0;transform:translateX(-50%) scale(.35)}
+  35%{opacity:.92;transform:translateX(-50%) scale(.85)}
+  100%{opacity:.26;transform:translateX(-50%) scale(1)}}
+.chestopen.lit .cbox{box-shadow:inset 0 2px 0 #9a6135, inset 0 -4px 7px #00000055, 0 0 18px #f2b84b55}
+
+/* items rise out of it instead of popping in place */
+.popin .tile{animation:tileRise .34s cubic-bezier(.2,1.3,.4,1) backwards}
+@keyframes tileRise{from{transform:translateY(18px) scale(.86);opacity:0}}
+
+.ios .chestopen{animation:none}
+.ios .chestopen .cbeam{animation-duration:.45s}
+.ios .popin .tile{animation-duration:.26s}
+@media (prefers-reduced-motion:reduce){
+  .chestopen,.chestopen .clid,.chestopen .cbeam,.popin .tile{animation:none}
+  .chestopen .clid{transform:rotate(-54deg)}
+  .chestopen .cbeam{opacity:.26}
+}
+
+/* Dark map. Only the tile pane is filtered - markers, the player dot and the
+   attribution live in sibling Leaflet panes and keep their real colours. Inverting
+   and spinning the hue is what keeps road labels light-on-dark instead of
+   disappearing into the background. */
+#map.darkmap .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.86) saturate(.72)}
+.darkmap .cm span{background:#21503a;border-color:#6aa98a;box-shadow:0 1px 8px #000000aa}
+.darkmap .cm.near span{background:#4a3a12;border-color:var(--acc)}
+.darkmap .leaflet-control-attribution{background:#0f1a14cc;color:#8fa39a}
+.darkmap .leaflet-control-attribution a{color:#b9cfc2}
