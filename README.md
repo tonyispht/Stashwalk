@@ -96,7 +96,7 @@ it to regenerate relics.js.
   events and refuses client writes; each player tracks what they have seen with `feedSeen`.
 - **Gifts**: "Leave an item (no swap)" puts an item into a FREE slot - chests grow from CHEST_SLOTS
   (4) up to MAX_CHEST_SLOTS (8), so a gift never overwrites anything. It does not use up your one
-  trade per chest per day.
+  trade per chest per hour (`TRADE_COOLDOWN_MIN`).
 - **Reporting**: any player can report a chest that is on private land, unsafe or not a real public
   place. FLAGS_TO_REMOVE (3) reports from DIFFERENT players removes it for everyone - the server
   dedupes by player, adds it to a blocklist the client filters against, and deletes the chest and

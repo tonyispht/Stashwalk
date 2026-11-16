@@ -217,8 +217,19 @@ function newPlayer(name, ref) {
            daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
            coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} } };
 }
+// One trade per chest per TRADE_COOLDOWN_MIN. P.exch[chestId] is when you last traded there.
+const TRADE_MS = () => (C.TRADE_COOLDOWN_MIN || 60) * 60000;
+function tradeWait(id) { const t = P.exch[id]; return typeof t === 'number' ? Math.max(0, t + TRADE_MS() - Date.now()) : 0; }
+function fmtWait(ms) {
+  const m = Math.max(1, Math.ceil(ms / 60000)), h = Math.floor(m / 60), r = m % 60;
+  if (!h) return m + ' min';
+  return r ? `${h} h ${r} min` : `${h} hour${h === 1 ? '' : 's'}`;
+}
 function normalize(p) {
   p.inv = p.inv || {}; p.dex = p.dex || {}; p.ach = p.ach || {}; p.exch = p.exch || {};
+  // drop finished cooldowns (and the old once-a-day date strings) so the record stays small
+  const cut = Date.now() - (C.TRADE_COOLDOWN_MIN || 60) * 60000;
+  Object.keys(p.exch).forEach(k => { if (typeof p.exch[k] !== 'number' || p.exch[k] < cut) delete p.exch[k]; });
   p.stats = Object.assign({ visited: {}, ex: 0, hidden: 0, gaveRare: 0 }, p.stats || {}); p.stats.visited = p.stats.visited || {};
   p.daily = Object.assign({ n: 0, last: '', streak: 0, max: 0 }, p.daily || {}); p.title = p.title || 'Newcomer';
   p.refPaid = p.refPaid || 0;                       // referrals already rewarded
@@ -2164,7 +2175,8 @@ function renderNearby(force) {
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
       (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
   }
-  const rowIds = list.map(c => c.id).join(',');
+  // the trade countdown is part of the key, so a row updates when you trade there and as the minutes tick down
+  const rowIds = list.map(c => c.id + (P.exch[c.id] ? ':' + Math.ceil(tradeWait(c.id) / 60000) : '')).join(',');
   if (rowIds === lastRowIds && el.children.length >= list.length) {
     // Same chests, only the distances moved: touch just those nodes instead of re-parsing HTML.
     list.forEach((c, i) => {
@@ -2179,8 +2191,8 @@ function renderNearby(force) {
   }
   lastRowIds = rowIds;
   el.innerHTML = list.map(c => {
-    const near = c.d <= unlockM(c), done = P.exch[c.id] === today;
-    return `<div class="chest${near ? ' near' : ''}"><div class="ci">${kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${kindInfo(c.kind)[0]}${done ? ' · ✓ traded today' : ''}</small></div>
+    const near = c.d <= unlockM(c), wait = tradeWait(c.id);
+    return `<div class="chest${near ? ' near' : ''}"><div class="ci">${kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${kindInfo(c.kind)[0]}${wait ? ' · ✓ traded · again in ' + fmtWait(wait) : ''}</small></div>
       <div class="cd">${near ? "YOU'RE<br>HERE" : fmtDist(c.d) + '<br><small>' + dirName(pos, c) + '</small>'}</div>
       <button class="btn sm" data-open="${esc(c.id)}" ${near ? '' : 'disabled'}>${near ? 'OPEN' : 'Open'}</button></div>`;
   }).join('') + (all.length > list.length ? `<div class="empty">+ ${all.length - list.length} more – lower the radius to focus on the closest.</div>` : '');
@@ -2324,14 +2336,14 @@ async function openChest(id, byDrone) {
   } catch (e) { cine.kill(); toast('Could not open chest: ' + e.message, 'bad'); }
 }
 function showChest(meta, chest) {
-  const today = dayKey(), done = P.exch[meta.id] === today;
+  const wait = tradeWait(meta.id), done = wait > 0;
   const slots = Object.keys(chest.items || {}).filter(s => chest.items[s] && BY_ID[chest.items[s].id]).sort();
   if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
   modal(`<div class="chestopen still lit" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
     <h3 style="text-align:center">${esc(meta.name)}</h3>
-    <p class="sub">${done ? 'You already traded here today – you can look, but come back tomorrow to swap.' : 'Pick one item to take, then one of yours to leave behind. One trade per chest per day.'}</p>
+    <p class="sub">${done ? `You traded here recently – you can look, and swap again in ${fmtWait(wait)}.` : `Pick one item to take, then one of yours to leave behind. One trade per chest every ${fmtWait(TRADE_MS())}.`}</p>
     <div class="lbl">Inside the chest</div>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
     ${done ? '' : `<div class="lbl">Your pack</div><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
@@ -2363,7 +2375,7 @@ function showChest(meta, chest) {
 }
 async function doTrade(meta, slot, getId, giveId) {
   if (needNet('Trading')) return;
-  if (P.exch[meta.id] === dayKey()) return toast('One trade per chest per day', 'bad');
+  if (tradeWait(meta.id)) return toast(`You can trade here again in ${fmtWait(tradeWait(meta.id))}`, 'bad');
   if (getId === giveId) return toast('Pick a different item to trade for', 'bad');
   if (!P.inv[giveId]) return toast('You no longer have that item', 'bad');
   let ok = false;
@@ -2375,7 +2387,7 @@ async function doTrade(meta, slot, getId, giveId) {
     if (!ok) { toast('Someone else got there first – the chest has changed', 'bad'); return showChest(meta, r.value || makeChest(meta, utcDay())); }
   } catch (e) { return toast('Trade failed: ' + e.message, 'bad'); }
   removeItem(giveId); const isNew = !P.dex[getId]; addItem(getId);
-  P.exch[meta.id] = dayKey(); P.stats.ex = (P.stats.ex || 0) + 1; if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
+  P.exch[meta.id] = Date.now(); P.stats.ex = (P.stats.ex || 0) + 1; if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
   earn(CO.trade, 'Trade');
   const it = BY_ID[getId]; save(); checkAch(); renderAll();
   FX.sfx('coin');

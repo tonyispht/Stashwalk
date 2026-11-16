@@ -22,6 +22,7 @@ window.GEO_CONFIG = {
   CHEST_SLOTS: 4,          // items a chest starts with
   MAX_CHEST_SLOTS: 8,      // a chest can grow to this many when players leave gifts
   FLAGS_TO_REMOVE: 3,      // reports from different players before a chest is dropped
+  TRADE_COOLDOWN_MIN: 60,  // minutes before you can trade at the same chest again
   HIDE_PER_DAY: 10,        // how many chests a player may hide per day
   MIN_CHEST_GAP_M: 20,     // new hidden chests must be this far from any other chest
 
