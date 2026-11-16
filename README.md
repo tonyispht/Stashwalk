@@ -243,6 +243,41 @@ Doing it this way means no second tile service, no second set of cached tiles, a
 that can start demanding an API key. CARTO's dark basemap was the obvious choice and now
 watermarks keyless requests, which is exactly the dependency this avoids.
 
+## Trail Coins, miles walked and the shop
+Coins (🪙, `P.coins`) are earned for walking and for playing, and spent in the Shop tab. Every
+amount is in config.js under `COINS`, prices under `PRICES`.
+
+**Walking** pays `COINS.mile` per mile, credited every tenth of a mile. The browser only reports
+position while the game is open, so this counts walking done with Stashwalk on screen.
+`trackWalk()` keeps an anchor point and only counts a move once it is further than both 10 m and
+60% of the combined GPS uncertainty, so a phone sitting still and drifting earns nothing; anything
+faster than `MAX_WALK_MPS` (6.5 m/s, ~14.5 mph) is treated as a vehicle and dropped; fixes worse
+than 30 m are ignored; DEV teleports never count. In testing it credited 98% of a brisk walk,
+nothing for 12 s of standing-still wobble, and nothing for 600 m covered in 4 s. Distance sits in
+`P.stats.walkedM`, payouts in `walkPaid` (tenths of a mile already paid), and the running total
+shows in the GPS pill on the map. Walking achievements at 1, 10, 50 and 100 miles.
+
+**Other earnings**: daily reward (grows with the streak, extra on days 7/14/21/28), a chest you
+have never opened before, trades, gifts, hiding, merging, crafting, achievements, anything new
+for your shelf, and invited friends. Several at once (a trade that is also new for your shelf)
+show as one "+13 🪙" pop under the coin counter, held back until the chest opening has finished.
+Players from before coins existed get a one-off back payment for everything already done
+(`retroCoins()`, flagged by `P.coinsV`), with an intro card. New players start with
+`COINS.start`.
+
+**The shop** has three parts:
+
+- *Today's stock* - eight items, the same for every player, turning over at midnight UTC
+  (seeded from the UTC day). One of each per player per day. On Sundays the last slot is a
+  Legendary.
+- *Finish a merge* - for anything you hold one or two of, the copies that would complete a set
+  of three, at a 10% bundle discount.
+- *Recipe ingredients* - what your relic recipes at your workshop level (and the next) are still
+  missing, at the lowest rarity the recipe accepts.
+
+Relics are never sold. Bought items do not earn the new-for-your-shelf bonus. Buying needs a
+connection, like every other action that changes your record.
+
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
 version-stamped, but index.html itself can be served from cache and pin a player to an old build;

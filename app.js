@@ -168,9 +168,9 @@ function doMerge(id) {
   const to = BY_R[it.r + 1].find(x => x.base === it.base);
   if (!to) return toast('Nothing to merge into', 'bad');
   for (let i = 0; i < C.MERGE_COUNT; i++) removeItem(id);
-  const isNew = !P.dex[to.id];
-  addItem(to.id);
+  const isNew = addItem(to.id);
   P.stats.merges = (P.stats.merges || 0) + 1;
+  earn(CO.merge, 'Merge');
   save(); checkAch(); renderAll();
   showMade(to, `${C.MERGE_COUNT} × ${it.n} became`, isNew);
 }
@@ -194,9 +194,9 @@ function doCraft(id) {
   if (st.locked) return toast(`Workshop level ${relic.lvl} needed`, 'bad');
   if (!st.ready) return toast('You are missing an ingredient', 'bad');
   st.parts.forEach(p => removeItem(p.pick.id));
-  const isNew = !P.dex[relic.id];
-  addItem(relic.id);
+  const isNew = addItem(relic.id);
   P.stats.crafted = (P.stats.crafted || 0) + 1;
+  earn(CO.craft, 'Relic crafted');
   save(); checkAch(); renderAll();
   showMade(relic, 'You crafted', isNew);
 }
@@ -213,7 +213,9 @@ function showMade(it, lead, isNew) {
 let P = null, KEY = null, inviteCount = 0;
 function newPlayer(name, ref) {
   return { name, created: Date.now(), inv: {}, dex: {}, ach: {}, exch: {}, title: 'Newcomer', ref: ref || '', refPaid: 0, refSent: 0,
-           stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0 }, daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0 };
+           stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0, walkedM: 0, walkPaid: 0, coinsEarned: 0, coinsSpent: 0, bought: 0 },
+           daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
+           coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} } };
 }
 function normalize(p) {
   p.inv = p.inv || {}; p.dex = p.dex || {}; p.ach = p.ach || {}; p.exch = p.exch || {};
@@ -221,6 +223,9 @@ function normalize(p) {
   p.daily = Object.assign({ n: 0, last: '', streak: 0, max: 0 }, p.daily || {}); p.title = p.title || 'Newcomer';
   p.refPaid = p.refPaid || 0;                       // referrals already rewarded
   p.feedSeen = p.feedSeen || 0;                     // newest activity already shown
+  p.coins = p.coins || 0;
+  p.shop = p.shop && typeof p.shop === 'object' ? p.shop : { day: 0, bought: {} };
+  p.shop.bought = p.shop.bought || {};
   return p;
 }
 let saveTimer = null;
@@ -239,7 +244,13 @@ function snapshotOf(key) {
   try { const o = JSON.parse(localStorage.getItem('sw_snap_' + key) || 'null'); return o && o.p ? o : null; } catch (e) { return null; }
 }
 function packCount() { return Object.values(P.inv).reduce((a, b) => a + b, 0); }
-function addItem(id) { P.inv[id] = (P.inv[id] || 0) + 1; if (!P.dex[id]) P.dex[id] = Date.now(); }
+function addItem(id, bought) {
+  P.inv[id] = (P.inv[id] || 0) + 1;
+  if (P.dex[id]) return false;
+  P.dex[id] = Date.now();
+  if (!bought) earn(CO.newItem, 'New for your shelf');
+  return true;
+}
 function removeItem(id) { if (!P.inv[id]) return false; if (--P.inv[id] <= 0) delete P.inv[id]; return true; }
 
 // A starting kit, so a new player can trade at the very first chest they find.
@@ -277,6 +288,7 @@ async function refreshInvites(quiet) {
     const items = referralRewards(paid, n), gained = n - paid;
     P.refPaid = n;
     items.forEach(it => addItem(it.id));
+    earn(CO.referral * gained, gained === 1 ? 'Friend joined' : gained + ' friends joined');
     save(); checkAch(); renderAll();
     if (!quiet) showReferralReward(gained, items);
   } else { checkAch(); renderHeader(); }
@@ -289,6 +301,228 @@ function showReferralReward(count, items) {
     <p class="fine" style="margin-top:12px">${esc(String(inviteCount))} friend${inviteCount === 1 ? '' : 's'} invited so far.</p>
     <button class="btn big" id="okBtn" style="margin-top:12px">Nice</button></div>`,
     m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => { FX.sfx('reveal', best.r); FX.confetti(['#4aa3ff', '#ffd98a', '#ffffff'], 50); }, 250); });
+}
+
+// ---------------- trail coins ----------------
+// Earned for walking and for playing; spent in the shop on the exact items a merge or a
+// relic recipe is waiting on. Every amount lives in config.js under COINS.
+const CO = Object.assign({ start: 50, mile: 100, daily: 20, dailyStreak: 5, dailyBig: 75, chestNew: 15, trade: 10, gift: 5,
+  hide: 10, newItem: 3, merge: 5, craft: 25, achievement: 50, referral: 200 }, C.COINS || {});
+const PRICE = C.PRICES || [40, 110, 280, 700, 1800];
+const priceOf = it => PRICE[it.r] || PRICE[0];
+const fmtC = n => Math.round(n).toLocaleString();
+
+function earn(n, why) {
+  n = Math.round(n || 0); if (!(n > 0) || !P) return;
+  P.coins = (P.coins || 0) + n;
+  P.stats.coinsEarned = (P.stats.coinsEarned || 0) + n;
+  coinPop(n, why);
+  renderCoins();
+}
+function spend(n) {
+  if ((P.coins || 0) < n) return false;
+  P.coins -= n; P.stats.coinsSpent = (P.stats.coinsSpent || 0) + n;
+  renderCoins(); return true;
+}
+function renderCoins() {
+  const c = $('#hCoins'); if (!c || !P) return;
+  c.textContent = '🪙 ' + fmtC(P.coins || 0);
+  c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump');
+  if (view === 'shop') renderShopHead();
+}
+// "+15 🪙 New chest" just under the coin counter. Several earned at once (a trade that is
+// also new for your shelf) become one pop rather than a stack of them.
+let popAcc = null;
+function coinPop(n, why) {
+  if (!popAcc) popAcc = { n: 0, why: [] };
+  popAcc.n += n; if (why && !popAcc.why.includes(why)) popAcc.why.push(why);
+  clearTimeout(popAcc.t);
+  popAcc.t = setTimeout(flushPop, 350);
+}
+function flushPop() {
+  const a = popAcc; popAcc = null; if (!a || !a.n) return;
+  // never on top of the chest opening - wait for it to finish
+  if (document.querySelector('.cine')) { popAcc = a; popAcc.t = setTimeout(flushPop, 400); return; }
+  const host = $('#coinpops'); if (!host) return;
+  const el = document.createElement('div'); el.className = 'coinpop';
+  el.innerHTML = `<b>+${fmtC(a.n)} 🪙</b>${a.why.length ? `<small>${esc(a.why.slice(0, 2).join(' · '))}</small>` : ''}`;
+  host.appendChild(el);
+  setTimeout(() => el.remove(), 2300);
+}
+
+// What everyone who played before coins existed has already earned, paid once.
+function retroCoins() {
+  const s = statView();
+  return s.visited * CO.chestNew + s.ex * CO.trade + s.logins * CO.daily + Object.keys(P.ach).length * CO.achievement +
+         s.given * CO.gift + s.hidden * CO.hide + s.merges * CO.merge + s.crafted * CO.craft + s.dex * CO.newItem +
+         (P.refPaid || 0) * CO.referral;
+}
+function showCoinIntro(amt, tries) {
+  if ($('#modal').classList.contains('open')) { if ((tries || 0) < 20) setTimeout(() => showCoinIntro(amt, (tries || 0) + 1), 1500); return; }
+  modal(`<div style="text-align:center"><div class="coinbig">🪙</div><h3>Trail Coins are here</h3>
+    <p class="sub">Walk with Stashwalk open and you earn ${CO.mile} coins a mile. Chests, trades, daily rewards and
+    achievements pay out too. Spend them in the new <b>Shop</b> on the exact items your merges and recipes need.</p>
+    <p class="sub" style="color:var(--acc2)"><b>+${fmtC(amt)} 🪙</b> for everything you have already done.</p>
+    <div class="trade"><button class="btn ghost" id="okBtn">Later</button><button class="btn" id="goShop">Open the shop</button></div></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; $('#goShop', m).onclick = () => { closeModal(); show('shop'); };
+           FX.sfx('coin'); });
+}
+
+// ---------------- miles walked ----------------
+// The browser only reports position while the game is open, so this counts walking done
+// with Stashwalk on screen. GPS drifts a few metres even when you stand still, so a move only
+// counts once it beats both a floor and the reported uncertainty, and anything faster than
+// a run is treated as a vehicle and ignored.
+const MI = 1609.344, WALK_STEP = MI / 10;
+let walkLast = null;
+function trackWalk(lat, lon, acc, manual) {
+  if (manual || DEV || !P) { walkLast = null; return; }
+  if (!(acc > 0) || acc > 30) return;                          // too fuzzy to trust
+  const now = Date.now();
+  if (!walkLast) { walkLast = { lat, lon, t: now, acc }; return; }
+  const d = dist(walkLast, { lat, lon });
+  if (d < Math.max(10, (acc + walkLast.acc) * 0.6)) return;     // still within the wobble: keep the anchor
+  const speed = d / Math.max(1, (now - walkLast.t) / 1000);
+  walkLast = { lat, lon, t: now, acc };
+  if (speed > (C.MAX_WALK_MPS || 6.5)) return;                  // driving, or a GPS jump
+  addWalk(d);
+}
+function addWalk(m) {
+  P.stats.walkedM = (P.stats.walkedM || 0) + m;
+  const paid = P.stats.walkPaid || 0, steps = Math.floor(P.stats.walkedM / WALK_STEP);
+  if (steps > paid) {
+    P.stats.walkPaid = steps;
+    earn((steps - paid) * CO.mile / 10, 'Walking');
+    if (Math.floor(steps / 10) > Math.floor(paid / 10)) {
+      const miles = Math.floor(steps / 10);
+      toast(`🥾 ${miles} mile${miles === 1 ? '' : 's'} walked!`, 'gold'); FX.sfx('ach'); FX.vibe([20, 30, 20]);
+    }
+    checkAch(); save();
+  } else snapshot();
+  renderWalk();
+}
+const milesOf = () => (P.stats.walkedM || 0) / MI;
+function renderWalk() {
+  const el = $('#walkTxt'); if (el && P) el.textContent = '🥾 ' + milesOf().toFixed(2) + ' mi';
+  if (view === 'shop') renderShopHead();
+}
+
+// ---------------- shop ----------------
+// Today's stock is the same for every player and turns over at midnight UTC; a Legendary
+// joins it on Sundays. Under it, offers built from your own pack: the copies that would
+// finish a merge, and the ingredients your relic recipes are still missing.
+const SHOP_SLOTS = [0, 0, 0, 1, 1, 2, 2, 3];
+const sundayShop = d => (d + 4) % 7 === 0;                     // utcDay 3 was a Sunday
+function dailyStock() {
+  const day = utcDay(), R = rng(hashStr('stashwalk-shop-' + day)), seen = new Set();
+  const want = SHOP_SLOTS.slice(); if (sundayShop(day)) want[want.length - 1] = 4;
+  return want.map(r => {
+    let it, guard = 0;
+    do { it = BY_R[r][Math.floor(R() * BY_R[r].length)]; } while (seen.has(it.base) && ++guard < 40);
+    seen.add(it.base); return it;
+  });
+}
+function shopState() {
+  const d = utcDay();
+  if (P.shop.day !== d) P.shop = { day: d, bought: {} };
+  return P.shop;
+}
+function mergeOffers() {
+  const lvl = workshopLevel(), out = [];
+  Object.keys(P.inv).forEach(id => {
+    const it = BY_ID[id]; if (!it || it.crafted || it.r >= 4) return;
+    const have = P.inv[id]; if (have >= C.MERGE_COUNT) return;
+    const need = C.MERGE_COUNT - have, to = BY_R[it.r + 1].find(x => x.base === it.base);
+    if (to) out.push({ it, to, need, have, price: Math.round(priceOf(it) * need * 0.9), locked: lvl < it.r + 1 });
+  });
+  return out.sort((a, b) => a.locked - b.locked || a.need - b.need || b.it.r - a.it.r || a.it.n.localeCompare(b.it.n)).slice(0, 6);
+}
+function craftOffers() {
+  const lvl = workshopLevel(), out = [], seen = new Set();
+  RELICS.filter(r => r.lvl <= Math.max(1, lvl + 1)).sort((a, b) => a.lvl - b.lvl).forEach(rel => {
+    const st = recipeState(rel);
+    st.parts.forEach(pt => {
+      if (pt.pick || !pt.sample || seen.has(pt.sample.id)) return;
+      seen.add(pt.sample.id);
+      out.push({ it: pt.sample, relic: rel, price: priceOf(pt.sample), locked: st.locked });
+    });
+  });
+  return out.slice(0, 8);
+}
+function timeToReset() {
+  const ms = (utcDay() + 1) * 86400000 - Date.now(), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+function renderShopHead() {
+  const el = $('#shopHead'); if (!el) return;
+  const into = ((P.stats.walkedM || 0) % WALK_STEP) / WALK_STEP;
+  el.innerHTML = `<div class="shopbal"><span>Balance</span><b>🪙 ${fmtC(P.coins || 0)}</b></div>
+    <div class="walkcard"><div><b>🥾 ${milesOf().toFixed(2)} mi</b><small>walked with Stashwalk open</small></div>
+      <div class="walknext"><span class="bar"><i style="width:${Math.round(into * 100)}%"></i></span>
+      <small>+${CO.mile / 10} 🪙 in ${((1 - into) * 0.1).toFixed(2)} mi</small></div></div>`;
+}
+function renderShop() {
+  const st = shopState(), stock = dailyStock(), merges = mergeOffers(), crafts = craftOffers();
+  const can = n => (P.coins || 0) >= n;
+  let h = `<div class="card shoptop" id="shopHead"></div>`;
+  h += `<h2 class="sec">Today's stock <small>new stock in ${timeToReset()}${sundayShop(utcDay()) ? ' · 🌟 Sunday Legendary' : ''}</small></h2>
+    <div class="grid shopgrid">${stock.map((it, i) => {
+      const sold = !!st.bought[i];
+      return `<div class="shopit${sold ? ' sold' : ''}${!sold && !can(priceOf(it)) ? ' dear' : ''}" data-buy="d${i}">${tile(it)}
+        <b class="price">${sold ? 'Sold' : '🪙 ' + fmtC(priceOf(it))}</b></div>`;
+    }).join('')}</div>`;
+  h += `<h2 class="sec">Finish a merge <small>${C.MERGE_COUNT} of a kind → next rarity</small></h2>`;
+  h += merges.length ? merges.map((o, i) => `<div class="offer${can(o.price) ? '' : ' dear'}" data-buy="m${i}">
+      ${tile(o.it, { count: o.need })}<div class="otxt"><b>${o.need} × ${esc(o.it.n)}</b>
+      <small>You have ${o.have}. ${o.locked ? `Workshop level ${o.it.r + 1} merges it.` : `Makes a ${esc(o.to.n)}.`}</small></div>
+      <button class="btn sm">🪙 ${fmtC(o.price)}</button></div>`).join('')
+    : `<div class="empty">Pick up an item and its merge partners will be offered here.</div>`;
+  h += `<h2 class="sec">Recipe ingredients <small>relics are still craft-only</small></h2>`;
+  h += crafts.length ? crafts.map((o, i) => `<div class="offer${can(o.price) ? '' : ' dear'}" data-buy="c${i}">
+      ${tile(o.it)}<div class="otxt"><b>${esc(o.it.n)}</b>
+      <small>For ${esc(o.relic.n)}${o.locked ? ` · Workshop level ${o.relic.lvl}` : ''}</small></div>
+      <button class="btn sm">🪙 ${fmtC(o.price)}</button></div>`).join('')
+    : `<div class="empty">You have everything your available recipes need.</div>`;
+  h += `<div class="card earnlist"><b>Ways to earn</b><ul>
+    <li>🥾 Walking <b>${CO.mile} / mile</b></li><li>🎁 Daily reward <b>${CO.daily}–${CO.daily + CO.dailyStreak * 6 + CO.dailyBig}</b></li>
+    <li>📦 A chest you have never opened <b>${CO.chestNew}</b></li><li>🔁 Trade <b>${CO.trade}</b></li>
+    <li>🏅 Achievement <b>${CO.achievement}</b></li><li>⚒️ Craft a relic <b>${CO.craft}</b></li>
+    <li>🫳 Hide a chest <b>${CO.hide}</b></li><li>🎁 Leave a gift <b>${CO.gift}</b></li>
+    <li>🔗 Merge <b>${CO.merge}</b></li><li>✨ New for your shelf <b>${CO.newItem}</b></li>
+    <li>💌 Friend joins <b>${CO.referral}</b></li></ul></div>`;
+  $('#shopBox').innerHTML = h;
+  renderShopHead();
+  $('#shopBox').onclick = e => {
+    const b = e.target.closest('[data-buy]'); if (!b) return;
+    const k = b.dataset.buy, i = +k.slice(1);
+    if (k[0] === 'd') { if (st.bought[i]) return toast('Sold out until tomorrow'); const it = stock[i]; buyDialog([it.id], priceOf(it), it.n, () => { shopState().bought[i] = 1; }); }
+    if (k[0] === 'm') { const o = merges[i]; buyDialog(Array(o.need).fill(o.it.id), o.price, `${o.need} × ${o.it.n}`); }
+    if (k[0] === 'c') { const o = crafts[i]; buyDialog([o.it.id], o.price, o.it.n); }
+  };
+}
+function buyDialog(ids, price, label, after) {
+  const it = BY_ID[ids[0]], short = (P.coins || 0) < price;
+  modal(`<div style="text-align:center">${revealBox(it)}<h3 style="margin-top:12px">${esc(label)}</h3>${badge(it.r)}
+    <p class="sub" style="margin-top:10px">${short ? `You need <b>${fmtC(price - (P.coins || 0))}</b> more 🪙 – about ${((price - (P.coins || 0)) / CO.mile).toFixed(1)} mi of walking.`
+      : `Balance after: 🪙 ${fmtC((P.coins || 0) - price)}`}</p>
+    <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button>
+    <button class="btn" id="buyGo" ${short ? 'disabled' : ''}>Buy for 🪙 ${fmtC(price)}</button></div></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; $('#buyGo', m).onclick = () => doBuy(ids, price, label, after); });
+}
+function doBuy(ids, price, label, after) {
+  if (needNet('Buying')) return;
+  if (!spend(price)) return toast('Not enough coins', 'bad');
+  const fresh = ids.filter((id, i) => ids.indexOf(id) === i && !P.dex[id]);
+  ids.forEach(id => addItem(id, true));
+  if (after) after();
+  P.stats.bought = (P.stats.bought || 0) + 1;
+  save(); checkAch(); renderAll();
+  const it = BY_ID[ids[0]];
+  FX.sfx('coin');
+  modal(`<div style="text-align:center"><p class="sub">Bought</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(label)}</h3>${badge(it.r)}
+    <p class="sub" style="margin-top:10px">${fresh.length ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
+    <button class="btn big" id="okBtn">Great</button></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => FX.reveal(it.r, $('.tile.big', m), true), 200); });
 }
 
 // ---------------- achievements ----------------
@@ -332,6 +566,11 @@ ach('craft5', 'Workshop Regular', 'Relicsmith', 'Craft 5 relics', s => s.crafted
 ach('craftall', 'Complete Workshop', 'Grand Artificer', 'Collect every relic', s => s.relics, RELICS.length || 20, '🏵️');
 ach('inv1', 'Bring a Friend', 'Recruiter', 'Invite 1 friend who joins', s => s.invites, 1, '💌');
 ach('inv5', 'Party Leader', 'Party Leader', 'Invite 5 friends who join', s => s.invites, 5, '🎉');
+ach('walk1', 'First Mile', 'Wanderer', 'Walk 1 mile with Stashwalk open', s => s.miles, 1, '🚶');
+ach('walk10', 'Ten-Miler', 'Trail Legs', 'Walk 10 miles', s => s.miles, 10, '👟');
+ach('walk50', 'Long Haul', 'Long Hauler', 'Walk 50 miles', s => s.miles, 50, '🏔️');
+ach('walk100', 'Century Walker', 'Centurion', 'Walk 100 miles', s => s.miles, 100, '💯');
+ach('shop1', 'Window Shopper', 'Shopper', 'Buy something from the shop', s => s.bought, 1, '🛍️');
 // The locked achievement you are nearest to finishing - something concrete to aim at.
 function nextAch() {
   const s = statView();
@@ -356,11 +595,13 @@ function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
   return { logins: P.daily.n, streak: P.daily.max || 0, visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
-           given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length };
+           given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
+           miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0 };
 }
 function checkAch() {
   const s = statView(), got = [];
   ACH.forEach(a => { if (!P.ach[a.id] && a.get(s) >= a.goal) { P.ach[a.id] = Date.now(); got.push(a); } });
+  got.forEach(a => earn(CO.achievement, a.n));
   got.forEach((a, i) => setTimeout(() => { toast(`🏅 ${a.n} – new title: ${a.t}`, 'gold'); FX.sfx('ach'); FX.confetti(['#ffb02e', '#ffd98a', '#ffffff'], 45); FX.vibe([30, 40, 30]); }, 600 * i + 400));
   if (got.length) save();
 }
@@ -585,6 +826,12 @@ async function resume() {
 }
 async function boot(key, p) {
   KEY = key; P = p;
+  if (P.coinsV !== 1 && !OFFLINE) {
+    const amt = retroCoins();
+    P.coins = (P.coins || 0) + amt; P.stats.coinsEarned = (P.stats.coinsEarned || 0) + amt; P.coinsV = 1;
+    save();
+    setTimeout(() => showCoinIntro(amt), 5200);
+  }
   try { inviteCount = (await DB.get('invites/' + key)) || 0; } catch (e) { inviteCount = 0; }
   setTimeout(() => refreshInvites(), 1200);
   setTimeout(() => checkFeed(), 2200);
@@ -612,6 +859,8 @@ function show(v) {
 function renderHeader() {
   $('#hAv').textContent = P.name[0].toUpperCase(); $('#hName').textContent = P.name; $('#hTitle').textContent = P.title;
   $('#hStreak').textContent = '🔥 ' + (streakNow()); $('#hPack').textContent = '🎒 ' + packCount();
+  $('#hCoins').textContent = '🪙 ' + fmtC(P.coins || 0);
+  renderWalk();
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
 function streakNow() { return P.daily.last && daysBetween(P.daily.last, dayKey()) <= 1 ? P.daily.streak : 0; }
@@ -623,6 +872,7 @@ function renderAll() {
   else if (view === 'dex') renderDex();
   else if (view === 'daily') renderDaily();
   else if (view === 'craft') renderCraft();
+  else if (view === 'shop') renderShop();
   else if (view === 'me') renderMe();
 }
 
@@ -665,6 +915,7 @@ function showStats() {
       ${row('Chests hidden', s.hidden)}${row('Friends invited', s.invites)}
       ${row('Daily rewards', s.logins)}${row('Best streak', s.streak)}
       ${row('Legendaries', s.byR[4])}${row('Achievements', got.length + ' / ' + ACH.length)}
+      ${row('Miles walked', milesOf().toFixed(2))}${row('Coins earned', fmtC(s.coinsEarned))}
     </div>
     ${n ? `<div class="lbl">Closest achievement</div>
       <div class="nextbig"><i>${n.a.icon}</i><div><b>${esc(n.a.n)}</b><small>${esc(n.a.d)}</small>
@@ -768,11 +1019,15 @@ function renderDex() {
 // ---- daily ----
 const TIERS = [0,0,1,0,1,0,2, 0,1,1,0,1,0,3, 1,0,2,1,0,1,3, 1,1,2,1,2,1,4];
 const TIER_ICON = ['🎁', '🎁', '💙', '💜', '🌟'];
+const dailyCoins = (streak, day) => CO.daily + CO.dailyStreak * Math.min(Math.max(0, streak - 1), 6) + (day % 7 === 0 ? CO.dailyBig : 0);
 function renderDaily() {
   const n = P.daily.n, claimed = P.daily.last === dayKey(), cycleDay = (n % 28) + 1, cycle = Math.floor(n / 28) + 1;
   let h = `<div class="claim"><div style="font-size:13px;color:var(--mut)">Cycle ${cycle} · Streak 🔥 ${streakNow()}</div>`;
   if (claimed) h += `<h3 style="margin:6px 0">Come back tomorrow!</h3><p class="fine" style="margin:0">Next up: Day ${cycleDay} – ${RAR[TIERS[cycleDay - 1]].n} reward.</p>`;
-  else h += `<h3 style="margin:6px 0">Day ${cycleDay} reward is ready</h3><p class="fine">${RAR[TIERS[cycleDay - 1]].n} item inside</p><button class="btn big" id="claimBtn">Claim reward</button>`;
+  else {
+    const nextStreak = P.daily.last && daysBetween(P.daily.last, dayKey()) === 1 ? P.daily.streak + 1 : 1;
+    h += `<h3 style="margin:6px 0">Day ${cycleDay} reward is ready</h3><p class="fine">${RAR[TIERS[cycleDay - 1]].n} item + ${fmtC(dailyCoins(nextStreak, cycleDay))} 🪙</p><button class="btn big" id="claimBtn">Claim reward</button>`;
+  }
   h += '</div><div class="cal">';
   for (let d = 1; d <= 28; d++) {
     const t = TIERS[d - 1], done = d < cycleDay || (d === cycleDay && claimed && false), now = d === cycleDay && !claimed;
@@ -788,10 +1043,12 @@ function claimDaily() {
   const day = (P.daily.n % 28) + 1, it = rollItem(Math.random, 1, TIERS[day - 1]);
   P.daily.streak = P.daily.last && daysBetween(P.daily.last, today) === 1 ? P.daily.streak + 1 : 1;
   P.daily.max = Math.max(P.daily.max || 0, P.daily.streak); P.daily.n++; P.daily.last = today;
-  const isNew = !P.dex[it.id]; addItem(it.id); save(); checkAch(); renderAll();
+  const coins = dailyCoins(P.daily.streak, day);
+  const isNew = addItem(it.id); earn(coins, 'Daily reward'); save(); checkAch(); renderAll();
   FX.sfx('daily');
   modal(`<div style="text-align:center"><p class="sub">Day ${day} reward</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
+    <p class="coinline">+${fmtC(coins)} 🪙${P.daily.streak > 1 ? ` <small>streak ${P.daily.streak}</small>` : ''}</p>
     <button class="btn big" id="okBtn">Nice!</button></div>`, m => { $('#okBtn', m).onclick = closeModal; FX.reveal(it.r, $('.tile.big', m), true); });
 }
 
@@ -1115,6 +1372,7 @@ function gpsMsg(t, cls) {
   if (cls === 'bad') FX.geiger(Infinity, 1); const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
+  trackWalk(lat, lon, pos.acc, manual);
   const accFt = pos.acc * FT;
   gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(accFt)} ft${manual ? '' : coarseHint(accFt)}`,
          accFt >= C.COARSE_FT ? 'bad' : 'ok');
@@ -1500,10 +1758,13 @@ async function openChest(id) {
   try {
     const day = utcDay();
     const r = await DB.tx('chests/' + id, cur => !cur ? makeChest(meta, day) : ((cur.day || 0) < day ? refreshChest(cur, meta, day) : undefined));
-    P.stats.visited[id] = 1; save(); checkAch();
+    const firstVisit = !P.stats.visited[id];
+    P.stats.visited[id] = 1; save();
     if (locTarget === id) stopLocate(true);
     await cine.done;
     showChest(meta, r.value);
+    if (firstVisit) earn(CO.chestNew, 'New chest');
+    checkAch(); save();
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
     // before we ask, or the server correctly sees no chest yet - so write it, then report, and
     // only mark it done once the server confirms.
@@ -1571,6 +1832,7 @@ async function doTrade(meta, slot, getId, giveId) {
   } catch (e) { return toast('Trade failed: ' + e.message, 'bad'); }
   removeItem(giveId); const isNew = !P.dex[getId]; addItem(getId);
   P.exch[meta.id] = dayKey(); P.stats.ex = (P.stats.ex || 0) + 1; if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
+  earn(CO.trade, 'Trade');
   const it = BY_ID[getId]; save(); checkAch(); renderAll();
   FX.sfx('coin');
   modal(`<div style="text-align:center"><p class="sub">You traded and received</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
@@ -1618,6 +1880,7 @@ async function doDonate(meta, slot, giveId) {
   removeItem(giveId);
   P.stats.given = (P.stats.given || 0) + 1;
   if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
+  earn(CO.gift, 'Gift left');
   save(); checkAch(); renderAll(); closeModal();
   toast('\u{1F381} ' + BY_ID[giveId].n + ' left for the next explorer', 'gold');
   FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 22);
@@ -1676,6 +1939,7 @@ function hideDialog() {
         await DB.set('cells/' + cellKey(pos.lat, pos.lon) + '/' + id, { name, lat: pos.lat, lon: pos.lon, kind: 'player' });
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
       removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
+      earn(CO.hide, 'Chest hidden');
       chests.push(Object.assign({ src: 'player' }, meta)); save(); checkAch(); closeModal(); refreshChestViews(); renderAll(); toast('📦 Chest hidden! Other players can find it now.', 'gold'); FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 30);
     };
   });
@@ -1825,6 +2089,9 @@ function wire() {
   };
   FX.onChange(sync); sync();
   $('#hWho').onclick = showStats;
+  $('#hCoins').onclick = () => show('shop');
+  // walking only pays out every tenth of a mile, so write what is in hand when the app is put away
+  document.addEventListener('visibilitychange', () => { if (document.hidden && P && KEY) save(); });
   $('#hSnd').onclick = () => { FX.set('snd', !FX.prefs.snd); FX.sfx('coin'); };
   $('#hFs').onclick = () => FX.toggleFs();
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };
@@ -1860,5 +2127,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
