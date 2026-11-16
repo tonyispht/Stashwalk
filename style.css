@@ -739,3 +739,14 @@ button.phead{width:100%;background:none;border:0;color:inherit;font:inherit;text
 .panel.closed .chev{transform:rotate(-90deg)}
 .panel.closed #nearby{display:none}
 .panel.closed .phead{padding-bottom:10px}
+
+/* ================= hidden chests ================= */
+.searchzone{animation:searchPulse 2.6s ease-in-out infinite}
+@keyframes searchPulse{50%{fill-opacity:.13;stroke-opacity:1}}
+.searchq{background:none;border:0}
+.searchq span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#2c2209e6;border:1.5px dashed #f2b84b;
+  color:var(--acc2);font-weight:800;font-size:13px}
+.hiddenhint{margin:0 12px 8px;padding:7px 10px;border-radius:10px;background:#2a2108;border:1px dashed #f2b84b77;color:#ecd9a8;font-size:12px;line-height:1.4}
+.dhide{background:#2c2209;border:1px solid #f2b84b88;color:var(--acc2);border-radius:99px;padding:3px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.ios .searchzone{animation:none}
+@media (prefers-reduced-motion:reduce){.searchzone{animation:none}}

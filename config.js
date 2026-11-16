@@ -15,7 +15,14 @@ window.GEO_CONFIG = {
   DEFAULT_RADIUS_MI: 25,   // starting value of the "show chests within" slider (1-250 mi)
   MAX_PLACES: 150,         // most built-in chest locations shown at once
   COARSE_FT: 400,          // worse than this and the device is not giving real GPS
-  GEIGER_FT: 250,          // proximity ticking starts this far from a chest
+  GEIGER_FT: 500,          // the locator is offered (and ticks) this far from a chest
+  // ---- Hidden chests ----
+  // Chests stay off the map until you find them. Undiscovered ones show only as a dashed
+  // search circle that contains the chest somewhere inside (never at the centre).
+  SEARCH_RADIUS_FT: 300,   // size of a search circle
+  SEARCH_SHOW_MI: 1,       // search circles appear for undiscovered chests this close to you (or the drone)
+  SEARCH_MAX: 12,          // and at most this many at once
+  DISCOVER_FT: 60,         // get this close (on foot, or with the drone) and the chest is found for good
   MAX_TILES: 40,           // most map tiles loaded at once (each is one degree square)
   STARTER_ITEMS: 3,        // items a brand-new player begins with
   MERGE_COUNT: 3,          // identical items needed to merge one rarity upward
@@ -64,6 +71,8 @@ window.GEO_CONFIG = {
   DRONE_SPEED_MPS: 45,     // slowest top speed (about 100 mph); bigger ranges fly faster...
   DRONE_EDGE_S: 30,        // ...so the edge of its range is about this many seconds away at full stick
   DRONE_LISTEN_FT: 400,    // the locator's hot/cold scale while flying
+  DRONE_HIDES_PER_DAY: 2,  // chests the drone can hide in a day (these count toward HIDE_PER_DAY too)
+  DRONE_HIDE_NEAR_M: 250,  // the drone can only hide a chest this close to a park, campground or other public place (0 = anywhere)
 
   // ---- Road coins ----
   // Coins scattered along real streets and trails (OpenStreetMap data via OpenFreeMap - free,

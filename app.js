@@ -215,7 +215,7 @@ function newPlayer(name, ref) {
   return { name, created: Date.now(), inv: {}, dex: {}, ach: {}, exch: {}, title: 'Newcomer', ref: ref || '', refPaid: 0, refSent: 0,
            stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0, walkedM: 0, walkPaid: 0, coinsEarned: 0, coinsSpent: 0, bought: 0 },
            daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
-           coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} } };
+           coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} }, found: {} };
 }
 // One trade per chest per TRADE_COOLDOWN_MIN. P.exch[chestId] is when you last traded there.
 const TRADE_MS = () => (C.TRADE_COOLDOWN_MIN || 60) * 60000;
@@ -235,6 +235,7 @@ function normalize(p) {
   p.refPaid = p.refPaid || 0;                       // referrals already rewarded
   p.feedSeen = p.feedSeen || 0;                     // newest activity already shown
   p.coins = p.coins || 0;
+  p.found = p.found && typeof p.found === 'object' ? p.found : {};
   p.shop = p.shop && typeof p.shop === 'object' ? p.shop : { day: 0, bought: {} };
   p.shop.bought = p.shop.bought || {};
   return p;
@@ -691,7 +692,7 @@ function droneScan(force) {
     fly.local = local;
     // markers for what the player's own list does not already show
     fly.layer.clearLayers();
-    local.filter(p => !known.has(p.id)).slice(0, 80).forEach(c => {
+    local.filter(p => !known.has(p.id) && isFound(p)).slice(0, 80).forEach(c => {
       L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'cm far', html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] }),
         interactive: false, keyboard: false }).addTo(fly.layer);
     });
@@ -711,6 +712,11 @@ function probeFromDrone() {
   let best = null, bd = Infinity;
   droneCandidates().forEach(c => { const d = dist(fly.ll, c); if (d < bd) { bd = d; best = c; } });
   fly.near = best ? { c: best, d: bd } : null;
+  if (best && !isFound(best) && bd <= Math.max(DRONE_REACH(), DISCOVER_M())) {
+    if (!chests.some(c => c.id === best.id)) chests.push(Object.assign({}, best));
+    discover(best);
+  }
+  refreshSearch();
   const gap = best ? Math.max(0, bd - DRONE_REACH()) : Infinity;
   FX.geiger(gap, DRONE_LISTEN());
   renderDroneHud();
@@ -721,11 +727,13 @@ function renderDroneHud(build) {
   if (build || !hud.firstChild) {
     hud.hidden = false;
     hud.innerHTML = `<div class="dhead"><i>🛸</i><b>Drone · Lv ${d.lvl}</b>
+        <button class="dhide" id="droneHide" title="Hide a chest where the drone is">🫳 Hide</button>
         <button class="locx" id="droneHome" title="Bring it home">✕</button></div>
       <div class="drange"><span class="bar"><i id="dRange"></i></span><small id="dRangeTxt"></small></div>
       <div class="locbar"><i id="dFill"></i></div>
       <div class="locfoot"><span id="dWord">Searching…</span><span id="dName"></span></div>`;
     $('#droneHome', hud).onclick = () => endFlight('home');
+    $('#droneHide', hud).onclick = () => { if (fly) hideDialog({ lat: fly.ll.lat, lon: fly.ll.lon }, true); };
   }
   const rf = Math.min(1, out / R);
   const ri = $('#dRange', hud); if (ri) { ri.style.width = Math.round(rf * 100) + '%'; ri.style.background = rf > .9 ? 'var(--bad)' : '#7ff0ff'; }
@@ -736,11 +744,11 @@ function renderDroneHud(build) {
   const [, word, col] = heatOf(frac);
   const f = $('#dFill', hud); f.style.width = Math.round((1 - frac) * 100) + '%'; f.style.background = col; f.style.boxShadow = '0 0 12px ' + col;
   const w = $('#dWord', hud); w.textContent = gap <= 0 ? 'In reach' : word; w.style.color = col;
-  $('#dName', hud).textContent = `${n.c.name} · ${fmtFt(n.d)}`;
+  $('#dName', hud).textContent = `${isFound(n.c) ? n.c.name : 'Hidden chest'} · ${fmtFt(n.d)}`;
   document.body.style.setProperty('--sonar', (0.42 + frac * 1.5).toFixed(2) + 's');
   document.body.style.setProperty('--sonarc', col);
   if (openBtn) {
-    const inReach = gap <= 0;
+    const inReach = gap <= 0 && isFound(n.c);
     openBtn.hidden = !inReach;
     if (inReach) { openBtn.textContent = `📦 Open ${n.c.name}`; openBtn.dataset.id = n.c.id; }
   }
@@ -770,7 +778,10 @@ function wireDrone() {
   const up = e => { if (e.pointerId !== pid) return; pid = null; joy.x = joy.y = 0; knob.style.transform = ''; };
   pad.addEventListener('pointerup', up); pad.addEventListener('pointercancel', up);
   $('#droneOpen').onclick = droneOpen;
-  addEventListener('keydown', e => { if (fly && /^(Arrow|[wasd]$)/.test(e.key)) { keys[e.key] = true; e.preventDefault(); } });
+  addEventListener('keydown', e => {
+    if (!fly || (e.target && e.target.closest && e.target.closest('input,textarea,select'))) return;
+    if (/^(Arrow|[wasd]$)/.test(e.key)) { keys[e.key] = true; e.preventDefault(); }
+  });
   addEventListener('keyup', e => { keys[e.key] = false; });
 }
 function renderDroneBtn() {
@@ -1055,6 +1066,63 @@ function rcFlyIn(m, byDrone) {
     }
   };
   requestAnimationFrame(step);
+}
+
+// ---------------- hidden chests ----------------
+// A chest stays off the map and out of the list until you find it. Undiscovered chests near
+// you show only as a dashed search circle with the chest somewhere inside (never the centre);
+// the locator does the last stretch. Walk - or fly the drone - within DISCOVER_FT and it is
+// yours to see from then on. Chests you have opened before, and ones you hid, count as found.
+const SEARCH_R = () => (C.SEARCH_RADIUS_FT || 300) * 0.3048;
+const DISCOVER_M = () => (C.DISCOVER_FT || 60) * 0.3048;
+const isFound = c => !!(c && P && ((P.found && P.found[c.id]) || (P.stats && P.stats.visited && P.stats.visited[c.id])));
+function discover(c) {
+  if (!c || isFound(c)) return false;
+  (P.found = P.found || {})[c.id] = 1;
+  toast(`📍 Found ${c.name}!`, 'gold'); FX.sfx('ping'); FX.vibe([30, 40, 30]);
+  save(); refreshChestViews(); if (view === 'explore') renderNearby(true);
+  return true;
+}
+function discoverAround(at, rM) {
+  if (!P || !at) return;
+  for (const c of chests) if (!isFound(c) && dist(at, c) <= rM) discover(c);
+}
+// a fixed, per-chest offset so the circle never gives the exact spot away
+function searchCenter(c) {
+  const h = hashStr('stashwalk-search|' + c.id), a = (h % 3600) / 10 * Math.PI / 180;
+  const f = 0.18 + ((h >>> 12) % 1000) / 1000 * 0.52, r = SEARCH_R() * f;
+  return { lat: c.lat + r * Math.sin(a) / 111320, lon: c.lon + r * Math.cos(a) / (111320 * Math.cos(c.lat * Math.PI / 180)) };
+}
+let searchLayer = null, searchAt = null;
+function refreshSearch(force) {
+  if (!map || !window.L || !P || !pos) return;
+  if (!searchLayer) searchLayer = L.layerGroup().addTo(map);
+  const at = fly ? fly.ll : pos;
+  if (!force && searchAt && dist(searchAt, at) < 60) return;
+  searchAt = { lat: at.lat, lon: at.lon };
+  const pool = fly ? droneCandidates() : chests, lim = (C.SEARCH_SHOW_MI || 1) * MI;
+  const near = pool.filter(c => !isFound(c)).map(c => ({ c, d: dist(at, c) })).filter(x => x.d <= lim)
+    .sort((a, b) => a.d - b.d).slice(0, C.SEARCH_MAX || 12);
+  searchLayer.clearLayers();
+  near.forEach(({ c }) => {
+    const ctr = searchCenter(c);
+    L.circle([ctr.lat, ctr.lon], { radius: SEARCH_R(), color: '#f2b84b', weight: 1.6, opacity: .75, dashArray: '5 7',
+      fillColor: '#f2b84b', fillOpacity: .07, interactive: false, className: 'searchzone' }).addTo(searchLayer);
+    L.marker([ctr.lat, ctr.lon], { icon: L.divIcon({ className: 'searchq', html: '<span>?</span>', iconSize: [22, 22] }), interactive: false, keyboard: false }).addTo(searchLayer);
+  });
+}
+function fogIntroOnce() {
+  try { if (localStorage.getItem('sw_fogintro')) return; localStorage.setItem('sw_fogintro', '1'); } catch (e) { return; }
+  const go = (tries) => {
+    if ($('#modal').classList.contains('open')) { if (tries < 20) setTimeout(() => go(tries + 1), 1500); return; }
+    modal(`<div style="text-align:center"><div class="coinbig">🔍</div><h3>Chests are hidden now</h3>
+      <p class="sub">A chest stays off the map until you find it. Dashed circles show roughly where undiscovered
+      chests are – the chest is somewhere inside. Head in, start the 📡 locator and follow the ticking.</p>
+      <p class="sub">Get within ${C.DISCOVER_FT || 60} ft (or fly the drone close) and it's found for good.
+      Chests you've already opened stay on your map.</p>
+      <button class="btn big" id="okBtn">Let's hunt</button></div>`, m => { $('#okBtn', m).onclick = closeModal; });
+  };
+  setTimeout(() => go(0), 3000);
 }
 
 // ---------------- achievements ----------------
@@ -1374,6 +1442,7 @@ async function boot(key, p) {
   setTimeout(() => checkFeed(), 2200);
   setTimeout(() => maybeNudgeInstall(), 4000);
   setTimeout(() => nudgeRecovery(), 2600);
+  fogIntroOnce();
   snapshot();                       // keep a copy on the device for offline launches
   $('#auth').hidden = true; $('#app').hidden = false;
   $('#dev').hidden = !DEV;
@@ -1492,7 +1561,7 @@ async function runDiag() {
       const by = {}; within.forEach(p => by[p.kind] = (by[p.kind] || 0) + 1);
       if (within.length) lines.push(Object.keys(by).sort((a, b) => by[b] - by[a]).map(k => `  ${kindInfo(k)[0]}: ${by[k]}`).join('\n'));
       const nr = nearestLoaded(pos.lat, pos.lon);
-      if (nr) lines.push(`nearest: ${nr.name} - ${fmtDist(nr.d)}`);
+      if (nr) lines.push(`nearest: ${isFound(nr) ? nr.name : 'an undiscovered chest'} - ${fmtDist(nr.d)}`);
     } else lines.push('turn on GPS to see what is near you');
   } catch (e) { lines.push('place tiles failed to load: ' + (e.message || e)); }
   if (DB.osmBase) {
@@ -1940,7 +2009,7 @@ function setPos(lat, lon, acc, manual) {
     updateRadiusCircle();
   }
   if (!lastLoad || dist(pos, lastLoad) > Math.min(1000, Math.max(250, radiusM() * 0.3))) loadNearby();
-  if (view === 'explore') renderNearby(); markNear();
+  markNear(); if (view === 'explore') renderNearby();
 }
 // ---------------- chest locator ----------------
 // The proximity ticking used to switch itself on whenever a chest was close, which
@@ -1977,20 +2046,20 @@ function startLocate(c) {
 let locShape = '';
 function renderLocator(c, gap) {
   const box = $('#locator'); if (!box) return;
-  const shape = locMode + '|' + (c ? c.id : '');
+  const shape = locMode + '|' + (c ? c.id + (isFound(c) ? '+' : '?') : '');
   if (!c) { box.hidden = true; box.innerHTML = ''; locShape = ''; return; }
   box.hidden = false;
   if (shape !== locShape) {
     locShape = shape;
     box.innerHTML = locMode === 'on'
       ? `<div class="locon">
-           <div class="lochead"><i class="locping">📡</i><b>${esc(c.name)}</b>
+           <div class="lochead"><i class="locping">📡</i><b>${isFound(c) ? esc(c.name) : 'Hidden chest'}</b>
              <button class="locx" id="locStop" title="Stop locating">✕</button></div>
            <div class="locbar"><i id="locFill"></i></div>
            <div class="locfoot"><span id="locWord">Searching…</span><span id="locDist"></span></div>
          </div>`
       : `<button class="locoffer" id="locGo"><i>📡</i>
-           <div><b>Locator</b><small>home in on ${esc(c.name)}</small></div><u>Start</u></button>`;
+           <div><b>${isFound(c) ? 'Locator' : 'A hidden chest is close'}</b><small>${isFound(c) ? 'home in on ' + esc(c.name) : 'start the locator to find it'}</small></div><u>Start</u></button>`;
     const go = $('#locGo', box); if (go) go.onclick = () => startLocate(c);
     const stop = $('#locStop', box); if (stop) stop.onclick = () => stopLocate();
   }
@@ -2007,10 +2076,18 @@ function renderLocator(c, gap) {
 }
 
 function markNear() {
+  discoverAround(pos, DISCOVER_M());                 // on foot, even while the drone is up
   if (fly) return;                                   // the drone is doing the locating
-  // Nearest chest decides what the locator offers, and how fast it ticks once it is on.
-  let best = Infinity, nearest = null;
-  chests.forEach(c => { const d = dist(pos, c) - unlockM(c); if (d < best) { best = d; nearest = c; } });
+  refreshSearch();
+  // The locator is offered for the nearest undiscovered chest in range - that is what needs
+  // finding - and otherwise for the nearest one you already know.
+  let best = Infinity, nearest = null, bestU = Infinity, nearestU = null;
+  chests.forEach(c => {
+    const d = dist(pos, c) - unlockM(c);
+    if (d < best) { best = d; nearest = c; }
+    if (!isFound(c) && d < bestU) { bestU = d; nearestU = c; }
+  });
+  if (nearestU && bestU <= LOC_RANGE()) { nearest = nearestU; best = bestU; }
 
   if (locMode === 'on') {
     const t = chests.find(c => c.id === locTarget);
@@ -2114,13 +2191,13 @@ async function loadNearby() {
   if (!BLOCKED.size) await loadBlocked();
   try { await loadTiles(pos.lat, pos.lon, lastR); placesWithin(pos.lat, pos.lon, lastR).forEach(p => { if (!BLOCKED.has(p.id)) found.set(p.id, p); }); }
   catch (e) { osmErr = 'place list failed to load'; tileIndexErr = e.message || 'error'; lastLoad = null; }
-  chests = [...found.values()]; refreshChestViews();
+  chests = [...found.values()]; discoverAround(pos, DISCOVER_M()); refreshChestViews();
   try {                                            // chests other players hid, from the shared database
     const res = await DB.getMany('cells', cellsAround(pos.lat, pos.lon, lastR));
     res.forEach(o => o && Object.keys(o).forEach(id => { if (!BLOCKED.has(id)) found.set(id, Object.assign({ id, src: 'player' }, o[id])); }));
     chests = [...found.values()];
   } catch (e) {}
-  loading = false; refreshChestViews();
+  loading = false; discoverAround(pos, DISCOVER_M()); refreshChestViews();
 }
 function updateRadiusCircle() {
   if (!map || !window.L || !pos) return;
@@ -2134,7 +2211,8 @@ function inRadius() {
 function refreshChestViews() {
   if (view === 'explore') renderNearby();
   if (!map || !window.L) return; markers.forEach(m => m.remove()); markers = [];
-  inRadius().slice(0, 200).forEach(c => {
+  refreshSearch(true);
+  inRadius().filter(isFound).slice(0, 200).forEach(c => {
     const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
     markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => {
       const d = dist(pos, c);
@@ -2160,20 +2238,31 @@ function renderNearby(force) {
   clearTimeout(renderTimer); renderTimer = null;
   lastRender = now;
   const el = $('#nearby');
-  const hb = $('#hereBar'), here = pos ? inRadius().filter(c => c.d <= unlockM(c)) : [];
+  const hb = $('#hereBar'), here = pos ? inRadius().filter(c => c.d <= unlockM(c) && isFound(c)) : [];
   hb.hidden = !here.length;
   if (here.length) hb.innerHTML = '<b>📦 ' + esc(here[0].name) + '</b><button class="btn sm" data-open="' + esc(here[0].id) + '">Open chest</button>';
   if (!pos) { el.innerHTML = '<div class="empty">Turn on GPS to see chests around you.</div>'; $('#radInfo').textContent = ''; return; }
-  const all = inRadius(), list = all.slice(0, 60), today = dayKey();
-  $('#radInfo').textContent = `${all.length} chest${all.length === 1 ? '' : 's'} within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
-  $('#panelTitle').textContent = all.length ? `${all.length} chest${all.length === 1 ? '' : 's'} nearby` : 'Chests nearby';
+  const every = inRadius(), all = every.filter(isFound), unknown = every.length - all.length, list = all.slice(0, 60);
+  $('#radInfo').textContent = `${unknown} undiscovered within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
+  $('#panelTitle').textContent = all.length ? `${all.length} found nearby` : 'Chests nearby';
+  const hint = $('#hiddenHint');
+  if (hint) {
+    hint.hidden = !unknown;
+    if (unknown) hint.textContent = `🔍 ${unknown} undiscovered chest${unknown === 1 ? '' : 's'} within ${radiusMi} mi – head for a dashed circle on the map, then start the 📡 locator.`;
+  }
+  if (!list.length && unknown) {
+    // Nothing found yet, but there is plenty out there - point at the hunt, never at a chest.
+    lastRowIds = '';
+    el.innerHTML = `<div class="empty">You haven't found any chests around here yet.<br>Follow a dashed circle on the map – the chest is somewhere inside.</div>`;
+    return;
+  }
   if (!list.length) {
     lastRowIds = '';
     // Look past the radius so an empty screen still points somewhere worth walking.
     const nearest = [nearestLoaded(pos.lat, pos.lon)].concat(
       chests.map(c => Object.assign({}, c, { d: dist(pos, c) }))).filter(Boolean).sort((a, b) => a.d - b.d)[0];
     el.innerHTML = '<div class="empty">' + (loading ? 'Searching for parks and campgrounds…' : osmErr ? `Couldn't load park data (${esc(osmErr)}). Tap <b>Refresh chests</b> to try again.` : `No chests within ${radiusMi} mi.`) +
-      (nearest ? `<br><br>Nearest chest: <b>${esc(nearest.name)}</b> – ${fmtDist(nearest.d)} away.<br>Slide the radius up to see it, or hide the first chest here!` : '') + '</div>'; return;
+      (nearest ? `<br><br>The nearest chest is ${fmtDist(nearest.d)} away${isFound(nearest) ? ` – <b>${esc(nearest.name)}</b>` : ''}.<br>Slide the radius up to reach it, or hide the first chest here!` : '') + '</div>'; return;
   }
   // the trade countdown is part of the key, so a row updates when you trade there and as the minutes tick down
   const rowIds = list.map(c => c.id + (P.exch[c.id] ? ':' + Math.ceil(tradeWait(c.id) / 60000) : '')).join(',');
@@ -2471,30 +2560,41 @@ function flagDialog(meta) {
 }
 
 // ---- hiding a chest ----
-function hideDialog() {
+function hideDialog(spot, byDrone) {
   if (needNet('Hiding a chest')) return;
   if (!pos) return toast('Turn on GPS first', 'bad');
-  const today = dayKey(); if (P.hideDay !== today) { P.hideDay = today; P.hideN = 0; }
+  const at = spot || pos;
+  const today = dayKey(); if (P.hideDay !== today) { P.hideDay = today; P.hideN = 0; P.hideDroneN = 0; }
   if (P.hideN >= C.HIDE_PER_DAY) return toast(`You can hide ${C.HIDE_PER_DAY} chests per day`, 'bad');
-  const near = chests.find(c => dist(pos, c) < C.MIN_CHEST_GAP_M); if (near) return toast(`Too close to "${near.name}" – walk ${C.MIN_CHEST_GAP_M} m away`, 'bad');
+  const droneMax = C.DRONE_HIDES_PER_DAY == null ? 2 : C.DRONE_HIDES_PER_DAY;
+  if (byDrone && (P.hideDroneN || 0) >= droneMax) return toast(`The drone can hide ${droneMax} chest${droneMax === 1 ? '' : 's'} a day – hide more on foot`, 'bad');
+  const pool = byDrone && fly ? droneCandidates() : chests;
+  const near = pool.find(c => dist(at, c) < C.MIN_CHEST_GAP_M);
+  if (near) return toast(`Too close to ${isFound(near) ? '"' + near.name + '"' : 'another chest'} – move ${C.MIN_CHEST_GAP_M} m away`, 'bad');
+  // Nobody is standing there to judge a remote spot, so the drone may only hide next to a known
+  // park, campground or other public place - never in somebody's back garden.
+  if (byDrone && C.DRONE_HIDE_NEAR_M) {
+    const ok = pool.some(c => c.src !== 'player' && dist(at, c) <= C.DRONE_HIDE_NEAR_M) || placesWithin(at.lat, at.lon, C.DRONE_HIDE_NEAR_M).length;
+    if (!ok) return toast('The drone can only hide chests in or beside a park, campground or other public place', 'bad');
+  }
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r); if (!mine.length) return toast('You need an item to hide inside', 'bad');
   let give = null;
-  modal(`<h3>🫳 Hide a chest here</h3><p class="sub">Public places only (parks, campgrounds, trails). The chest is stocked with a few random items plus the one you leave inside – yours stays until another player swaps it.</p>
-    <input id="hName" placeholder="Name this spot (e.g. Pine Loop Campsite 12)" maxlength="40">
+  modal(`<h3>🫳 ${byDrone ? 'Hide a chest where the drone is' : 'Hide a chest here'}</h3><p class="sub">${byDrone ? `Drone hides left today: ${droneMax - (P.hideDroneN || 0)}. ` : ''}Public places only (parks, campgrounds, trails). The chest is stocked with a few random items plus the one you leave inside – yours stays until another player swaps it.</p>
+    <input id="hideName" placeholder="Name this spot (e.g. Pine Loop Campsite 12)" maxlength="40">
     <div class="lbl">Item to leave inside</div><div class="grid" id="hGrid">${mine.map(it => tile(it, { count: P.inv[it.id] })).join('')}</div>
     <div class="trade"><button class="btn ghost" id="cancelBtn">Cancel</button><button class="btn" id="goHide" disabled>Hide it</button></div>`, m => {
-    $('#cancelBtn', m).onclick = closeModal; const go = $('#goHide', m), nm = $('#hName', m);
+    $('#cancelBtn', m).onclick = closeModal; const go = $('#goHide', m), nm = $('#hideName', m);
     const upd = () => { go.disabled = !(give && nm.value.trim().length >= 3); };
     nm.oninput = upd; $('#hGrid', m).onclick = e => { const t = e.target.closest('.tile'); if (!t) return; give = t.dataset.id; $$('#hGrid .tile', m).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     go.onclick = async () => {
       go.disabled = true; const id = 'u_' + Date.now().toString(36) + randHex().slice(0, 4), name = nm.value.trim();
-      const meta = { id, name, lat: pos.lat, lon: pos.lon, kind: 'player' }, day = utcDay(), ch = makeChest(meta, day);
+      const meta = { id, name, lat: at.lat, lon: at.lon, kind: 'player' }, day = utcDay(), ch = makeChest(meta, day);
       const slot = SLOT_IDS[C.CHEST_SLOTS]; ch.items[slot] = { id: give, by: P.name, at: Date.now() };
       try {
         await DB.set('chests/' + id, ch);
-        await DB.set('cells/' + cellKey(pos.lat, pos.lon) + '/' + id, { name, lat: pos.lat, lon: pos.lon, kind: 'player' });
+        await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, { name, lat: at.lat, lon: at.lon, kind: 'player' });
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
-      removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
+      removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; (P.found = P.found || {})[id] = 1; if (byDrone) P.hideDroneN = (P.hideDroneN || 0) + 1; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
       earn(CO.hide, 'Chest hidden');
       chests.push(Object.assign({ src: 'player' }, meta)); save(); checkAch(); closeModal(); refreshChestViews(); renderAll(); toast('📦 Chest hidden! Other players can find it now.', 'gold'); FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 30);
     };
@@ -2668,7 +2768,7 @@ function wire() {
   $('#gpsBtn').onclick = () => startGPS();
   $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
-  $('#hideBtn').onclick = hideDialog;
+  $('#hideBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';
   rad.oninput = () => { radiusMi = +rad.value; $('#rVal').textContent = radiusMi + ' mi'; updateRadiusCircle(); refreshChestViews(); };
   rad.onchange = () => {
@@ -2697,5 +2797,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

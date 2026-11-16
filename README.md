@@ -346,6 +346,34 @@ better (no coarse-location scooping, no DEV teleports). The drone uses `droneMag
 up `dronePerDay` coins a day (0 removes the limit); walking has no limit. Nothing is collected
 offline. Achievements at 100 and 1,000 coins picked up.
 
+## Hidden chests
+Chests stay off the map and out of the nearby list until you find them.
+
+- **Search circles.** Undiscovered chests near you (within `SEARCH_SHOW_MI`, the nearest
+  `SEARCH_MAX`) show only as a dashed circle of `SEARCH_RADIUS_FT` with a "?" in the middle. The
+  chest is always inside but never at the centre: each circle is offset from its chest by a fixed
+  18-70% of the radius, seeded from the chest id (`searchCenter()`), so it is the same every time
+  and for every player. While the drone is up, the circles follow the drone.
+- **Locator.** Within `GEIGER_FT` (now 500 ft) of an undiscovered chest the locator panel offers
+  itself as "A hidden chest is close" - it never names a chest you have not found. The heat bar,
+  distance, ticking and sonar work as before; it prefers the nearest undiscovered chest over ones
+  you already know.
+- **Finding.** Walk within `DISCOVER_FT` (60 ft), or fly the drone within reach, and the chest is
+  found for good (`P.found`): a "Found ..." toast, then it appears on the map and in the list with
+  its name. It is also checked the moment the chest list loads, so standing still on a chest works.
+  Chests you have opened before (`P.stats.visited`) and chests you hid count as found.
+- **The list** shows found chests; the header and a hint line count the undiscovered ones. Nothing
+  - the empty-list message, the locator, the drone HUD, the diagnostics - names an undiscovered
+  chest.
+
+## Hiding with the drone
+The drone HUD has a "🫳 Hide" button that hides a chest where the drone is hovering, using the
+normal hide dialog. `DRONE_HIDES_PER_DAY` (2) a day, and they count toward `HIDE_PER_DAY` too. The
+usual 20 m gap from other chests applies. Because nobody is standing there to judge the spot, a
+remote hide must be within `DRONE_HIDE_NEAR_M` (250 m) of a known park, campground or other public
+place from the bundled list - so the drone cannot drop a chest in someone's back garden. Set it to
+0 to allow anywhere.
+
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
 version-stamped, but index.html itself can be served from cache and pin a player to an old build;
