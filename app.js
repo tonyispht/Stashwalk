@@ -1183,7 +1183,8 @@ function renderAdmin() {
   else if (!adminData) { el.innerHTML = `<b>🛡️ Admin</b><p class="fine">Loading…</p>`; }
   else {
     const d = adminData, perm = window.Notification ? Notification.permission : 'unsupported', T = d.totals || {}, now = Date.now();
-    const stat = (n, l) => `<div class="astat"><b>${typeof n === 'number' ? fmtC(n) : n}</b><small>${l}</small></div>`;
+    const pill = (n, l) => `<div class="apill"><b>${typeof n === 'number' ? fmtC(n) : n}</b><span>${l}</span></div>`;
+    const srow = (ic, l, n) => `<div class="arow"><span>${ic} ${l}</span><b>${typeof n === 'number' ? fmtC(n) : n}</b></div>`;
     const ppl = (d.players || (d.onlineList || []).map(u => ({ name: u.name, seen: u.t })));
     const online = p => p.seen && now - p.seen < 150000;
     const q = admQ.trim().toLowerCase();
@@ -1198,10 +1199,13 @@ function renderAdmin() {
         <small>${c.at ? ago(c.at) : ''} <button class="btn sm ghost danger" data-rm="${esc(c.id)}" data-cell="${esc(c.cell)}">Remove</button></small></div>`).join('') || '<p class="fine">No hidden chests yet.</p>'}</div>`;
     else body = `<div class="alist">${(d.events || []).slice(0, 40).map(e => `<div><span>${e.k === 'signup' ? '🆕 ' + uLink(e.u, ' created an account') : e.k === 'online' ? '🟢 ' + uLink(e.u, ' came online') : esc(evText(e))}</span><small>${ago(e.t)}</small></div>`).join('') || '<p class="fine">Nothing yet.</p>'}</div>`;
     el.innerHTML = `<div class="ahead"><b>🛡️ Admin</b><button class="btn sm ghost" id="admRefresh">↻</button></div>
-      <div class="astats">${stat(d.accounts, 'accounts')}${stat(d.online, 'online now')}${stat(d.active24h, 'last 24 h')}${stat(d.active7d, 'last 7 days')}</div>
-      ${d.totals ? `<div class="astats">${stat(d.signups7d || 0, 'new this week')}${stat(T.opened, 'chests opened')}${stat(T.trades, 'trades')}${stat(T.miles, 'miles walked')}
-        ${stat(T.coinsEarned, 'coins earned')}${stat(T.items, 'items collected')}${stat(T.crafted + T.merges, 'merges + crafts')}${stat(T.roadCoins, 'road coins')}
-        ${stat(d.chestsHidden, 'player chests')}${stat(d.chestsRemoved, 'removed')}${stat(T.drones, 'drones owned')}${stat(T.logins, 'daily claims')}</div>` :
+      <div class="apills">${pill(d.accounts, 'accounts')}${pill(d.online, 'online')}${pill(d.active24h, '24 h')}${pill(d.active7d, '7 days')}</div>
+      ${d.totals ? `<div class="arows">${srow('🆕', 'New this week', d.signups7d || 0)}${srow('📦', 'Chests opened', T.opened)}
+        ${srow('🔁', 'Trades', T.trades)}${srow('🚶', 'Miles walked', T.miles)}
+        ${srow('🪙', 'Coins earned', T.coinsEarned)}${srow('📚', 'Items collected', T.items)}
+        ${srow('⚒️', 'Merges + crafts', T.crafted + T.merges)}${srow('🧲', 'Road coins', T.roadCoins)}
+        ${srow('📍', 'Player chests', d.chestsHidden)}${srow('🗑️', 'Chests removed', d.chestsRemoved)}
+        ${srow('🛸', 'Drones owned', T.drones)}${srow('📅', 'Daily claims', T.logins)}</div>` :
         '<p class="fine">Update the Worker to see game-wide totals, player details and locations.</p>'}
       <div class="row2 admbtns"><button class="btn sm" id="admPlace">${admPlacing ? '✖ Stop placing' : '📍 Place chests on the map'}</button>
         <button class="btn sm ghost" id="admMap">${admShowAll ? '🙈 Hide players on map' : '🗺️ Show players on map'}</button></div>
