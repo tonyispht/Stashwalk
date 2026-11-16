@@ -59,6 +59,10 @@ window.FX = (function () {
       tone(N.G6, t + 1.06, 1.35, 'sine', 0.05);
       tone(N.C7, t + 1.14, 1.2, 'sine', 0.033);
     },
+    drone(t) {                              // rotors spinning up
+      noise(t, 0.7, 0.05, 300, 2400); tone(140, t, 0.6, 'sawtooth', 0.035, 420); tone(280, t + 0.05, 0.55, 'triangle', 0.03, 840);
+    },
+    dock(t) { tone(420, t, 0.45, 'sawtooth', 0.03, 120); noise(t, 0.4, 0.04, 2000, 300); tone(660, t + 0.35, 0.12, 'sine', 0.06); },
     coin(t) { tone(988, t, 0.09, 'square', 0.06); tone(1319, t + 0.08, 0.3, 'square', 0.06); tone(1976, t + 0.08, 0.25, 'sine', 0.05); },
     welcome(t) { [N.C5, N.E5, N.G5, N.C6].forEach((f, i) => tone(f, t + i * 0.09, 0.3, 'triangle', 0.1)); },
     daily(t) { [N.C5, N.E5, N.G5, N.C6, N.E6].forEach((f, i) => tone(f, t + i * 0.1, 0.35, 'triangle', 0.11)); tone(N.C6, t + 0.55, 0.9, 'sine', 0.07); },

@@ -399,6 +399,7 @@ function addWalk(m) {
     }
     checkAch(); save();
   } else snapshot();
+  if (hasDrone() && droneRecharge()) { renderDroneBtn(); if (view === 'shop') renderShop(); toast('🔋 Drone charge restored'); save(); }
   renderWalk();
 }
 const milesOf = () => (P.stats.walkedM || 0) / MI;
@@ -464,7 +465,7 @@ function renderShopHead() {
 function renderShop() {
   const st = shopState(), stock = dailyStock(), merges = mergeOffers(), crafts = craftOffers();
   const can = n => (P.coins || 0) >= n;
-  let h = `<div class="card shoptop" id="shopHead"></div>`;
+  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard();
   h += `<h2 class="sec">Today's stock <small>new stock in ${timeToReset()}${sundayShop(utcDay()) ? ' · 🌟 Sunday Legendary' : ''}</small></h2>
     <div class="grid shopgrid">${stock.map((it, i) => {
       const sold = !!st.bought[i];
@@ -492,6 +493,8 @@ function renderShop() {
     <li>💌 Friend joins <b>${CO.referral}</b></li></ul></div>`;
   $('#shopBox').innerHTML = h;
   renderShopHead();
+  const bd = $('#buyDrone'); if (bd) bd.onclick = buyDrone;
+  const ud = $('#upDrone'); if (ud) ud.onclick = upgradeDrone;
   $('#shopBox').onclick = e => {
     const b = e.target.closest('[data-buy]'); if (!b) return;
     const k = b.dataset.buy, i = +k.slice(1);
@@ -523,6 +526,246 @@ function doBuy(ids, price, label, after) {
     <p class="sub" style="margin-top:10px">${fresh.length ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
     <button class="btn big" id="okBtn">Great</button></div>`,
     m => { $('#okBtn', m).onclick = closeModal; setTimeout(() => FX.reveal(it.r, $('.tile.big', m), true), 200); });
+}
+
+// ---------------- drone ----------------
+// Bought and upgraded in the shop, flown from the map. You steer it with the stick in the
+// corner; the map follows it, and the locator's heat bar, ticking and sonar all run from
+// the drone instead of from you. Hover it close to a chest and it can open it for you.
+// It runs on a small battery: each chest it opens uses a charge, and walking puts charges
+// back - so it stretches your reach rather than replacing the walk.
+const DL = C.DRONE_LEVELS || [{ ft: 300, cost: 0 }];
+const DRONE_MAX = DL.length;
+const droneRangeM = lvl => (DL[Math.max(0, Math.min(DRONE_MAX, lvl) - 1)] || DL[0]).ft * 0.3048;
+const droneCap = lvl => (C.DRONE_CHARGES || 3) + (lvl >= 4 ? 1 : 0) + (lvl >= 8 ? 1 : 0);
+const DRONE_REACH = () => (C.DRONE_REACH_FT || 50) * 0.3048;
+const DRONE_LISTEN = () => (C.DRONE_LISTEN_FT || 400) * 0.3048;
+const CHARGE_M = () => (C.DRONE_CHARGE_MI || 0.25) * MI;
+const fmtFt = m => { const ft = m * FT; return ft >= 1000 ? (ft / 5280).toFixed(2) + ' mi' : Math.round(ft) + ' ft'; };
+
+function droneState() {
+  if (!P.drone || typeof P.drone !== 'object') P.drone = { lvl: 0, charges: 0, walkMark: 0, freeDay: 0 };
+  return P.drone;
+}
+const hasDrone = () => droneState().lvl > 0;
+// walking tops the battery up; one free flight a day if it is flat
+function droneRecharge() {
+  const d = droneState(); if (!d.lvl) return false;
+  const cap = droneCap(d.lvl), walked = P.stats.walkedM || 0;
+  let changed = false;
+  if (d.charges >= cap) { d.walkMark = walked; }
+  else while (walked - d.walkMark >= CHARGE_M() && d.charges < cap) { d.charges++; d.walkMark += CHARGE_M(); changed = true; }
+  if (d.charges >= cap) d.walkMark = walked;
+  const today = utcDay();
+  if (d.freeDay !== today) { d.freeDay = today; if (d.charges < 1) { d.charges = 1; changed = true; } }
+  return changed;
+}
+function nextChargeIn() {
+  const d = droneState(); if (d.charges >= droneCap(d.lvl)) return 0;
+  return Math.max(0, CHARGE_M() - ((P.stats.walkedM || 0) - d.walkMark));
+}
+function buyDrone() {
+  if (needNet('Buying')) return;
+  if (hasDrone()) return;
+  if (!spend(C.DRONE_PRICE || 500)) return toast('Not enough coins', 'bad');
+  const d = droneState();
+  d.lvl = 1; d.charges = droneCap(1); d.walkMark = P.stats.walkedM || 0; d.freeDay = utcDay();
+  P.stats.bought = (P.stats.bought || 0) + 1;
+  save(); checkAch(); renderAll(); FX.sfx('drone');
+  modal(`<div style="text-align:center">${droneSVG('big')}<h3>Your drone is ready</h3>
+    <p class="sub">Tap 🛸 on the map to launch it. Steer with the stick, follow the ticking, and hover it
+    over a chest to open it from up to ${fmtFt(droneRangeM(1))} away.</p>
+    <p class="fine">Each chest it opens uses a battery charge; walking ${C.DRONE_CHARGE_MI || 0.25} mi recharges one.</p>
+    <button class="btn big" id="okBtn">Let's fly</button></div>`, m => { $('#okBtn', m).onclick = closeModal; });
+}
+function upgradeDrone() {
+  if (needNet('Upgrading')) return;
+  const d = droneState(); if (!d.lvl || d.lvl >= DRONE_MAX) return;
+  const cost = DL[d.lvl].cost;
+  if (!spend(cost)) return toast('Not enough coins', 'bad');
+  const oldCap = droneCap(d.lvl);
+  d.lvl++;
+  if (droneCap(d.lvl) > oldCap) d.charges++;                   // a bigger battery arrives charged
+  save(); checkAch(); renderAll(); FX.sfx('ach'); FX.vibe([20, 30, 20]);
+  toast(`🛸 Drone level ${d.lvl} – range ${fmtFt(droneRangeM(d.lvl))}`, 'gold');
+}
+function droneSVG(cls) {
+  return `<svg class="dronesvg ${cls || ''}" viewBox="0 0 64 64" aria-hidden="true">
+    <g class="darms" stroke="#2c3e35" stroke-width="5" stroke-linecap="round"><path d="M14 14 L50 50 M50 14 L14 50"/></g>
+    <g class="drotors">${[[14, 14], [50, 14], [14, 50], [50, 50]].map(([x, y]) =>
+      `<g transform="translate(${x} ${y})"><circle r="11" fill="#9fd6ff22" stroke="#9fd6ff66" stroke-width="1"/>
+       <g class="rotor"><rect x="-10" y="-1.6" width="20" height="3.2" rx="1.6" fill="#dff1ff"/></g>
+       <circle r="2.6" fill="#1b2a22"/></g>`).join('')}</g>
+    <rect x="22" y="22" width="20" height="20" rx="6" fill="#f2b84b" stroke="#a8761f" stroke-width="2"/>
+    <circle cx="32" cy="32" r="4.5" fill="#1b2a22"/><circle cx="32" cy="32" r="2" fill="#7ff0ff"/>
+  </svg>`;
+}
+
+// ---- flight ----
+let fly = null;          // { ll:{lat,lon}, vx, vy, raf, last, marker, tether, ring, near, lastProbe }
+const joy = { x: 0, y: 0 };
+const keys = {};
+function launchDrone() {
+  if (fly) return;
+  if (!hasDrone()) return show('shop');
+  if (!pos || !map || !window.L) return toast('Turn on GPS first', 'bad');
+  if (needNet('Flying the drone')) return;
+  droneRecharge();
+  const d = droneState();
+  if (d.charges < 1) return toast(`🔋 Battery flat – walk ${fmtFt(nextChargeIn())} to recharge`, 'bad');
+  stopLocate(true);
+  const ll = { lat: pos.lat, lon: pos.lon };
+  const icon = L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneSVG()}</div>`, iconSize: [52, 52] });
+  fly = {
+    ll, raf: 0, last: performance.now(), near: null, lastProbe: 0,
+    marker: L.marker([ll.lat, ll.lon], { icon, zIndexOffset: 2000, interactive: false, keyboard: false }).addTo(map),
+    tether: L.polyline([[pos.lat, pos.lon], [ll.lat, ll.lon]], { color: '#7ff0ff', weight: 2, opacity: .55, dashArray: '4 6', interactive: false }).addTo(map),
+    ring: L.circle([pos.lat, pos.lon], { radius: droneRangeM(d.lvl), color: '#7ff0ff', weight: 1.5, opacity: .5, fillOpacity: .04, dashArray: '6 8', interactive: false }).addTo(map)
+  };
+  try { map.dragging.disable(); } catch (e) {}
+  if (map.getZoom() < 17) map.setView([ll.lat, ll.lon], 17, { animate: false });
+  document.body.classList.add('flying');
+  renderDroneHud(true);
+  FX.unlock(); FX.sfx('drone'); FX.vibe(40);
+  fly.raf = requestAnimationFrame(flyStep);
+}
+function endFlight(why) {
+  if (!fly) return;
+  cancelAnimationFrame(fly.raf);
+  try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); } catch (e) {}
+  fly = null; joy.x = joy.y = 0;
+  try { map.dragging.enable(); } catch (e) {}
+  document.body.classList.remove('flying');
+  document.body.style.removeProperty('--sonar');
+  FX.geiger(Infinity, 1);
+  const hud = $('#droneHud'); if (hud) { hud.hidden = true; hud.innerHTML = ''; }
+  if (why !== 'open') { FX.sfx('dock'); if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: true }); }
+  if (why === 'range') toast('🛸 Signal lost – the drone flew home');
+  markNear();
+}
+function flyStep(now) {
+  if (!fly) return;
+  const dt = Math.min(0.05, (now - fly.last) / 1000); fly.last = now;
+  // stick, or arrow keys / WASD on a computer
+  let ix = joy.x, iy = joy.y;
+  const kx = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0);
+  const ky = (keys.ArrowDown || keys.s ? 1 : 0) - (keys.ArrowUp || keys.w ? 1 : 0);
+  if (kx || ky) { const l = Math.hypot(kx, ky); ix = kx / l; iy = ky / l; }
+  const sp = (C.DRONE_SPEED_MPS || 22) * Math.min(1, Math.hypot(ix, iy));
+  if (sp > 0.01) {
+    const a = Math.atan2(iy, ix), mx = Math.cos(a) * sp * dt, my = -Math.sin(a) * sp * dt;   // screen up = north
+    let lat = fly.ll.lat + my / 111320, lon = fly.ll.lon + mx / (111320 * Math.cos(fly.ll.lat * Math.PI / 180));
+    // hold it inside the range circle around wherever you are now
+    const R = droneRangeM(droneState().lvl), d = dist(pos, { lat, lon });
+    if (d > R) { const k = R / d; lat = pos.lat + (lat - pos.lat) * k; lon = pos.lon + (lon - pos.lon) * k; }
+    fly.ll = { lat, lon };
+    fly.marker.setLatLng([lat, lon]);
+    const tilt = Math.max(-18, Math.min(18, ix * 18));
+    const w = fly.marker.getElement && fly.marker.getElement(); if (w) w.style.setProperty('--tilt', tilt + 'deg');
+    // keep the drone near the middle of the map without re-centring every frame
+    const cp = map.latLngToContainerPoint([lat, lon]), sz = map.getSize();
+    const ox = cp.x < sz.x * .3 ? cp.x - sz.x * .3 : cp.x > sz.x * .7 ? cp.x - sz.x * .7 : 0;
+    const oy = cp.y < sz.y * .3 ? cp.y - sz.y * .3 : cp.y > sz.y * .7 ? cp.y - sz.y * .7 : 0;
+    if (ox || oy) map.panBy([ox, oy], { animate: false });
+  }
+  fly.tether.setLatLngs([[pos.lat, pos.lon], [fly.ll.lat, fly.ll.lon]]);
+  fly.ring.setLatLng([pos.lat, pos.lon]);
+  if (now - fly.lastProbe > 160) { fly.lastProbe = now; probeFromDrone(); }
+  fly.raf = requestAnimationFrame(flyStep);
+}
+// the locator, run from the drone's position
+function probeFromDrone() {
+  if (!fly) return;
+  let best = null, bd = Infinity;
+  chests.forEach(c => { const d = dist(fly.ll, c); if (d < bd) { bd = d; best = c; } });
+  fly.near = best ? { c: best, d: bd } : null;
+  const gap = best ? Math.max(0, bd - DRONE_REACH()) : Infinity;
+  FX.geiger(gap, DRONE_LISTEN());
+  renderDroneHud();
+}
+function renderDroneHud(build) {
+  const hud = $('#droneHud'); if (!hud || !fly) return;
+  const d = droneState(), cap = droneCap(d.lvl), R = droneRangeM(d.lvl), out = dist(pos, fly.ll);
+  if (build || !hud.firstChild) {
+    hud.hidden = false;
+    hud.innerHTML = `<div class="dhead"><i>🛸</i><b>Drone · Lv ${d.lvl}</b>
+        <span class="dbat" title="Battery">${Array.from({ length: cap }, (_, i) => `<u class="${i < d.charges ? 'on' : ''}"></u>`).join('')}</span>
+        <button class="locx" id="droneHome" title="Bring it home">✕</button></div>
+      <div class="drange"><span class="bar"><i id="dRange"></i></span><small id="dRangeTxt"></small></div>
+      <div class="locbar"><i id="dFill"></i></div>
+      <div class="locfoot"><span id="dWord">Searching…</span><span id="dName"></span></div>`;
+    $('#droneHome', hud).onclick = () => endFlight('home');
+  }
+  const rf = Math.min(1, out / R);
+  const ri = $('#dRange', hud); if (ri) { ri.style.width = Math.round(rf * 100) + '%'; ri.style.background = rf > .9 ? 'var(--bad)' : '#7ff0ff'; }
+  const rt = $('#dRangeTxt', hud); if (rt) rt.textContent = `${fmtFt(out)} / ${fmtFt(R)}${rf > .97 ? ' · edge of range' : ''}`;
+  const n = fly.near, openBtn = $('#droneOpen');
+  if (!n) { $('#dWord', hud).textContent = 'No chests nearby'; if (openBtn) openBtn.hidden = true; return; }
+  const gap = Math.max(0, n.d - DRONE_REACH()), frac = Math.max(0, Math.min(1, gap / DRONE_LISTEN()));
+  const [, word, col] = heatOf(frac);
+  const f = $('#dFill', hud); f.style.width = Math.round((1 - frac) * 100) + '%'; f.style.background = col; f.style.boxShadow = '0 0 12px ' + col;
+  const w = $('#dWord', hud); w.textContent = gap <= 0 ? 'In reach' : word; w.style.color = col;
+  $('#dName', hud).textContent = `${n.c.name} · ${fmtFt(n.d)}`;
+  document.body.style.setProperty('--sonar', (0.42 + frac * 1.5).toFixed(2) + 's');
+  document.body.style.setProperty('--sonarc', col);
+  if (openBtn) {
+    const inReach = gap <= 0;
+    openBtn.hidden = !inReach;
+    if (inReach) { openBtn.textContent = `📦 Open ${n.c.name}`; openBtn.dataset.id = n.c.id; }
+  }
+}
+async function droneOpen() {
+  if (!fly || !fly.near || fly.near.d > DRONE_REACH()) return;
+  const d = droneState();
+  if (d.charges < 1) return toast('🔋 Battery flat', 'bad');
+  const id = fly.near.c.id;
+  d.charges--;
+  if (d.charges < droneCap(d.lvl) && (P.stats.walkedM || 0) - d.walkMark > CHARGE_M()) d.walkMark = P.stats.walkedM || 0;
+  P.stats.droneOpens = (P.stats.droneOpens || 0) + 1;
+  endFlight('open');
+  await openChest(id, true);
+  if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: false });
+}
+function wireDrone() {
+  const pad = $('#droneJoy'), knob = $('#droneKnob'); if (!pad) return;
+  let pid = null;
+  const R = () => pad.clientWidth / 2;
+  const move = e => {
+    const b = pad.getBoundingClientRect(), r = R();
+    let dx = e.clientX - (b.left + r), dy = e.clientY - (b.top + r);
+    const l = Math.hypot(dx, dy); if (l > r) { dx *= r / l; dy *= r / l; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    joy.x = dx / r; joy.y = dy / r;
+  };
+  pad.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); pid = e.pointerId; try { pad.setPointerCapture(pid); } catch (er) {} move(e); });
+  pad.addEventListener('pointermove', e => { if (e.pointerId === pid) { e.preventDefault(); move(e); } });
+  const up = e => { if (e.pointerId !== pid) return; pid = null; joy.x = joy.y = 0; knob.style.transform = ''; };
+  pad.addEventListener('pointerup', up); pad.addEventListener('pointercancel', up);
+  $('#droneOpen').onclick = droneOpen;
+  addEventListener('keydown', e => { if (fly && /^(Arrow|[wasd]$)/.test(e.key)) { keys[e.key] = true; e.preventDefault(); } });
+  addEventListener('keyup', e => { keys[e.key] = false; });
+}
+function renderDroneBtn() {
+  const b = $('#droneBtn'); if (!b || !P) return;
+  b.hidden = !hasDrone();
+  if (hasDrone()) { droneRecharge(); const d = droneState(); b.dataset.c = d.charges; b.title = `Launch drone (${d.charges} charge${d.charges === 1 ? '' : 's'})`; }
+}
+// the drone card at the top of the shop
+function droneCard() {
+  const d = droneState(), price = C.DRONE_PRICE || 500, can = n => (P.coins || 0) >= n;
+  if (!d.lvl) return `<div class="card dronecard"><div class="dtop">${droneSVG('shop')}<div><b>Scout drone</b>
+      <small>Fly it from the map to chests up to ${fmtFt(droneRangeM(1))} away and open them remotely.
+      Upgrades reach ${fmtFt(droneRangeM(DRONE_MAX))} at level ${DRONE_MAX}.</small></div></div>
+      <button class="btn big" id="buyDrone" ${can(price) ? '' : 'disabled'}>Buy drone · 🪙 ${fmtC(price)}</button>
+      ${can(price) ? '' : `<p class="fine" style="margin:6px 0 0;text-align:center">${fmtC(price - (P.coins || 0))} more 🪙 – about ${((price - (P.coins || 0)) / CO.mile).toFixed(1)} mi of walking</p>`}</div>`;
+  droneRecharge();
+  const cap = droneCap(d.lvl), next = d.lvl < DRONE_MAX ? DL[d.lvl] : null;
+  const pips = Array.from({ length: DRONE_MAX }, (_, i) => `<u class="${i < d.lvl ? 'on' : ''}"></u>`).join('');
+  return `<div class="card dronecard"><div class="dtop">${droneSVG('shop')}<div><b>Scout drone · level ${d.lvl}</b>
+      <span class="dlv">${pips}</span>
+      <small>Range ${fmtFt(droneRangeM(d.lvl))} · battery ${d.charges}/${cap}${d.charges < cap ? ` · next charge in ${fmtFt(nextChargeIn())} of walking` : ' · full'}</small></div></div>
+    ${next ? `<button class="btn big" id="upDrone" ${can(next.cost) ? '' : 'disabled'}>Upgrade to level ${d.lvl + 1} – range ${fmtFt(next.ft * 0.3048)} · 🪙 ${fmtC(next.cost)}</button>`
+           : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – a full mile of range.</p>`}</div>`;
 }
 
 // ---------------- achievements ----------------
@@ -571,6 +814,8 @@ ach('walk10', 'Ten-Miler', 'Trail Legs', 'Walk 10 miles', s => s.miles, 10, '�
 ach('walk50', 'Long Haul', 'Long Hauler', 'Walk 50 miles', s => s.miles, 50, '🏔️');
 ach('walk100', 'Century Walker', 'Centurion', 'Walk 100 miles', s => s.miles, 100, '💯');
 ach('shop1', 'Window Shopper', 'Shopper', 'Buy something from the shop', s => s.bought, 1, '🛍️');
+ach('drone1', 'Eye in the Sky', 'Drone Pilot', 'Open a chest with your drone', s => s.droneOpens, 1, '🛸');
+ach('drone8', 'Full Range', 'Sky Captain', 'Upgrade your drone to level 8', s => s.droneLvl, 8, '📡');
 // The locked achievement you are nearest to finishing - something concrete to aim at.
 function nextAch() {
   const s = statView();
@@ -596,7 +841,8 @@ function statView() {
   return { logins: P.daily.n, streak: P.daily.max || 0, visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
            given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
-           miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0 };
+           miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0,
+           droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0 };
 }
 function checkAch() {
   const s = statView(), got = [];
@@ -848,6 +1094,7 @@ async function boot(key, p) {
 // ---------------- navigation / rendering ----------------
 let view = 'explore';
 function show(v) {
+  if (v !== 'explore' && fly) endFlight('home');
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
   if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
@@ -860,7 +1107,7 @@ function renderHeader() {
   $('#hAv').textContent = P.name[0].toUpperCase(); $('#hName').textContent = P.name; $('#hTitle').textContent = P.title;
   $('#hStreak').textContent = '🔥 ' + (streakNow()); $('#hPack').textContent = '🎒 ' + packCount();
   $('#hCoins').textContent = '🪙 ' + fmtC(P.coins || 0);
-  renderWalk();
+  renderWalk(); renderDroneBtn();
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
 function streakNow() { return P.daily.last && daysBetween(P.daily.last, dayKey()) <= 1 ? P.daily.streak : 0; }
@@ -1225,10 +1472,13 @@ function registerSW() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && PWA.reg) PWA.reg.update().catch(() => {});
   });
+  // people leave this open on walks for a long time - look for a new build every 15 minutes too
+  setInterval(() => { if (PWA.reg && !document.hidden) PWA.reg.update().catch(() => {}); }, 15 * 60 * 1000);
 }
+// A new build is sitting ready: say so on every screen, with one tap to switch.
 function updateReady(worker) {
   PWA.waiting = worker;
-  toast('✨ New version ready – open Me to update');
+  const bar = $('#updBar'); if (bar) bar.hidden = false;
   if (!$('#v-me').hidden) renderMe();
 }
 function applyUpdate() {
@@ -1453,6 +1703,7 @@ function renderLocator(c, gap) {
 }
 
 function markNear() {
+  if (fly) return;                                   // the drone is doing the locating
   // Nearest chest decides what the locator offers, and how fast it ticks once it is on.
   let best = Infinity, nearest = null;
   chests.forEach(c => { const d = dist(pos, c) - unlockM(c); if (d < best) { best = d; nearest = c; } });
@@ -1748,10 +1999,10 @@ function chestCinematic(name) {
   return { done, kill: () => kill(true) };
 }
 
-async function openChest(id) {
+async function openChest(id, byDrone) {
   if (needNet('Opening a chest')) return;
   const meta = chests.find(c => c.id === id); if (!meta || !pos) return;
-  if (dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
+  if (!byDrone && dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
   // Start the opening straight away: it is the reward for the walk, and it hides the
   // round trip to the server behind something worth watching.
   const cine = chestCinematic(meta.name);
@@ -2090,6 +2341,9 @@ function wire() {
   FX.onChange(sync); sync();
   $('#hWho').onclick = showStats;
   $('#hCoins').onclick = () => show('shop');
+  $('#updNow').onclick = e => { e.target.disabled = true; e.target.textContent = 'Updating…'; applyUpdate(); };
+  $('#droneBtn').onclick = launchDrone;
+  wireDrone();
   // walking only pays out every tenth of a mile, so write what is in hand when the app is put away
   document.addEventListener('visibilitychange', () => { if (document.hidden && P && KEY) save(); });
   $('#hSnd').onclick = () => { FX.set('snd', !FX.prefs.snd); FX.sfx('coin'); };
@@ -2127,5 +2381,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, launchDrone, endFlight, droneOpen, droneState, droneRecharge, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

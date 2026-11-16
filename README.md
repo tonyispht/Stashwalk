@@ -278,6 +278,30 @@ Players from before coins existed get a one-off back payment for everything alre
 Relics are never sold. Bought items do not earn the new-for-your-shelf bonus. Buying needs a
 connection, like every other action that changes your record.
 
+## Drone
+Bought in the Shop (`DRONE_PRICE`), upgraded through `DRONE_LEVELS` - eight levels whose range
+grows from 300 ft to one mile. Once owned, a 🛸 button joins the map buttons; tap it to launch.
+
+While it is up, the map belongs to the drone: the stick in the bottom-left steers it (arrow keys
+or WASD on a computer), the map follows it, and a dashed circle around you marks its range - it
+cannot leave that circle, which moves with you. The HUD at the top shows battery, how far out it
+is against its range, and the locator's heat bar for the chest nearest the *drone*, with the
+same ticking and sonar rings as walking in, so you hunt with it exactly as you would on foot.
+Within `DRONE_REACH_FT` of a chest an "Open" button appears; that plays the full opening and the
+trade dialog as normal. The usual one-trade-per-chest-per-day rule still applies. Switching tabs
+or tapping ✕ brings it home.
+
+The battery is what keeps the drone from replacing the walk: `DRONE_CHARGES` charges (one more at
+levels 4 and 8), one used per chest opened, one restored every `DRONE_CHARGE_MI` walked, plus one
+free flight a day if it is flat. Flying around and bringing it home without opening anything
+costs nothing.
+
+## Update banner
+When the service worker finds a newer build, a bar appears under the header on every screen -
+"A new version of Stashwalk is ready" with an Update button that swaps to it and reloads. The
+game also checks for a new build every 15 minutes while open and whenever it comes back to the
+foreground, since people leave it running on walks.
+
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
 version-stamped, but index.html itself can be served from cache and pin a player to an old build;
