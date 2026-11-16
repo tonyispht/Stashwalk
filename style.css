@@ -347,7 +347,7 @@ ol.steps b{color:var(--ink)}
   color:var(--acc2);word-break:break-all;-webkit-user-select:all;user-select:all}
 button.linky{background:none;border:0;padding:0;color:var(--acc2);text-decoration:underline;font:inherit;cursor:pointer}
 
-/* ================= item plates (build 202611151415) =================
+/* ================= item plates (build 202611152030) =================
    Rarity sets the material, the base object sets --a/--sx/--sy/--ac, so the five
    versions of one object no longer look identical. All static paint. */
 .tile{background:
@@ -449,3 +449,145 @@ button.linky{background:none;border:0;padding:0;color:var(--acc2);text-decoratio
 .darkmap .cm.near span{background:#4a3a12;border-color:var(--acc)}
 .darkmap .leaflet-control-attribution{background:#0f1a14cc;color:#8fa39a}
 .darkmap .leaflet-control-attribution a{color:#b9cfc2}
+
+/* ================= full-screen chest opening =================
+   Sits under #fx (1100) on purpose, so the canvas particles burst over the top of it,
+   and over #modal (1000) because the dialog only appears once this has finished.
+   Timings come from two custom properties set in JS: --lid is when the lid starts
+   lifting, --flash is the instant it is fully open. */
+.cine{position:fixed;inset:0;z-index:1050;display:grid;place-items:center;overflow:hidden;
+  background:radial-gradient(ellipse at 50% 44%, #16331f 0%, #070f0a 58%, #040806 100%);
+  opacity:0;transition:opacity .18s ease-out;touch-action:none;cursor:pointer}
+.cine.go{opacity:1}
+.cine.out{opacity:0;pointer-events:none;transition:opacity .24s ease-in}
+
+.cine .rays{position:absolute;left:50%;top:44%;width:160vmax;height:160vmax;pointer-events:none;
+  transform:translate(-50%,-50%);
+  background:conic-gradient(from 0deg,
+    #ffd98a00 0 5deg, #ffd98a2b 7deg 11deg, #ffd98a00 13deg 27deg,
+    #ffd98a1f 29deg 32deg, #ffd98a00 34deg 51deg, #ffd98a26 53deg 58deg, #ffd98a00 60deg 72deg);
+  -webkit-mask:radial-gradient(circle, #000 4%, #000a 26%, transparent 58%);
+          mask:radial-gradient(circle, #000 4%, #000a 26%, transparent 58%);
+  opacity:0;animation:cineSpin 22s linear infinite, cineRaysIn .8s ease-out var(--flash) both}
+@keyframes cineSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes cineRaysIn{from{opacity:0}to{opacity:1}}
+
+.cine .stage{position:relative;width:280px;height:250px;display:grid;place-items:center}
+.cine .cchest{position:relative;width:224px;height:193px;overflow:visible;
+  animation:cineRattle .42s ease-in-out .1s both}
+@keyframes cineRattle{
+  0%,100%{transform:translateX(0) rotate(0)}
+  12%{transform:translateX(-3px) rotate(-1.6deg)}
+  28%{transform:translateX(4px) rotate(1.8deg)}
+  46%{transform:translateX(-4px) rotate(-1.8deg)}
+  64%{transform:translateX(3px) rotate(1.4deg)}
+  82%{transform:translateX(-2px) rotate(-.8deg)}}
+.cine .cshadow ellipse{fill:#000;opacity:.28}
+.cine .cdark{fill:#2a1a0c}
+
+/* the glow inside, revealed as the lid comes up; clipped to the opening so it can
+   never look painted onto the front of the chest */
+.cine .cinner{fill:url(#cglow);opacity:0;transform-box:fill-box;transform-origin:50% 100%;
+  transform:scaleY(.2);
+  animation:cineInner calc(var(--flash) - var(--lid) + 140ms) ease-out var(--lid) both}
+@keyframes cineInner{from{opacity:0;transform:scaleY(.18)}to{opacity:1;transform:scaleY(1)}}
+
+/* hinged on the back-top corner of the box, in SVG user units */
+.cine .clid{transform-origin:28px 88px;
+  animation:cineLid calc(var(--flash) - var(--lid)) cubic-bezier(.34,1.26,.52,1) var(--lid) both}
+@keyframes cineLid{from{transform:rotate(0)}to{transform:rotate(-62deg)}}
+
+/* light forcing its way out of the seam before the lid has moved at all */
+.cine .cseam{fill:#ffeab4;opacity:0;transform-box:fill-box;transform-origin:50% 50%;
+  transform:scaleX(.18);filter:drop-shadow(0 0 7px #f2b84b);
+  animation:cineSeam calc(var(--lid) - 60ms) ease-in .12s both}
+@keyframes cineSeam{0%{opacity:0;transform:scaleX(.14)}60%{opacity:.9}100%{opacity:1;transform:scaleX(1)}}
+
+/* the column of light climbing out of it */
+.cine .beam{position:absolute;left:50%;bottom:126px;width:250px;height:250px;pointer-events:none;
+  transform:translateX(-50%) scaleY(.1);transform-origin:50% 100%;
+  background:linear-gradient(to top, #ffd98acc 0%, #ffcf6e66 30%, #ffd98a00 88%);
+  -webkit-clip-path:polygon(38% 100%, 62% 100%, 96% 0, 4% 0);
+          clip-path:polygon(38% 100%, 62% 100%, 96% 0, 4% 0);
+  -webkit-mask:linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+          mask:linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+  opacity:0;animation:cineBeam 640ms ease-out var(--lid) both}
+@keyframes cineBeam{0%{opacity:0;transform:translateX(-50%) scaleY(.08)}
+  45%{opacity:1}100%{opacity:.78;transform:translateX(-50%) scaleY(1)}}
+
+.cine .mote{position:absolute;left:var(--mx);bottom:44%;width:7px;height:7px;border-radius:50%;
+  pointer-events:none;background:radial-gradient(circle,#fff 0%,#ffd98a 42%,#ffd98a00 72%);
+  opacity:0;animation:cineMote var(--mt) ease-out calc(var(--flash) + var(--md)) infinite}
+@keyframes cineMote{0%{opacity:0;transform:translateY(0) scale(var(--ms))}
+  14%{opacity:.95}100%{opacity:0;transform:translateY(-240px) scale(calc(var(--ms) * .35))}}
+
+.cine .flash{position:fixed;inset:0;pointer-events:none;opacity:0;
+  background:radial-gradient(circle at 50% 44%, #ffffff 0%, #fff3d2 26%, #ffd98a55 48%, #ffd98a00 72%);
+  animation:cineFlash .5s ease-out var(--flash) both}
+@keyframes cineFlash{0%{opacity:0;transform:scale(.55)}16%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.3)}}
+
+.cine .cname{position:absolute;left:0;right:0;top:calc(50% + 150px);margin:0;text-align:center;
+  font-size:19px;font-weight:800;color:var(--acc2);text-shadow:0 2px 14px #000, 0 0 22px #f2b84b66;
+  opacity:0;animation:cineName .5s ease-out calc(var(--flash) + 60ms) both}
+@keyframes cineName{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cine .cskip{position:absolute;left:0;right:0;bottom:30px;margin:0;text-align:center;
+  font-size:12px;color:#ffffff5c;opacity:0;animation:cineName .4s ease-out 900ms both}
+
+/* iPhones pay much more for masks, big gradients and many moving elements */
+.cine.lite .rays{-webkit-mask:none;mask:none;animation:cineRaysIn .5s ease-out var(--flash) both;opacity:.2}
+.cine.lite .beam{animation-duration:420ms;-webkit-mask:none;mask:none}
+.cine.lite .cchest{animation:none}
+.cine.lite .mote{animation-iteration-count:1}
+
+@media (prefers-reduced-motion:reduce){.cine{display:none}}
+
+/* the dialog's chest is only an illustration now - the opening happened full screen */
+.chestopen.still,.chestopen.still .clid,.chestopen.still .cbeam{animation:none}
+.chestopen.still .clid{transform:rotate(-54deg)}
+.chestopen.still .cbeam{opacity:.3}
+
+/* ================= chest locator =================
+   Offered, never forced: a quiet panel at the foot of the map when a chest is close,
+   which only starts ticking once the player taps it. */
+.loc{position:absolute;left:8px;right:8px;bottom:8px;z-index:500}
+.locoffer{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+  background:#0f1a14ee;border:1px solid #2f5a44;border-radius:14px;padding:8px 10px;color:var(--ink);
+  box-shadow:0 6px 18px #0008;animation:locIn .4s cubic-bezier(.2,1.3,.4,1) both}
+@keyframes locIn{from{opacity:0;transform:translateY(10px)}}
+.locoffer i{font-size:20px;font-style:normal;animation:locBlink 2.2s ease-in-out infinite}
+@keyframes locBlink{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}
+.locoffer div{flex:1;min-width:0}
+.locoffer b{display:block;font-size:13px}
+.locoffer small{display:block;color:var(--mut);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.locoffer u{text-decoration:none;background:var(--acc);color:#1a1205;font-weight:800;font-size:12px;
+  border-radius:99px;padding:5px 12px;flex:none}
+
+.locon{background:#0f1a14f2;border:1px solid #3c6b52;border-radius:14px;padding:8px 10px 9px;
+  box-shadow:0 6px 20px #0009;animation:locIn .4s cubic-bezier(.2,1.3,.4,1) both}
+.lochead{display:flex;align-items:center;gap:8px}
+.lochead b{flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.locping{font-style:normal;font-size:16px;animation:locBlink var(--sonar,1.2s) ease-in-out infinite}
+.locx{background:none;border:0;color:var(--mut);font-size:15px;cursor:pointer;padding:0 2px}
+.locbar{height:8px;border-radius:99px;background:#0a120d;border:1px solid #24402f;overflow:hidden;margin:7px 0 5px}
+.locbar i{display:block;height:100%;width:0;border-radius:99px;transition:width .45s ease-out, background .45s linear}
+.locfoot{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mut)}
+.locfoot span:first-child{font-weight:800}
+
+/* sonar rings off the player dot, timed to match the ticking */
+body.locating .me-dot::before,body.locating .me-dot::after{content:"";position:absolute;left:50%;top:50%;
+  width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+  border:2px solid var(--sonarc,#f2b84b);opacity:0;pointer-events:none;
+  animation:sonar var(--sonar,1.2s) ease-out infinite}
+body.locating .me-dot::after{animation-delay:calc(var(--sonar,1.2s) / 2)}
+@keyframes sonar{0%{opacity:.85;transform:scale(1)}100%{opacity:0;transform:scale(5.5)}}
+
+/* and a ring on the chest being hunted */
+.cm.target span{border-color:var(--acc);box-shadow:0 0 0 3px #f2b84b44, 0 0 18px #f2b84b99}
+.cm.target::after{content:"";position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;
+  border-radius:50%;border:2px solid var(--acc);opacity:0;pointer-events:none;
+  animation:sonar var(--sonar,1.2s) ease-out infinite}
+
+.ios body.locating .me-dot::after{display:none}
+@media (prefers-reduced-motion:reduce){
+  .locoffer i,.locping,body.locating .me-dot::before,body.locating .me-dot::after,.cm.target::after{animation:none}
+}

@@ -3,7 +3,7 @@ window.FX = (function () {
   const RAR = window.RARITIES || [];
   const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const get = (k, d) => { try { const v = localStorage.getItem('sw_' + k); return v === null ? d : v === '1'; } catch (e) { return d; } };
-  const prefs = { snd: get('snd', true), fx: get('fx', !reduce), fs: get('fs', true), geiger: get('geiger', false), darkmap: get('darkmap', true) };
+  const prefs = { snd: get('snd', true), fx: get('fx', !reduce), fs: get('fs', true), geiger: get('geiger', true), darkmap: get('darkmap', true) };
   function set(k, v) {
     prefs[k] = !!v;
     try { localStorage.setItem('sw_' + k, v ? '1' : '0'); } catch (e) {}
@@ -47,6 +47,17 @@ window.FX = (function () {
     open(t) {                               // wooden creak + sparkle
       noise(t, 0.55, 0.12, 180, 620); tone(95, t, 0.5, 'sawtooth', 0.05, 150);
       [1175, 1568, 1976, 2349].forEach((f, i) => tone(f, t + 0.45 + i * 0.07, 0.25, 'sine', 0.06));
+    },
+    // scored to the full-screen opening: rumble, creak, then the flash blooms
+    chest(t) {
+      tone(58, t, 0.6, 'sine', 0.17, 40);                       // low rumble
+      noise(t + 0.08, 0.46, 0.07, 150, 430);                    // wood rattling
+      noise(t + 0.44, 0.44, 0.10, 230, 950);                    // the lid lifting
+      tone(112, t + 0.44, 0.46, 'sawtooth', 0.05, 205);
+      noise(t + 0.84, 0.52, 0.11, 2700, 420);                   // the flash
+      [N.C5, N.E5, N.G5, N.C6, N.E6].forEach((f, i) => tone(f, t + 0.86 + i * 0.045, 0.95, 'triangle', 0.085));
+      tone(N.G6, t + 1.06, 1.35, 'sine', 0.05);
+      tone(N.C7, t + 1.14, 1.2, 'sine', 0.033);
     },
     coin(t) { tone(988, t, 0.09, 'square', 0.06); tone(1319, t + 0.08, 0.3, 'square', 0.06); tone(1976, t + 0.08, 0.25, 'sine', 0.05); },
     welcome(t) { [N.C5, N.E5, N.G5, N.C6].forEach((f, i) => tone(f, t + i * 0.09, 0.3, 'triangle', 0.1)); },

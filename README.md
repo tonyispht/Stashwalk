@@ -199,10 +199,40 @@ iOS performance rule that switches emoji filters off has to stay scoped
 uncollected item on iPhones.
 
 ## Chest opening
-A drawn chest rather than an emoji: the lid rotates open, light spills out of it, and the
-items rise in turn. The stagger tightens as a chest holds more items
-(`min(55, 200 / (n - 1))` ms) so a full eight-slot chest finishes in about the same time as
-a four-slot one. iOS gets shorter timings and no nudge. Everything is transforms and opacity.
+Opening a chest takes over the screen (`chestCinematic()` in app.js): the chest sits closed
+and rattles, light forces its way out of the seam, the lid swings up on a growing beam, and the
+instant it is fully open the screen flashes, rays start turning, particles burst out and motes
+drift upward. About 1.7 s, 1.25 s on iOS; a tap anywhere skips it. It starts the moment the
+player taps Open, so it also covers the round trip to the server - if the data is slow the
+chest just sits there glowing.
+
+The chest is inline SVG on purpose: the lid is hinged on the back-top edge of the box and the
+interior glow is clipped to the opening and drawn behind the front wall. In plain divs the lid
+read as a loose flap and the light looked painted on. The SVG uses class `cchest`, not
+`chest` - `.chest` is the nearby-list row style and will paint a box behind it.
+
+Timing comes from two custom properties set per run: `--lid` (when the lid starts moving) and
+`--flash` (the moment it is fully open). The overlay sits at z-index 1050 - above the dialog,
+below the `#fx` particle canvas, so canvas bursts draw over it. Skipped entirely when visual
+effects are off or the device asks for reduced motion. Its sound is `FX.sfx('chest')`, scored
+to the same timeline. Inside the dialog afterwards, the little chest is a still illustration
+and the items rise in turn.
+
+## Locator
+Getting within `GEIGER_FT` of a chest no longer starts anything. It *offers* the locator: a
+quiet panel slides up at the foot of the map, and the very first time one ever appears there
+is a single toast pointing at it. Nothing ticks until the player taps Start.
+
+Running, the panel shows the chest, a bar that fills as you close in, a distance, and a
+heat word - Cold, Cool, Warm, Hot, Burning, Steps away, then "Right here - open it" once it is
+actually in reach - with the colour shifting from blue to white-hot. Sonar rings pulse off the
+player dot at the same rate as the ticking (`--sonar` on body), and the hunted chest gets a
+ring of its own on the map. It stops itself when the chest is opened or the player walks off
+to 2.5x the range.
+
+The Settings toggle is now "ticking sound while the locator is running". It used to start on
+its own, so it shipped off; with the locator opt-in it defaults on, and existing players are
+switched on once (`sw_locmig`).
 
 ## Map style
 Dark by default, toggled in Me -> Settings. The tiles are OpenStreetMap's own either way -

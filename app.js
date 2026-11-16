@@ -867,7 +867,7 @@ function renderMe() {
     <div class="card"><b>Settings</b>
     <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
-    <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Proximity ticking near chests</span></label>
+    <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator is running</span></label>
     <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
     ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
     <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
@@ -1130,17 +1130,106 @@ function setPos(lat, lon, acc, manual) {
   if (!lastLoad || dist(pos, lastLoad) > Math.min(1000, Math.max(250, radiusM() * 0.3))) loadNearby();
   if (view === 'explore') renderNearby(); markNear();
 }
+// ---------------- chest locator ----------------
+// The proximity ticking used to switch itself on whenever a chest was close, which
+// is startling when you did not ask for it. Now getting close only offers it: a quiet
+// panel appears on the map, and nothing makes a sound until the player taps it.
+let locMode = 'off', locTarget = null, locName = '';
+const LOC_RANGE = () => C.GEIGER_FT * 0.3048;
+const HEAT = [[.78, 'Cold', '#4aa3ff'], [.55, 'Cool', '#49c8d8'], [.34, 'Warm', '#7ed08a'],
+              [.18, 'Hot', '#f2b84b'], [.06, 'Burning', '#ff9a3c'], [0, 'Steps away', '#fff3c4']];
+function heatOf(frac) { for (const h of HEAT) if (frac >= h[0]) return h; return HEAT[HEAT.length - 1]; }
+
+function stopLocate(quiet) {
+  if (locMode !== 'on') return;
+  locMode = 'off'; locTarget = null;
+  FX.geiger(Infinity, 1);
+  document.body.classList.remove('locating');
+  document.body.style.removeProperty('--sonar');
+  if (!quiet) toast('Locator off');
+  renderLocator(null, Infinity);
+  refreshChestViews();                      // drop the ring from the map marker
+}
+function startLocate(c) {
+  if (!c) return;
+  locMode = 'on'; locTarget = c.id; locName = c.name;
+  document.body.classList.add('locating');
+  FX.unlock(); FX.sfx('ping'); FX.vibe(30);
+  const gap = Math.max(0, dist(pos, c) - unlockM(c));
+  FX.geiger(gap, LOC_RANGE());              // start ticking now, not on the next GPS fix
+  renderLocator(c, gap);
+  refreshChestViews();                      // put the target ring on the map marker
+}
+// Rebuilt only when the state or the target changes; the numbers update in place so the
+// bar can animate instead of jumping.
+let locShape = '';
+function renderLocator(c, gap) {
+  const box = $('#locator'); if (!box) return;
+  const shape = locMode + '|' + (c ? c.id : '');
+  if (!c) { box.hidden = true; box.innerHTML = ''; locShape = ''; return; }
+  box.hidden = false;
+  if (shape !== locShape) {
+    locShape = shape;
+    box.innerHTML = locMode === 'on'
+      ? `<div class="locon">
+           <div class="lochead"><i class="locping">📡</i><b>${esc(c.name)}</b>
+             <button class="locx" id="locStop" title="Stop locating">✕</button></div>
+           <div class="locbar"><i id="locFill"></i></div>
+           <div class="locfoot"><span id="locWord">Searching…</span><span id="locDist"></span></div>
+         </div>`
+      : `<button class="locoffer" id="locGo"><i>📡</i>
+           <div><b>Locator</b><small>home in on ${esc(c.name)}</small></div><u>Start</u></button>`;
+    const go = $('#locGo', box); if (go) go.onclick = () => startLocate(c);
+    const stop = $('#locStop', box); if (stop) stop.onclick = () => stopLocate();
+  }
+  if (locMode !== 'on') return;
+  const range = LOC_RANGE(), frac = Math.max(0, Math.min(1, gap / range));
+  const [, word, col] = heatOf(frac);
+  const fill = $('#locFill', box), dEl = $('#locDist', box), wEl = $('#locWord', box);
+  if (fill) { fill.style.width = Math.round((1 - frac) * 100) + '%'; fill.style.background = col; fill.style.boxShadow = '0 0 12px ' + col; }
+  if (wEl) { wEl.textContent = gap <= 0 ? 'Right here – open it' : word; wEl.style.color = col; }
+  if (dEl) dEl.textContent = gap <= 0 ? '' : Math.round((gap + unlockM(c)) * FT) + ' ft';
+  // the sonar rings on the player dot keep pace with the ticking
+  document.body.style.setProperty('--sonar', (0.42 + frac * 1.5).toFixed(2) + 's');
+  document.body.style.setProperty('--sonarc', col);
+}
+
 function markNear() {
-  // Distance to the closest chest drives the ticking, so it speeds up as you walk in.
-  let best = Infinity;
-  chests.forEach(c => { const d = dist(pos, c) - unlockM(c); if (d < best) best = d; });
-  FX.geiger(Math.max(0, best), C.GEIGER_FT * 0.3048);
+  // Nearest chest decides what the locator offers, and how fast it ticks once it is on.
+  let best = Infinity, nearest = null;
+  chests.forEach(c => { const d = dist(pos, c) - unlockM(c); if (d < best) { best = d; nearest = c; } });
+
+  if (locMode === 'on') {
+    const t = chests.find(c => c.id === locTarget);
+    if (!t) stopLocate(true);                                  // target vanished (opened, flagged, out of view)
+    else {
+      const gap = Math.max(0, dist(pos, t) - unlockM(t));
+      if (gap > LOC_RANGE() * 2.5) stopLocate();               // walked away from it
+      else { FX.geiger(gap, LOC_RANGE()); renderLocator(t, gap); }
+    }
+  }
+  if (locMode !== 'on') {
+    FX.geiger(Infinity, 1);
+    const offer = nearest && best <= LOC_RANGE() && !locDismissed(nearest.id);
+    renderLocator(offer ? nearest : null, best);
+    if (offer) hintLocatorOnce();
+  }
+
   chests.forEach(c => {
     const d = dist(pos, c);
     if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); FX.sfx('ping'); FX.vibe(200); }
     if (d > unlockM(c) * 3) delete nearSeen[c.id];
   });
 }
+// Dismissing the offer for a chest keeps it quiet for the rest of the session.
+const locOff = {};
+const locDismissed = id => !!locOff[id];
+// One gentle nudge, the first time a locator is ever offered, then never again.
+function hintLocatorOnce() {
+  try { if (localStorage.getItem('sw_lochint')) return; localStorage.setItem('sw_lochint', '1'); } catch (e) { return; }
+  toast('📡 A chest is close – the locator on the map can walk you in');
+}
+
 const CELL = 0.5;   // hidden-chest index cells are ~55 km wide
 const cellKey = (lat, lon) => Math.floor(lat / CELL) + '_' + Math.floor(lon / CELL);
 function cellsAround(lat, lon, rM) {
@@ -1233,7 +1322,7 @@ function refreshChestViews() {
   if (view === 'explore') renderNearby();
   if (!map || !window.L) return; markers.forEach(m => m.remove()); markers = [];
   inRadius().slice(0, 200).forEach(c => {
-    const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
+    const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
     markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => {
       const d = dist(pos, c);
       if (d <= unlockM(c)) return openChest(c.id);                       // close enough - just open it
@@ -1296,15 +1385,125 @@ function renderNearby(force) {
 }
 
 // ---- opening a chest ----
+// ---------------- the opening ----------------
+// Walking to a chest is the whole point of the game, so opening one gets the screen to
+// itself: the chest sits closed, rattles, light forces its way out of the seam, the lid
+// swings up on a growing beam, and the moment it is fully open the screen flashes.
+// It also covers the trip to the server - if the data is slow the chest simply sits there
+// glowing instead of showing a spinner. A tap skips the whole thing.
+function chestCinematic(name) {
+  const reduce = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+  if (!FX.prefs.fx || reduce) return { done: Promise.resolve(), kill() {} };
+
+  const ios = document.body.classList.contains('ios') || FX.isLow();
+  const T = ios
+    ? { lid: 380, flash: 700, end: 1250, motes: 6 }
+    : { lid: 520, flash: 900, end: 1700, motes: 16 };
+
+  const el = document.createElement('div');
+  el.className = 'cine' + (ios ? ' lite' : '');
+  el.style.setProperty('--lid', T.lid + 'ms');
+  el.style.setProperty('--flash', T.flash + 'ms');
+  let motes = '';
+  for (let i = 0; i < T.motes; i++) {
+    motes += `<i class="mote" style="--mx:${(i * 97) % 100}%;--md:${600 + (i * 131) % 900}ms;--mt:${1500 + (i * 173) % 1400}ms;--ms:${0.5 + ((i * 59) % 70) / 70}"></i>`;
+  }
+  // Drawn as SVG so the lid is hinged on the back edge of the box and the glow sits
+  // behind the front wall - in plain divs the lid reads as a flap coming loose and the
+  // light looks painted on the front.
+  el.innerHTML =
+    `<i class="rays"></i>
+     <div class="stage">
+       <i class="beam"></i>
+       <svg class="cchest" viewBox="0 0 200 172" aria-hidden="true">
+         <defs>
+           <linearGradient id="cwood" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0" stop-color="#8a5a30"/><stop offset="1" stop-color="#4b2d15"/>
+           </linearGradient>
+           <linearGradient id="clidw" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0" stop-color="#9b6736"/><stop offset="1" stop-color="#5d381c"/>
+           </linearGradient>
+           <linearGradient id="cgold" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0" stop-color="#f3c661"/><stop offset="1" stop-color="#a8761f"/>
+           </linearGradient>
+           <radialGradient id="cglow" cx="0.5" cy="0.85" r="0.75">
+             <stop offset="0" stop-color="#fffdf4"/><stop offset=".32" stop-color="#ffe7ab"/>
+             <stop offset=".62" stop-color="#f2b84b"/><stop offset="1" stop-color="#f2b84b" stop-opacity="0"/>
+           </radialGradient>
+           <clipPath id="cmouth"><rect x="26" y="34" width="148" height="56"/></clipPath>
+         </defs>
+         <g class="cshadow"><ellipse cx="100" cy="158" rx="68" ry="9"/></g>
+         <!-- inside of the chest, clipped to the opening so light never spills onto the front -->
+         <g clip-path="url(#cmouth)">
+           <rect class="cdark" x="28" y="56" width="144" height="40" rx="6"/>
+           <ellipse class="cinner" cx="100" cy="92" rx="72" ry="30"/>
+         </g>
+         <!-- the lid: hinged on the back-top corner of the box, drawn before the front wall -->
+         <g class="clid">
+           <path d="M28 88 V62 a72 26 0 0 1 144 0 V88 Z" fill="url(#clidw)" stroke="#b07d24" stroke-width="4" stroke-linejoin="round"/>
+           <path d="M40 72 a60 18 0 0 1 120 0" fill="none" stroke="#a9703c" stroke-width="5" opacity=".75"/>
+           <rect x="90" y="74" width="20" height="16" rx="3" fill="url(#cgold)"/>
+         </g>
+         <!-- front wall, over the top of both -->
+         <g class="cbody">
+           <rect x="26" y="86" width="148" height="66" rx="8" fill="url(#cwood)" stroke="#b07d24" stroke-width="4"/>
+           <rect x="26" y="104" width="148" height="9" fill="url(#cgold)"/>
+           <rect x="88" y="96" width="24" height="26" rx="4" fill="url(#cgold)"/>
+           <circle cx="100" cy="110" r="4" fill="#4a2d12"/>
+         </g>
+         <rect class="cseam" x="30" y="84" width="140" height="6" rx="3"/>
+       </svg>
+       ${motes}
+     </div>
+     <p class="cname">${esc(name || 'A chest')}</p>
+     <i class="flash"></i>
+     <p class="cskip">tap to skip</p>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('go'));
+
+  FX.sfx('chest');
+
+  const timers = [];
+  let finish = null, dead = false;
+  const done = new Promise(res => { finish = res; });
+  function kill(skipped) {
+    if (dead) return; dead = true;
+    timers.forEach(clearTimeout);
+    el.removeEventListener('pointerdown', onTap);
+    el.classList.add('out');
+    setTimeout(() => el.remove(), skipped ? 120 : 260);
+    finish();
+  }
+  function onTap() { kill(true); }
+  el.addEventListener('pointerdown', onTap);
+
+  // the flash, and the particles that come out with it
+  timers.push(setTimeout(() => {
+    if (dead) return;
+    FX.vibe([18, 40, 26]);
+    const p = FX.centerOf(el.querySelector('.cchest'));
+    FX.burst(p.x, p.y - 8, ['#ffd98a', '#fff6d8', '#ffffff', '#f2b84b'], ios ? 16 : 40);
+    if (!ios) setTimeout(() => FX.confetti(['#ffd98a', '#f2b84b', '#ffffff'], 26), 120);
+  }, T.flash));
+
+  timers.push(setTimeout(() => kill(false), T.end));
+  return { done, kill: () => kill(true) };
+}
+
 async function openChest(id) {
   if (needNet('Opening a chest')) return;
   const meta = chests.find(c => c.id === id); if (!meta || !pos) return;
   if (dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
-  toast('Opening…');
+  // Start the opening straight away: it is the reward for the walk, and it hides the
+  // round trip to the server behind something worth watching.
+  const cine = chestCinematic(meta.name);
   try {
     const day = utcDay();
     const r = await DB.tx('chests/' + id, cur => !cur ? makeChest(meta, day) : ((cur.day || 0) < day ? refreshChest(cur, meta, day) : undefined));
-    P.stats.visited[id] = 1; save(); checkAch(); FX.sfx('open'); FX.vibe(60); showChest(meta, r.value);
+    P.stats.visited[id] = 1; save(); checkAch();
+    if (locTarget === id) stopLocate(true);
+    await cine.done;
+    showChest(meta, r.value);
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
     // before we ask, or the server correctly sees no chest yet - so write it, then report, and
     // only mark it done once the server confirms.
@@ -1317,7 +1516,7 @@ async function openChest(id) {
         } catch (e) { /* try again next chest */ }
       })();
     }
-  } catch (e) { toast('Could not open chest: ' + e.message, 'bad'); }
+  } catch (e) { cine.kill(); toast('Could not open chest: ' + e.message, 'bad'); }
 }
 function showChest(meta, chest) {
   const today = dayKey(), done = P.exch[meta.id] === today;
@@ -1325,7 +1524,7 @@ function showChest(meta, chest) {
   if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
-  modal(`<div class="chestopen" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
+  modal(`<div class="chestopen still lit" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
     <h3 style="text-align:center">${esc(meta.name)}</h3>
     <p class="sub">${done ? 'You already traded here today – you can look, but come back tomorrow to swap.' : 'Pick one item to take, then one of yours to leave behind. One trade per chest per day.'}</p>
     <div class="lbl">Inside the chest</div>
@@ -1348,12 +1547,7 @@ function showChest(meta, chest) {
     // in about the same time as a four-slot one rather than crawling
     const step = Math.min(ios ? 42 : 55, 200 / Math.max(1, tiles.length - 1));
     tiles.forEach((t, i) => { t.style.animationDelay = Math.round(start + i * step) + 'ms'; });
-    setTimeout(() => {
-      const f = $('#chestfx', m); if (!f) return;
-      f.classList.add('lit');
-      const p = FX.centerOf(f);
-      FX.burst(p.x, p.y - 10, ['#ffd98a', '#f2b84b', '#ffffff'], ios ? 12 : 20);
-    }, 300);
+
     if (done) return;
     const swap = $('#swapBtn', m);
     const upd = () => { swap.disabled = !(selGet && selGive); swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} → ${BY_ID[chest.items[selGet].id].n}` : 'Choose items'; };
@@ -1594,6 +1788,9 @@ function wire() {
   trackViewport();
   lockInteractions();
   setTimeout(checkZoom, 2500);
+  // The ticking used to switch itself on near a chest, so it shipped disabled. It now
+  // only runs while the player is actively using the locator, so enable it once.
+  try { if (!localStorage.getItem('sw_locmig')) { localStorage.setItem('sw_locmig', '1'); FX.set('geiger', true); } } catch (e) {}
   registerSW();
   // Chrome hands us the install prompt once; we hold it until the player asks.
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); PWA.evt = e; if (!$('#v-me').hidden) renderMe(); });
