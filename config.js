@@ -50,16 +50,17 @@ window.GEO_CONFIG = {
   DRONE_PRICE: 500,
   // range (feet from you) at each level, and the coins to reach that level from the one before
   DRONE_LEVELS: [
-    { ft: 300,  cost: 0 },       // level 1 - what you get when you buy it
-    { ft: 500,  cost: 300 },
-    { ft: 800,  cost: 450 },
-    { ft: 1200, cost: 650 },
-    { ft: 1800, cost: 900 },
-    { ft: 2600, cost: 1250 },
-    { ft: 3800, cost: 1700 },
-    { ft: 5280, cost: 2300 }     // level 8 - one mile
+    { ft: 300,   cost: 0 },      // level 1 - what you get when you buy it
+    { ft: 600,   cost: 300 },
+    { ft: 1056,  cost: 450 },    // 0.2 mi
+    { ft: 2112,  cost: 650 },    // 0.4 mi
+    { ft: 3960,  cost: 900 },    // 0.75 mi
+    { ft: 7920,  cost: 1250 },   // 1.5 mi
+    { ft: 14520, cost: 1700 },   // 2.75 mi
+    { ft: 26400, cost: 2300 }    // level 8 - five miles
   ],
   DRONE_REACH_FT: 50,      // how close the drone has to hover to open a chest
-  DRONE_SPEED_MPS: 22,     // top speed (about 50 mph)
+  DRONE_SPEED_MPS: 22,     // slowest top speed (about 50 mph); bigger ranges fly faster...
+  DRONE_EDGE_S: 70,        // ...so the edge of its range is about this many seconds away at full stick
   DRONE_LISTEN_FT: 400     // the locator's hot/cold scale while flying
 };

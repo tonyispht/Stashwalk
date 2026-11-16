@@ -279,8 +279,8 @@ Relics are never sold. Bought items do not earn the new-for-your-shelf bonus. Bu
 connection, like every other action that changes your record.
 
 ## Drone
-Bought in the Shop (`DRONE_PRICE`), upgraded through `DRONE_LEVELS` - eight levels whose range
-grows from 300 ft to one mile. Once owned, a 🛸 button joins the map buttons; tap it to launch.
+Bought in the Shop (`DRONE_PRICE`), upgraded through `DRONE_LEVELS` - eight levels of range:
+300 ft, 600 ft, 0.2 mi, 0.4 mi, 0.75 mi, 1.5 mi, 2.75 mi, and five miles at level 8. Once owned, a 🛸 button joins the map buttons; tap it to launch.
 
 While it is up, the map belongs to the drone: the stick in the bottom-left steers it (arrow keys
 or WASD on a computer), the map follows it, and a dashed circle around you marks its range - it
@@ -293,6 +293,19 @@ or tapping ✕ brings it home.
 
 There is no battery or cooldown: the drone can fly and open chests as often as you like. Its
 only limit is range, set by its level.
+
+The player is always in control. Speed comes from the stick alone - analog and eased, so a light
+push creeps and a full push races - and top speed scales with range (`DRONE_EDGE_S`), so the edge
+is about 70 seconds away at any level: 22 m/s at the low levels, ~115 m/s at level 8. The drone
+never slows, steers or opens anything by itself; it only *offers* the Open button once you have
+flown it within reach, and nothing happens until you tap it.
+
+The game normally keeps only the player's nearest 150 places in memory, which in a city can end
+two miles out. So the drone looks up places around itself as it flies (`droneScan()`, re-run
+every 150 m of travel, 1.2 km radius), shows any the player's list lacks as dashed markers, and
+can open them. Tested in Chicago: the player's list stopped at 2.06 mi, and a drone 4 mi out found
+and opened Diversey Playground. Higher levels launch a little zoomed out, and the map keeps the
+drone in the clear area below the HUD.
 
 ## Update banner
 When the service worker finds a newer build, a bar appears under the header on every screen -

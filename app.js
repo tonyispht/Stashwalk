@@ -538,6 +538,7 @@ const droneRangeM = lvl => (DL[Math.max(0, Math.min(DRONE_MAX, lvl) - 1)] || DL[
 const DRONE_REACH = () => (C.DRONE_REACH_FT || 50) * 0.3048;
 const DRONE_LISTEN = () => (C.DRONE_LISTEN_FT || 400) * 0.3048;
 const fmtFt = m => { const ft = m * FT; return ft >= 1000 ? (ft / 5280).toFixed(2) + ' mi' : Math.round(ft) + ' ft'; };
+const droneTop = lvl => Math.max(C.DRONE_SPEED_MPS || 22, droneRangeM(lvl) / (C.DRONE_EDGE_S || 70));
 
 function droneState() {
   if (!P.drone || typeof P.drone !== 'object') P.drone = { lvl: 0 };
@@ -595,10 +596,13 @@ function launchDrone() {
     ll, raf: 0, last: performance.now(), near: null, lastProbe: 0,
     marker: L.marker([ll.lat, ll.lon], { icon, zIndexOffset: 2000, interactive: false, keyboard: false }).addTo(map),
     tether: L.polyline([[pos.lat, pos.lon], [ll.lat, ll.lon]], { color: '#7ff0ff', weight: 2, opacity: .55, dashArray: '4 6', interactive: false }).addTo(map),
-    ring: L.circle([pos.lat, pos.lon], { radius: droneRangeM(d.lvl), color: '#7ff0ff', weight: 1.5, opacity: .5, fillOpacity: .04, dashArray: '6 8', interactive: false }).addTo(map)
+    ring: L.circle([pos.lat, pos.lon], { radius: droneRangeM(d.lvl), color: '#7ff0ff', weight: 1.5, opacity: .5, fillOpacity: .04, dashArray: '6 8', interactive: false }).addTo(map),
+    layer: L.layerGroup().addTo(map), local: [], scanAt: null
   };
+  droneScan(true);
   try { map.dragging.disable(); } catch (e) {}
-  if (map.getZoom() < 17) map.setView([ll.lat, ll.lon], 17, { animate: false });
+  const z = d.lvl >= 7 ? 15 : d.lvl >= 5 ? 16 : 17;
+  if (map.getZoom() !== z) map.setView([ll.lat, ll.lon], z, { animate: false });
   document.body.classList.add('flying');
   renderDroneHud(true);
   FX.unlock(); FX.sfx('drone'); FX.vibe(40);
@@ -607,7 +611,7 @@ function launchDrone() {
 function endFlight(why) {
   if (!fly) return;
   cancelAnimationFrame(fly.raf);
-  try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); } catch (e) {}
+  try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); fly.layer.remove(); } catch (e) {}
   fly = null; joy.x = joy.y = 0;
   try { map.dragging.enable(); } catch (e) {}
   document.body.classList.remove('flying');
@@ -626,7 +630,9 @@ function flyStep(now) {
   const kx = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0);
   const ky = (keys.ArrowDown || keys.s ? 1 : 0) - (keys.ArrowUp || keys.w ? 1 : 0);
   if (kx || ky) { const l = Math.hypot(kx, ky); ix = kx / l; iy = ky / l; }
-  const sp = (C.DRONE_SPEED_MPS || 22) * Math.min(1, Math.hypot(ix, iy));
+  // speed is the stick and nothing else: a light push creeps, a full push races, and the
+  // drone never slows, steers or opens anything on its own
+  const sp = droneTop(droneState().lvl) * Math.pow(Math.min(1, Math.hypot(ix, iy)), 1.6);
   if (sp > 0.01) {
     const a = Math.atan2(iy, ix), mx = Math.cos(a) * sp * dt, my = -Math.sin(a) * sp * dt;   // screen up = north
     let lat = fly.ll.lat + my / 111320, lon = fly.ll.lon + mx / (111320 * Math.cos(fly.ll.lat * Math.PI / 180));
@@ -637,10 +643,12 @@ function flyStep(now) {
     fly.marker.setLatLng([lat, lon]);
     const tilt = Math.max(-18, Math.min(18, ix * 18));
     const w = fly.marker.getElement && fly.marker.getElement(); if (w) w.style.setProperty('--tilt', tilt + 'deg');
-    // keep the drone near the middle of the map without re-centring every frame
+    // keep the drone in the clear part of the map - below the HUD, above the stick - without
+    // re-centring every frame
     const cp = map.latLngToContainerPoint([lat, lon]), sz = map.getSize();
+    const hudB = (($('#droneHud') || {}).offsetHeight || 0) + 24, top = Math.max(sz.y * .3, hudB), bot = Math.max(top + 40, sz.y * .72);
     const ox = cp.x < sz.x * .3 ? cp.x - sz.x * .3 : cp.x > sz.x * .7 ? cp.x - sz.x * .7 : 0;
-    const oy = cp.y < sz.y * .3 ? cp.y - sz.y * .3 : cp.y > sz.y * .7 ? cp.y - sz.y * .7 : 0;
+    const oy = cp.y < top ? cp.y - top : cp.y > bot ? cp.y - bot : 0;
     if (ox || oy) map.panBy([ox, oy], { animate: false });
   }
   fly.tether.setLatLngs([[pos.lat, pos.lon], [fly.ll.lat, fly.ll.lon]]);
@@ -649,10 +657,40 @@ function flyStep(now) {
   fly.raf = requestAnimationFrame(flyStep);
 }
 // the locator, run from the drone's position
+// Places near the drone. The main list only holds the player's nearest 150 places, so a drone
+// a few miles out would otherwise fly over chests the game never loaded.
+const DRONE_SCAN = 1200;
+function droneScan(force) {
+  if (!fly) return;
+  const at = fly.ll;
+  if (!force && fly.scanAt && dist(fly.scanAt, at) < 150) return;
+  fly.scanAt = { lat: at.lat, lon: at.lon };
+  const take = () => {
+    if (!fly) return;
+    const local = placesWithin(at.lat, at.lon, DRONE_SCAN).filter(p => !BLOCKED.has(p.id));
+    const known = new Set(chests.map(c => c.id));
+    fly.local = local;
+    // markers for what the player's own list does not already show
+    fly.layer.clearLayers();
+    local.filter(p => !known.has(p.id)).slice(0, 80).forEach(c => {
+      L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'cm far', html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] }),
+        interactive: false, keyboard: false }).addTo(fly.layer);
+    });
+  };
+  take();
+  loadTiles(at.lat, at.lon, DRONE_SCAN).then(take).catch(() => {});
+}
+function droneCandidates() {
+  const seen = new Set(), out = [];
+  for (const c of chests) { seen.add(c.id); out.push(c); }
+  for (const c of (fly.local || [])) if (!seen.has(c.id)) out.push(c);
+  return out;
+}
 function probeFromDrone() {
   if (!fly) return;
+  droneScan();
   let best = null, bd = Infinity;
-  chests.forEach(c => { const d = dist(fly.ll, c); if (d < bd) { bd = d; best = c; } });
+  droneCandidates().forEach(c => { const d = dist(fly.ll, c); if (d < bd) { bd = d; best = c; } });
   fly.near = best ? { c: best, d: bd } : null;
   const gap = best ? Math.max(0, bd - DRONE_REACH()) : Infinity;
   FX.geiger(gap, DRONE_LISTEN());
@@ -691,6 +729,7 @@ function renderDroneHud(build) {
 async function droneOpen() {
   if (!fly || !fly.near || fly.near.d > DRONE_REACH()) return;
   const id = fly.near.c.id;
+  if (!chests.some(c => c.id === id)) chests.push(Object.assign({}, fly.near.c));
   P.stats.droneOpens = (P.stats.droneOpens || 0) + 1;
   endFlight('open');
   await openChest(id, true);
@@ -733,7 +772,7 @@ function droneCard() {
       <span class="dlv">${pips}</span>
       <small>Range ${fmtFt(droneRangeM(d.lvl))}${next ? ` · level ${d.lvl + 1} reaches ${fmtFt(next.ft * 0.3048)}` : ''}</small></div></div>
     ${next ? `<button class="btn big" id="upDrone" ${can(next.cost) ? '' : 'disabled'}>Upgrade to level ${d.lvl + 1} – range ${fmtFt(next.ft * 0.3048)} · 🪙 ${fmtC(next.cost)}</button>`
-           : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – a full mile of range.</p>`}</div>`;
+           : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – ${fmtFt(droneRangeM(DRONE_MAX))} of range.</p>`}</div>`;
 }
 
 // ---------------- achievements ----------------

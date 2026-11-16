@@ -707,3 +707,5 @@ body:not(.flying) .droneopen{display:none}
 .ios .dronewrap{filter:none}
 .ios .dronewrap::after{display:none}
 @media (prefers-reduced-motion:reduce){.dronesvg .rotor,.dronewrap::before,.dronewrap::after{animation:none}}
+/* chests the drone has found beyond your own list */
+.cm.far span{opacity:.85;border-style:dashed}
