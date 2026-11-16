@@ -284,7 +284,7 @@ grows from 300 ft to one mile. Once owned, a 🛸 button joins the map buttons; 
 
 While it is up, the map belongs to the drone: the stick in the bottom-left steers it (arrow keys
 or WASD on a computer), the map follows it, and a dashed circle around you marks its range - it
-cannot leave that circle, which moves with you. The HUD at the top shows battery, how far out it
+cannot leave that circle, which moves with you. The HUD at the top shows how far out it
 is against its range, and the locator's heat bar for the chest nearest the *drone*, with the
 same ticking and sonar rings as walking in, so you hunt with it exactly as you would on foot.
 Within `DRONE_REACH_FT` of a chest an "Open" button appears; that plays the full opening and the
