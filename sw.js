@@ -3,7 +3,7 @@
 // cache anything that comes from the shared world database (that must always be live).
 //
 // VERSION must match window.ASSET_V in index.html - bump both together on every deploy.
-const VERSION = '202611160935';
+const VERSION = '202611160945';
 const SHELL   = 'stashwalk-shell-' + VERSION;   // app code, replaced on every deploy
 const PLACES  = 'stashwalk-places-v1';          // park/campground tiles, never change
 const TILES   = 'stashwalk-maptiles-v1';        // map images, capped below
@@ -54,7 +54,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('message', e => {
   if (e.data === 'skipWaiting') self.skipWaiting();
-  if (e.data === 'version') e.source && e.source.postMessage({ sw: VERSION });
+  if (e.data === 'version') { const to = (e.ports && e.ports[0]) || e.source; if (to) to.postMessage({ sw: VERSION }); }
 });
 
 // Keep the map tile cache from growing without limit (roughly oldest-first).

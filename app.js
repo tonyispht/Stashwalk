@@ -1733,7 +1733,7 @@ function iosInstallable() { return isIOS() && !isStandalone(); }
 
 function registerSW() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
-  navigator.serviceWorker.register('sw.js?v=' + (window.ASSET_V || '1'), { scope: './' }).then(reg => {
+  navigator.serviceWorker.register('sw.js', { scope: './' }).then(reg => {
     PWA.reg = reg;
     if (reg.waiting && navigator.serviceWorker.controller) updateReady(reg.waiting);
     reg.addEventListener('updatefound', () => {
@@ -1756,7 +1756,19 @@ function registerSW() {
   setInterval(() => { if (PWA.reg && !document.hidden) PWA.reg.update().catch(() => {}); }, 15 * 60 * 1000);
 }
 // A new build is sitting ready: say so on every screen, with one tap to switch.
-function updateReady(worker) {
+// Only a genuinely newer build gets the banner. A waiting worker that is the same build the
+// page is already running (which is what happened right after every update, because the
+// worker used to be registered under a per-build address) is switched in silently.
+function swVersion(worker) {
+  return new Promise(res => {
+    const ch = new MessageChannel(), t = setTimeout(() => res(null), 1500);
+    ch.port1.onmessage = e => { clearTimeout(t); res(e.data && e.data.sw); };
+    try { worker.postMessage('version', [ch.port2]); } catch (e) { clearTimeout(t); res(null); }
+  });
+}
+async function updateReady(worker) {
+  const v = await swVersion(worker);
+  if (v && v === String(window.ASSET_V)) { try { worker.postMessage('skipWaiting'); } catch (e) {} return; }
   PWA.waiting = worker;
   const bar = $('#updBar'); if (bar) bar.hidden = false;
   if (!$('#v-me').hidden) renderMe();
