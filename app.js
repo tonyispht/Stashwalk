@@ -604,6 +604,8 @@ function launchDrone() {
   const z = d.lvl >= 7 ? 15 : d.lvl >= 5 ? 16 : 17;
   if (map.getZoom() !== z) map.setView([ll.lat, ll.lon], z, { animate: false });
   document.body.classList.add('flying');
+  // the map grows to fill the screen; once it has, put the drone back in view
+  requestAnimationFrame(() => { try { map.invalidateSize({ animate: false }); map.setView([fly.ll.lat, fly.ll.lon], map.getZoom(), { animate: false }); } catch (e) {} });
   renderDroneHud(true);
   FX.unlock(); FX.sfx('drone'); FX.vibe(40);
   fly.raf = requestAnimationFrame(flyStep);
@@ -615,6 +617,7 @@ function endFlight(why) {
   fly = null; joy.x = joy.y = 0;
   try { map.dragging.enable(); } catch (e) {}
   document.body.classList.remove('flying');
+  try { map.invalidateSize({ animate: false }); } catch (e) {}
   document.body.style.removeProperty('--sonar');
   FX.geiger(Infinity, 1);
   const hud = $('#droneHud'); if (hud) { hud.hidden = true; hud.innerHTML = ''; }

@@ -305,7 +305,8 @@ two miles out. So the drone looks up places around itself as it flies (`droneSca
 every 150 m of travel, 1.2 km radius), shows any the player's list lacks as dashed markers, and
 can open them. Tested in Chicago: the player's list stopped at 2.06 mi, and a drone 4 mi out found
 and opened Diversey Playground. Higher levels launch a little zoomed out, and the map keeps the
-drone in the clear area below the HUD.
+drone in the clear area below the HUD. While flying, the map fills the whole Explore screen down
+to the tab bar (the slider and chest list come back when the drone lands) - about twice the height.
 
 ## Update banner
 When the service worker finds a newer build, a bar appears under the header on every screen -

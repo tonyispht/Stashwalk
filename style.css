@@ -709,3 +709,8 @@ body:not(.flying) .droneopen{display:none}
 @media (prefers-reduced-motion:reduce){.dronesvg .rotor,.dronewrap::before,.dronewrap::after{animation:none}}
 /* chests the drone has found beyond your own list */
 .cm.far span{opacity:.85;border-style:dashed}
+
+/* while flying, the map takes the whole Explore screen - the slider and chest list come back
+   when the drone does. Leaflet's ResizeObserver hook keeps the map centred through the change. */
+body.flying #v-explore .panel{display:none}
+body.flying #v-explore{padding-bottom:0}
