@@ -714,3 +714,20 @@ body:not(.flying) .droneopen{display:none}
    when the drone does. Leaflet's ResizeObserver hook keeps the map centred through the change. */
 body.flying #v-explore .panel{display:none}
 body.flying #v-explore{padding-bottom:0}
+
+/* ================= road coins ================= */
+.rcm{background:none;border:0}
+.rcm i{display:block;width:100%;height:100%;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff6cf 0%,#ffd86b 32%,#e3a72e 68%,#a8761f 100%);
+  box-shadow:0 0 0 1px #7a5410, 0 1px 3px #0008, 0 0 6px #f2b84b55}
+.rcm.stack i{background:radial-gradient(circle at 35% 30%,#ffffff 0%,#ffe9a0 26%,#f2b84b 60%,#b07d24 100%);
+  box-shadow:0 0 0 2px #7a5410, 0 0 0 4px #f2b84b55, 0 3px 6px #0009, 0 0 16px #ffd98aaa}
+/* inside twice the magnet radius they start straining towards you */
+.rcm.tug i{animation:rcTug .5s ease-in-out infinite}
+@keyframes rcTug{50%{transform:scale(1.25);box-shadow:0 0 0 1.5px #7a5410, 0 0 16px #ffd98a}}
+.rcfly{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px 0 0 -6px;z-index:650;pointer-events:none;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff6cf 0%,#ffd86b 32%,#e3a72e 68%,#a8761f 100%);
+  box-shadow:0 0 0 1.5px #7a5410, 0 0 14px #ffd98a;will-change:transform}
+.rcfly.stack{width:20px;height:20px;margin:-10px 0 0 -10px}
+.ios .rcm.tug i{animation:none;transform:scale(1.2)}
+@media (prefers-reduced-motion:reduce){.rcm.tug i{animation:none}}

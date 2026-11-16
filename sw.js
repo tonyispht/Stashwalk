@@ -3,11 +3,13 @@
 // cache anything that comes from the shared world database (that must always be live).
 //
 // VERSION must match window.ASSET_V in index.html - bump both together on every deploy.
-const VERSION = '202611152210';
+const VERSION = '202611152245';
 const SHELL   = 'stashwalk-shell-' + VERSION;   // app code, replaced on every deploy
 const PLACES  = 'stashwalk-places-v1';          // park/campground tiles, never change
 const TILES   = 'stashwalk-maptiles-v1';        // map images, capped below
 const TILE_CAP = 600;
+const ROADS   = 'stashwalk-roads-v1';           // street/trail vector tiles for road coins
+const ROAD_CAP = 30;
 
 // Everything needed to open the game with no connection at all.
 const SHELL_FILES = [
@@ -31,6 +33,7 @@ const SHELL_FILES = [
 
 const MAP_HOSTS = /(^|\.)(tile\.openstreetmap\.org|basemaps\.cartocdn\.com|tile\.opentopomap\.org)$/;
 const CDN_HOSTS = /(^|\.)(unpkg\.com|cdnjs\.cloudflare\.com)$/;
+const ROAD_HOST = 'tiles.openfreemap.org';
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
@@ -42,7 +45,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
-    const keep = new Set([SHELL, PLACES, TILES]);
+    const keep = new Set([SHELL, PLACES, TILES, ROADS]);
     for (const k of await caches.keys()) if (k.startsWith('stashwalk-') && !keep.has(k)) await caches.delete(k);
     if (self.registration.navigationPreload) try { await self.registration.navigationPreload.enable(); } catch (err) {}
     await self.clients.claim();
@@ -94,7 +97,16 @@ self.addEventListener('fetch', e => {
   const sameOrigin = url.origin === self.location.origin;
 
   // The shared world (Cloudflare Worker) is always live - never served from a cache.
-  if (!sameOrigin && !MAP_HOSTS.test(url.hostname) && !CDN_HOSTS.test(url.hostname)) return;
+  if (!sameOrigin && !MAP_HOSTS.test(url.hostname) && !CDN_HOSTS.test(url.hostname) && url.hostname !== ROAD_HOST) return;
+
+  // Road data: tiles are versioned in their URL, so keep them; the index that names the
+  // current version changes monthly, so always ask for it fresh and fall back when offline.
+  if (url.hostname === ROAD_HOST) {
+    if (url.pathname.endsWith('.pbf')) { e.respondWith(cacheFirst(req, ROADS, ROAD_CAP).catch(() => Response.error())); return; }
+    e.respondWith(fetch(req).then(async res => { if (res.ok) (await caches.open(ROADS)).put(req, res.clone()); return res; })
+      .catch(async () => (await (await caches.open(ROADS)).match(req)) || Response.error()));
+    return;
+  }
 
   // Opening the app itself: try the network, fall back to the stored page.
   if (req.mode === 'navigate') {

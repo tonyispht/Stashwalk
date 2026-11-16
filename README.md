@@ -314,6 +314,36 @@ When the service worker finds a newer build, a bar appears under the header on e
 game also checks for a new build every 15 minutes while open and whenever it comes back to the
 foreground, since people leave it running on walks.
 
+## Road coins
+Coins lie along real streets, footpaths and trails, and fly into you (or the drone) when you get
+close. Settings are in config.js under `ROAD_COINS`.
+
+**Where the roads come from.** OpenFreeMap's public vector tiles of OpenStreetMap
+(`https://tiles.openfreemap.org/planet`) - free, no key, no request limits, attribution required
+(added to the map's credits automatically). `rcDecode()` is a small Mapbox Vector Tile reader that
+pulls the `transportation` layer out of each zoom-14 tile; no library. The game loads the tile you
+are on plus any neighbour you are near the edge of (about 100 KB each in a town), and the tile
+around the drone while it flies. The service worker keeps up to 30 of them (`stashwalk-roads-v1`);
+the index that names the current monthly data version is always fetched fresh.
+
+**Where coins go.** Footpaths, trails and tracks every `pathEvery` m, quiet streets (minor,
+tertiary, alleys) every `roadEvery` m, each a `chance` roll - and never on motorways, trunk,
+primary or secondary roads, private driveways, parking-lot aisles, ramps or in tunnels, so the
+game never rewards walking somewhere it should not. Downtowns map a sidewalk on each side of the
+street as well as the street, so at most one coin survives per `spacingM` square. Worth 2-3, +1 on
+trails; about 1 in 25 is a 25-coin gold stack.
+
+**Same for everyone, once per day.** Placement is seeded from the tile and the UTC day, so every
+player sees the same coins and they move at midnight UTC. What you have picked up is stored per
+player per day (`P.rc`, compactly as indices per tile), so a reload never brings one back.
+
+**Picking up.** Coins within twice the magnet radius start pulsing towards you; inside
+`magnetFt` (80 ft) they lift off and are pulled in along an arc, accelerating as they go, with a
+clink that climbs in pitch when you chain several. On foot it needs a real GPS fix of 40 m or
+better (no coarse-location scooping, no DEV teleports). The drone uses `droneMagnetFt` and can pick
+up `dronePerDay` coins a day (0 removes the limit); walking has no limit. Nothing is collected
+offline. Achievements at 100 and 1,000 coins picked up.
+
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
 version-stamped, but index.html itself can be served from cache and pin a player to an old build;

@@ -62,5 +62,24 @@ window.GEO_CONFIG = {
   DRONE_REACH_FT: 50,      // how close the drone has to hover to open a chest
   DRONE_SPEED_MPS: 22,     // slowest top speed (about 50 mph); bigger ranges fly faster...
   DRONE_EDGE_S: 70,        // ...so the edge of its range is about this many seconds away at full stick
-  DRONE_LISTEN_FT: 400     // the locator's hot/cold scale while flying
+  DRONE_LISTEN_FT: 400,    // the locator's hot/cold scale while flying
+
+  // ---- Road coins ----
+  // Coins scattered along real streets and trails (OpenStreetMap data via OpenFreeMap - free,
+  // no key). Never on highways or main roads, private driveways or in tunnels.
+  ROAD_COINS: {
+    on: true,
+    tiles: "https://tiles.openfreemap.org/planet",
+    pathEvery: 90,         // metres between coin chances on footpaths, trails and tracks
+    roadEvery: 180,        // ...and on quiet streets
+    chance: 0.55,          // how often a chance becomes a coin
+    spacingM: 80,          // never two coins closer than about this (keeps busy downtowns sane)
+    value: [2, 3],         // a normal coin is worth 2 or 3...
+    pathBonus: 1,          // ...plus this on trails and footpaths
+    stackChance: 0.04,     // now and then a gold stack instead
+    stackValue: 25,
+    magnetFt: 80,          // they fly to you inside this distance
+    droneMagnetFt: 100,    // and to the drone inside this
+    dronePerDay: 60        // most the drone can pick up in a day (0 = no limit). Walking has no limit.
+  }
 };

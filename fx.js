@@ -59,6 +59,10 @@ window.FX = (function () {
       tone(N.G6, t + 1.06, 1.35, 'sine', 0.05);
       tone(N.C7, t + 1.14, 1.2, 'sine', 0.033);
     },
+    pickup(t, combo) {                      // a bright clink that climbs when you chain them
+      const i = Math.min(combo || 0, PENT.length - 3), f = PENT[i + 2];
+      tone(f, t, 0.09, 'triangle', 0.075); tone(f * 2, t + 0.035, 0.12, 'sine', 0.045);
+    },
     drone(t) {                              // rotors spinning up
       noise(t, 0.7, 0.05, 300, 2400); tone(140, t, 0.6, 'sawtooth', 0.035, 420); tone(280, t + 0.05, 0.55, 'triangle', 0.03, 840);
     },

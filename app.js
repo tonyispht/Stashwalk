@@ -489,7 +489,8 @@ function renderShop() {
     <li>🏅 Achievement <b>${CO.achievement}</b></li><li>⚒️ Craft a relic <b>${CO.craft}</b></li>
     <li>🫳 Hide a chest <b>${CO.hide}</b></li><li>🎁 Leave a gift <b>${CO.gift}</b></li>
     <li>🔗 Merge <b>${CO.merge}</b></li><li>✨ New for your shelf <b>${CO.newItem}</b></li>
-    <li>💌 Friend joins <b>${CO.referral}</b></li></ul></div>`;
+    <li>💌 Friend joins <b>${CO.referral}</b></li>
+    <li>🛣️ Coins on streets &amp; trails <b>${RCF.value[0]}–${RCF.value[1] + RCF.pathBonus}</b></li><li>💰 Gold stack <b>${RCF.stackValue}</b></li></ul></div>`;
   $('#shopBox').innerHTML = h;
   renderShopHead();
   const bd = $('#buyDrone'); if (bd) bd.onclick = buyDrone;
@@ -601,6 +602,7 @@ function launchDrone() {
   };
   droneScan(true);
   try { map.dragging.disable(); } catch (e) {}
+  RC.lastDraw = null;
   const z = d.lvl >= 7 ? 15 : d.lvl >= 5 ? 16 : 17;
   if (map.getZoom() !== z) map.setView([ll.lat, ll.lon], z, { animate: false });
   document.body.classList.add('flying');
@@ -612,6 +614,7 @@ function launchDrone() {
 }
 function endFlight(why) {
   if (!fly) return;
+  RC.lastDraw = null;
   cancelAnimationFrame(fly.raf);
   try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); fly.layer.remove(); } catch (e) {}
   fly = null; joy.x = joy.y = 0;
@@ -656,7 +659,8 @@ function flyStep(now) {
   }
   fly.tether.setLatLngs([[pos.lat, pos.lon], [fly.ll.lat, fly.ll.lon]]);
   fly.ring.setLatLng([pos.lat, pos.lon]);
-  if (now - fly.lastProbe > 160) { fly.lastProbe = now; probeFromDrone(); }
+  if (now - fly.lastProbe > 160) { fly.lastProbe = now; probeFromDrone(); rcEnsureAround(fly.ll); rcDraw(); }
+  rcCollect(fly.ll, true);
   fly.raf = requestAnimationFrame(flyStep);
 }
 // the locator, run from the drone's position
@@ -778,6 +782,269 @@ function droneCard() {
            : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – ${fmtFt(droneRangeM(DRONE_MAX))} of range.</p>`}</div>`;
 }
 
+// ---------------- road coins ----------------
+// Coins lying along real streets and trails. The geometry comes from OpenStreetMap vector
+// tiles (OpenFreeMap: free, no key), decoded here with a small reader rather than a library.
+// The same coins appear for everyone on a given day; who has picked up what is per player.
+// Walk - or fly the drone - close and they are pulled in.
+const RCF = Object.assign({ on: true, tiles: 'https://tiles.openfreemap.org/planet', pathEvery: 90, roadEvery: 180, chance: 0.55,
+  value: [2, 3], pathBonus: 1, stackChance: 0.04, stackValue: 25, magnetFt: 80, droneMagnetFt: 100, dronePerDay: 60 }, C.ROAD_COINS || {});
+const RZ = 14;                                     // the deepest zoom the vector tiles carry
+const RC = { tpl: null, tj: null, tiles: new Map(), loading: new Set(), layer: null, marks: new Map(), lastDraw: null, lastDrawDrone: null, combo: 0, comboT: 0 };
+
+// --- a tiny Mapbox Vector Tile reader: just enough for the road lines ---
+const RC_KEEP_SERVICE = new Set(['alley', 'spur', 'yard', '']);     // no parking-lot aisles or driveways
+function rcClassify(pr) {
+  if (pr.brunnel === 'tunnel' || pr.ramp || pr.access === 'no' || pr.access === 'private') return null;
+  const c = pr.class;
+  if (c === 'path' || c === 'track') return 'path';
+  if (c === 'minor' || c === 'tertiary') return 'road';
+  if (c === 'service') return RC_KEEP_SERVICE.has(pr.service || '') ? 'road' : null;   // no private driveways
+  return null;                                     // highways, main roads, rail, ferries...
+}
+function rcDecode(buf, z, tx, ty) {
+  let p = 0;
+  const td = new TextDecoder();
+  const rv = () => { let r = 0, m = 1, b; do { b = buf[p++]; r += (b & 0x7f) * m; m *= 128; } while (b & 0x80); return r; };
+  const skip = w => { if (w === 0) rv(); else if (w === 1) p += 8; else if (w === 2) { const l = rv(); p += l; } else if (w === 5) p += 4; else p = buf.length; };
+  const lines = [];
+  const n = 2 ** z;
+  while (p < buf.length) {
+    const tag = rv(), f = Math.floor(tag / 8), w = tag & 7;
+    if (f === 3 && w === 2) { const l = rv(), end = p + l; layer(end); p = end; } else skip(w);
+  }
+  return lines;
+  function layer(end) {
+    let name = '', extent = 4096; const keys = [], vals = [], feats = [];
+    while (p < end) {
+      const tag = rv(), f = Math.floor(tag / 8), w = tag & 7;
+      if (f === 1 && w === 2) { const l = rv(); name = td.decode(buf.subarray(p, p + l)); p += l; if (name !== 'transportation') return; }
+      else if (f === 2 && w === 2) { const l = rv(); feats.push([p, p + l]); p += l; }
+      else if (f === 3 && w === 2) { const l = rv(); keys.push(td.decode(buf.subarray(p, p + l))); p += l; }
+      else if (f === 4 && w === 2) {
+        const l = rv(), e = p + l; let v = null;
+        while (p < e) {
+          const t = rv(), ff = Math.floor(t / 8), ww = t & 7;
+          if (ff === 1 && ww === 2) { const L2 = rv(); v = td.decode(buf.subarray(p, p + L2)); p += L2; }
+          else if ((ff === 4 || ff === 5 || ff === 7) && ww === 0) v = rv();
+          else if (ff === 6 && ww === 0) { const z2 = rv(); v = z2 % 2 ? -(z2 + 1) / 2 : z2 / 2; }
+          else skip(ww);
+        }
+        vals.push(v); p = e;
+      }
+      else if (f === 5 && w === 0) extent = rv();
+      else skip(w);
+    }
+    for (const [a, b] of feats) { p = a; feature(b, keys, vals, extent); }
+  }
+  function feature(end, keys, vals, extent) {
+    const tags = []; let type = 0, gs = 0, ge = 0;
+    while (p < end) {
+      const tag = rv(), f = Math.floor(tag / 8), w = tag & 7;
+      if (f === 2 && w === 2) { const l = rv(), e = p + l; while (p < e) tags.push(rv()); }
+      else if (f === 3 && w === 0) type = rv();
+      else if (f === 4 && w === 2) { const l = rv(); gs = p; ge = p + l; p = ge; }
+      else skip(w);
+    }
+    if (type !== 2) return;
+    const pr = {}; for (let i = 0; i + 1 < tags.length; i += 2) pr[keys[tags[i]]] = vals[tags[i + 1]];
+    const kind = rcClassify(pr); if (!kind) return;
+    p = gs; let cx = 0, cy = 0, line = null;
+    const pt = () => {
+      const fx = (tx + cx / extent) / n, fy = (ty + cy / extent) / n;
+      return { lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * fy))) * 180 / Math.PI, lon: fx * 360 - 180,
+               inside: cx >= 0 && cy >= 0 && cx < extent && cy < extent };
+    };
+    while (p < ge) {
+      const cmd = rv(), id = cmd & 7, cnt = cmd >> 3;
+      if (id === 1 || id === 2) {
+        for (let i = 0; i < cnt; i++) {
+          const dx = rv(), dy = rv();
+          cx += (dx >>> 1) ^ -(dx & 1); cy += (dy >>> 1) ^ -(dy & 1);
+          if (id === 1) { if (line && line.length > 1) lines.push({ path: kind === 'path', pts: line }); line = []; }
+          line.push(pt());
+        }
+      }
+    }
+    if (line && line.length > 1) lines.push({ path: kind === 'path', pts: line });
+  }
+}
+
+// --- placing coins: the same for everyone on a given day ---
+function rcPlace(key, lines, day) {
+  const R = rng(hashStr('stashwalk-rc|' + key + '|' + day)), out = [];
+  let idx = 0;
+  for (const ln of lines) {
+    const every = ln.path ? RCF.pathEvery : RCF.roadEvery;
+    let s = R() * every;
+    for (let i = 1; i < ln.pts.length; i++) {
+      const a = ln.pts[i - 1], b = ln.pts[i], seg = dist(a, b);
+      while (s < seg) {
+        const roll = R(), roll2 = R(), roll3 = R(), my = idx++;
+        const t = s / seg;
+        // a tile carries a margin of its neighbours' roads - only keep coins on our own ground
+        if (roll < RCF.chance && (a.inside || b.inside)) {
+          const lat = a.lat + (b.lat - a.lat) * t, lon = a.lon + (b.lon - a.lon) * t;
+          if (rcInTile(key, lat, lon)) {
+            const stack = roll2 < RCF.stackChance;
+            const v = stack ? RCF.stackValue : RCF.value[0] + Math.floor(roll3 * (RCF.value[1] - RCF.value[0] + 1)) + (ln.path ? RCF.pathBonus : 0);
+            out.push({ id: key + ':' + my, k: key, i: my, lat, lon, v, stack, path: ln.path });
+          }
+        }
+        s += every;
+      }
+      s -= seg;
+    }
+  }
+  // Downtowns map a sidewalk on each side of the street as well as the street itself, so the
+  // same block would get three coins. Keep at most one per ~80 m square (first come, so it is
+  // still the same for everyone).
+  const cell = (RCF.spacingM || 80), seen = new Set(), kept = [];
+  for (const c of out) {
+    const k2 = Math.floor(c.lat * 111320 / cell) + ':' + Math.floor(c.lon * 111320 * Math.cos(c.lat * Math.PI / 180) / cell);
+    if (seen.has(k2)) continue; seen.add(k2); kept.push(c);
+  }
+  return kept;
+}
+function rcTileOf(lat, lon) {
+  const n = 2 ** RZ, x = Math.floor((lon + 180) / 360 * n);
+  const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+  return { x, y, key: x + '/' + y };
+}
+function rcInTile(key, lat, lon) { return rcTileOf(lat, lon).key === key; }
+function rcGot() {
+  const d = utcDay();
+  if (!P.rc || P.rc.day !== d) P.rc = { day: d, got: {}, drone: 0 };
+  return P.rc;
+}
+const rcTaken = c => { const g = rcGot().got[c.k]; return !!(g && g.includes(c.i)); };
+
+async function rcTemplate() {
+  if (RC.tpl) return RC.tpl;
+  if (!RC.tj) RC.tj = fetch(RCF.tiles).then(r => r.json()).then(j => { RC.tpl = j.tiles && j.tiles[0]; return RC.tpl; }).catch(() => { RC.tj = null; return null; });
+  return RC.tj;
+}
+async function rcLoad(key) {
+  if (RC.tiles.has(key) || RC.loading.has(key)) return;
+  const tpl = await rcTemplate(); if (!tpl) return;
+  RC.loading.add(key);
+  try {
+    const [x, y] = key.split('/').map(Number);
+    const r = await fetch(tpl.replace('{z}', RZ).replace('{x}', x).replace('{y}', y));
+    if (!r.ok) throw new Error(r.status);
+    let buf = new Uint8Array(await r.arrayBuffer());
+    if (buf[0] === 0x1f && buf[1] === 0x8b && window.DecompressionStream)
+      buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+    const lines = rcDecode(buf, RZ, x, y);
+    RC.tiles.set(key, { lines, day: -1, coins: [] });
+    while (RC.tiles.size > 16) RC.tiles.delete(RC.tiles.keys().next().value);
+  } catch (e) { /* no roads for this tile right now; try again later */ }
+  RC.loading.delete(key);
+  rcDraw(true);
+  // anything already within reach when the roads arrive is pulled in straight away
+  if (fly) rcCollect(fly.ll, true); else if (pos && pos.acc <= 40) rcCollect(pos, false);
+}
+// the tile you are on, plus any neighbour you are close to the edge of
+function rcEnsureAround(at) {
+  if (!RCF.on || !at) return;
+  const n = 2 ** RZ, fx = (at.lon + 180) / 360 * n;
+  const fy = (1 - Math.log(Math.tan(at.lat * Math.PI / 180) + 1 / Math.cos(at.lat * Math.PI / 180)) / Math.PI) / 2 * n;
+  const x = Math.floor(fx), y = Math.floor(fy), mx = fx - x, my = fy - y, edge = 0.28;
+  const want = [[x, y]];
+  const ex = mx < edge ? -1 : mx > 1 - edge ? 1 : 0, ey = my < edge ? -1 : my > 1 - edge ? 1 : 0;
+  if (ex) want.push([x + ex, y]); if (ey) want.push([x, y + ey]); if (ex && ey) want.push([x + ex, y + ey]);
+  want.forEach(([a, b]) => rcLoad(a + '/' + b));
+}
+function rcCoinsNear(at, rM) {
+  const day = utcDay(), out = [];
+  RC.tiles.forEach((t, key) => {
+    if (t.day !== day) { t.coins = rcPlace(key, t.lines, day); t.day = day; }
+    for (const c of t.coins) if (Math.abs(c.lat - at.lat) < rM / 111000 && dist(at, c) <= rM && !rcTaken(c)) out.push(c);
+  });
+  return out;
+}
+// markers for the coins around you (and around the drone, when it is up)
+function rcDraw(force) {
+  if (!RCF.on || !map || !window.L || !P || !pos) return;
+  if (!RC.layer) {
+    RC.layer = L.layerGroup().addTo(map);
+    try { map.attributionControl.addAttribution('Road data <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a>'); } catch (e) {}
+    map.on('zoomend', () => rcDraw(true));
+  }
+  const at = fly ? fly.ll : pos;
+  if (!force && RC.lastDraw && dist(RC.lastDraw, at) < 40) return;
+  RC.lastDraw = { lat: at.lat, lon: at.lon };
+  const show = map.getZoom() >= 15;
+  const want = show ? rcCoinsNear(at, 900).sort((a, b) => dist(at, a) - dist(at, b)).slice(0, 160) : [];
+  const keep = new Set(want.map(c => c.id));
+  RC.marks.forEach((m, id) => { if (!keep.has(id)) { m.remove(); RC.marks.delete(id); } });
+  for (const c of want) {
+    if (RC.marks.has(c.id)) continue;
+    const m = L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'rcm' + (c.stack ? ' stack' : ''), html: '<i></i>', iconSize: c.stack ? [19, 19] : [12, 12] }),
+      interactive: false, keyboard: false });
+    m.coin = c; m.addTo(RC.layer); RC.marks.set(c.id, m);
+  }
+  if (want.length) rcHintOnce();
+}
+function rcHintOnce() {
+  try { if (localStorage.getItem('sw_rchint')) return; localStorage.setItem('sw_rchint', '1'); } catch (e) { return; }
+  toast('🪙 Coins are lying along streets and trails today – walk close to scoop them up');
+}
+
+// --- pick-up: coins inside the magnet radius fly into whoever pulled them ---
+function rcCollect(at, byDrone) {
+  if (!RCF.on || !P || !map || OFFLINE) return;
+  const R = (byDrone ? RCF.droneMagnetFt : RCF.magnetFt) * 0.3048;
+  const g = rcGot();
+  if (byDrone && RCF.dronePerDay && g.drone >= RCF.dronePerDay) return;
+  RC.marks.forEach((m, id) => {
+    const c = m.coin; if (!c || m.flying) return;
+    const d = dist(at, c);
+    const el = m.getElement && m.getElement();
+    if (el) el.classList.toggle('tug', d <= R * 2);
+    if (d > R) return;
+    if (byDrone && RCF.dronePerDay && g.drone >= RCF.dronePerDay) return;
+    (g.got[c.k] = g.got[c.k] || []).push(c.i);
+    if (byDrone) { g.drone++; if (RCF.dronePerDay && g.drone === RCF.dronePerDay) toast(`🛸 The drone's coin bag is full for today – coins on foot still count`); }
+    m.flying = true;
+    rcFlyIn(m, byDrone);
+  });
+}
+function rcFlyIn(m, byDrone) {
+  const c = m.coin, host = $('#maprow');
+  const start = map.latLngToContainerPoint([c.lat, c.lon]);
+  m.remove(); RC.marks.delete(c.id);
+  const el = document.createElement('i');
+  el.className = 'rcfly' + (c.stack ? ' stack' : '');
+  host.appendChild(el);
+  const t0 = performance.now(), dur = 520 + Math.random() * 120, side = Math.random() < .5 ? -1 : 1;
+  const target = () => {
+    const ll = byDrone && fly ? [fly.ll.lat, fly.ll.lon] : [pos.lat, pos.lon];
+    return map.latLngToContainerPoint(ll);
+  };
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur), e = k * k * (3 - 2 * k), pull = k * k;   // slow lift, then snapped in
+    const tp = target();
+    const x = start.x + (tp.x - start.x) * pull, y = start.y + (tp.y - start.y) * pull;
+    const arc = Math.sin(e * Math.PI) * 26;
+    el.style.transform = `translate(${x + side * arc * .6}px, ${y - arc}px) scale(${1 + Math.sin(k * Math.PI) * .35 - k * .45})`;
+    el.style.opacity = k > .9 ? (1 - k) * 10 : 1;
+    if (k < 1) requestAnimationFrame(step);
+    else {
+      el.remove();
+      const now2 = performance.now();
+      RC.combo = now2 - RC.comboT < 1400 ? RC.combo + 1 : 0; RC.comboT = now2;
+      FX.sfx('pickup', RC.combo);
+      if (c.stack) { FX.sfx('coin'); const p = FX.centerOf(byDrone && fly && fly.marker.getElement ? fly.marker.getElement() : document.querySelector('.me-dot')); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#fff'], 18); }
+      FX.vibe(c.stack ? [20, 30, 20] : 12);
+      P.stats.roadCoins = (P.stats.roadCoins || 0) + 1;
+      earn(c.v, c.stack ? 'Gold stack!' : 'Road coins');
+      clearTimeout(RC.saveT); RC.saveT = setTimeout(() => { checkAch(); save(); }, 900);
+    }
+  };
+  requestAnimationFrame(step);
+}
+
 // ---------------- achievements ----------------
 const ACH = [];
 function ach(id, n, t, d, get, goal, icon) { ACH.push({ id, n, t, d, get, goal, icon: icon || '🏅' }); }
@@ -824,6 +1091,8 @@ ach('walk10', 'Ten-Miler', 'Trail Legs', 'Walk 10 miles', s => s.miles, 10, '�
 ach('walk50', 'Long Haul', 'Long Hauler', 'Walk 50 miles', s => s.miles, 50, '🏔️');
 ach('walk100', 'Century Walker', 'Centurion', 'Walk 100 miles', s => s.miles, 100, '💯');
 ach('shop1', 'Window Shopper', 'Shopper', 'Buy something from the shop', s => s.bought, 1, '🛍️');
+ach('rc100', 'Pocket Change', 'Scavenger', 'Pick up 100 road coins', s => s.roadCoins, 100, '🪙');
+ach('rc1000', 'Coin Magnet', 'Magnet', 'Pick up 1,000 road coins', s => s.roadCoins, 1000, '🧲');
 ach('drone1', 'Eye in the Sky', 'Drone Pilot', 'Open a chest with your drone', s => s.droneOpens, 1, '🛸');
 ach('drone8', 'Full Range', 'Sky Captain', 'Upgrade your drone to level 8', s => s.droneLvl, 8, '📡');
 // The locked achievement you are nearest to finishing - something concrete to aim at.
@@ -852,7 +1121,7 @@ function statView() {
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
            given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
            miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0,
-           droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0 };
+           droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0, roadCoins: P.stats.roadCoins || 0 };
 }
 function checkAch() {
   const s = statView(), got = [];
@@ -1633,6 +1902,7 @@ function gpsMsg(t, cls) {
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
   trackWalk(lat, lon, pos.acc, manual);
+  if (!fly) { rcEnsureAround(pos); rcDraw(); if (!manual && pos.acc <= 40) rcCollect(pos, false); }
   const accFt = pos.acc * FT;
   gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(accFt)} ft${manual ? '' : coarseHint(accFt)}`,
          accFt >= C.COARSE_FT ? 'bad' : 'ok');
@@ -2391,5 +2661,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
