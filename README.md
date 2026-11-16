@@ -399,9 +399,11 @@ to tonyispht) - the game's own check only decides whether to show the card.
   drone level and more, plus **Show on map**, which jumps to their last known spot.
 - **Players on the map**: "Show players on map" pins everyone who has shared a location
   (green = online, grey = away). Tap a pin for their card.
-- **Locations**: `/ping` may carry the player's position; the server rounds it to 3 decimals
-  (~100 m) and keeps only the latest one in `seen/<user>`. Players get a one-time notice and can
-  turn it off in Me › Settings ("Share my rough location"), which also clears the stored spot.
+- **Locations**: `/ping` carries the player's position; the server rounds it to 3 decimals
+  (~100 m) and keeps only the latest one in `seen/<user>`, readable only through the admin-only
+  endpoints. Settings shows a one-line disclosure ("Your approximate location is shared with the
+  server and admin team for further development"); there is no opt-out, so every player appears on
+  the admin map.
 - **Hide anywhere, no limits**: "Place chests on the map" puts the map in placement mode - tap
   anywhere to hide a chest there, stocked with any item in the game (not taken from the pack).
   The admin also skips the daily hide limits and the spacing rule when hiding normally.

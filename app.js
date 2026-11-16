@@ -1131,16 +1131,10 @@ function fogIntroOnce() {
 // the Me tab and a notification when someone signs up or comes back online.
 const isAdmin = () => !!KEY && KEY === String(C.ADMIN_USER || 'TonyIspht').toLowerCase();
 let pingTimer = null, adminTimer = null, adminData = null, adminErr = '';
-// The game also sends a rough location (rounded to ~100 m by the server) so the admin can see
-// where players are. Players can switch this off in Me > Settings.
-const shareLoc = () => { try { return localStorage.getItem('sw_shareloc') !== '0'; } catch (e) { return true; } };
-function locNoteOnce() {
-  try { if (localStorage.getItem('sw_locnote') || !shareLoc() || !DB.remote) return; localStorage.setItem('sw_locnote', '1'); } catch (e) { return; }
-  setTimeout(() => toast('📍 Your rough location (about 100 m) is shared with the game admin. Turn it off in Me › Settings.'), 9000);
-}
+// The game sends a rough location (rounded to ~100 m by the server) so the admin - and only the
+// admin, through the admin-only endpoints - can see where players are. It is disclosed in Settings.
 function startPresence() {
-  const beat = () => { if (!document.hidden && !OFFLINE) DB.ping(shareLoc() && pos ? { lat: pos.lat, lon: pos.lon } : null).catch(() => {}); };
-  locNoteOnce();
+  const beat = () => { if (!document.hidden && !OFFLINE) DB.ping(pos ? { lat: pos.lat, lon: pos.lon } : null).catch(() => {}); };
   clearInterval(pingTimer); beat(); pingTimer = setInterval(beat, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) beat(); });
   if (isAdmin()) { clearInterval(adminTimer); adminPoll(); adminTimer = setInterval(adminPoll, 30000); }
@@ -1921,7 +1915,7 @@ function renderMe() {
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
     <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator is running</span></label>
     <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
-    ${DB.remote ? `<label class="tg"><input type="checkbox" id="setLoc" ${shareLoc() ? 'checked' : ''}><span>📍 Share my rough location (~100 m) with the game admin</span></label>` : ''}
+    ${DB.remote ? `<p class="fine">📍 Your approximate location is shared with the server and admin team for further development.</p>` : ''}
     ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
     <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
     <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
@@ -1953,7 +1947,6 @@ function renderMe() {
   $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
-  const sl = $('#setLoc'); if (sl) sl.onchange = e => { try { localStorage.setItem('sw_shareloc', e.target.checked ? '1' : '0'); } catch (er) {} if (!e.target.checked) DB.ping({ clear: 1 }).catch(() => {}); toast(e.target.checked ? 'Location sharing on' : 'Location sharing off'); };
   $('#setMap').onchange = e => { FX.set('darkmap', e.target.checked); applyBasemap(); toast(e.target.checked ? 'Dark map on' : 'Standard map on'); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
   const rc = $('#recNew'); if (rc) rc.onclick = e => regenRecovery(e.target);
@@ -2185,7 +2178,7 @@ function gpsMsg(t, cls) {
   if (cls === 'bad') FX.geiger(Infinity, 1); const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
-  if (first && KEY && shareLoc() && !OFFLINE) DB.ping({ lat, lon }).catch(() => {});   // so the admin map is right straight away
+  if (first && KEY && !OFFLINE) DB.ping({ lat, lon }).catch(() => {});   // so the admin map is right straight away
   trackWalk(lat, lon, pos.acc, manual);
   if (!fly) { rcEnsureAround(pos); rcDraw(); if (!manual && pos.acc <= 40) rcCollect(pos, false); }
   const accFt = pos.acc * FT;
@@ -3025,7 +3018,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, shareLoc, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
