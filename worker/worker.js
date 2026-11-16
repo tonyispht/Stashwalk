@@ -107,6 +107,17 @@ const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 300
 // as admin is decided here too - the game's own check only decides whether to show the panel.
 const adminsOf = env => new Set(String(env.ADMIN_USERS || 'tonyispht').toLowerCase().split(',').map(s => s.trim()).filter(Boolean));
 const ONLINE_MS = 150000;          // seen in the last 2.5 minutes = online (the game pings once a minute)
+function seenOf(val) {
+  try { const o = JSON.parse(val); if (o && typeof o === 'object') return { t: +o.t || 0, lat: o.lat, lon: o.lon }; return { t: +o || 0 }; }
+  catch (e) { return { t: +val || 0 }; }
+}
+const nameOfUser = async (env, key) => { try { const u = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + key).first(); return u ? (JSON.parse(u.val).name || key) : key; } catch (e) { return key; } };
+async function requireAdmin(env, req) {
+  const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+  if (!me) return { err: 401, msg: 'not logged in' };
+  if (!adminsOf(env).has(me)) return { err: 403, msg: 'not an admin' };
+  return { me };
+}
 const AWAY_MS = 10 * 60000;        // back after this long counts as "came online" again
 async function adminEvent(env, ev) {
   const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('admin/events').first();
@@ -203,10 +214,14 @@ export default {
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
         if (!me) return json({ error: 'not logged in' }, 401, cors);
         const now = Date.now();
+        const b = await req.json().catch(() => ({}));
         const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('seen/' + me).first();
-        const prev = row ? +row.val || 0 : 0;
+        const prev = row ? seenOf(row.val).t : 0;
+        const rec = { t: now };
+        const lat = +b.lat, lon = +b.lon;
+        if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) { rec.lat = Math.round(lat * 1000) / 1000; rec.lon = Math.round(lon * 1000) / 1000; }
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
-          .bind('seen/' + me, String(now)).run();
+          .bind('seen/' + me, JSON.stringify(rec)).run();
         if (!prev || now - prev > AWAY_MS) {
           let name = me, created = 0;
           try { const u = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + me).first(); if (u) { const o = JSON.parse(u.val); name = o.name || me; created = o.created || 0; } } catch (e) {}
@@ -217,27 +232,79 @@ export default {
       }
 
       if (url.pathname === '/admin/stats' && req.method === 'GET') {
-        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
-        if (!me) return json({ error: 'not logged in' }, 401, cors);
-        if (!adminsOf(env).has(me)) return json({ error: 'not an admin' }, 403, cors);
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
         const now = Date.now();
         const users = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'users/%' LIMIT 50000").all()).results;
         const seen = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'seen/%' LIMIT 50000").all()).results;
+        const players = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'players/%' LIMIT 5000").all()).results;
+        const cells = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'cells/%' LIMIT 20000").all()).results;
+        const blocked = await env.DB.prepare("SELECT count(*) AS n FROM kv WHERE path LIKE 'block/%'").first();
         const evRow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('admin/events').first();
         let events = []; if (evRow) { try { events = JSON.parse(evRow.val) || []; } catch (e) {} }
         const people = {};
-        users.forEach(r => { try { const u = JSON.parse(r.val); people[r.path.slice(6)] = { name: u.name, created: u.created || 0 }; } catch (e) {} });
-        const last = seen.map(r => ({ key: r.path.slice(5), t: +r.val || 0 })).filter(x => x.t);
-        const since = ms => last.filter(x => now - x.t < ms).length;
-        const nameOf = k => (people[k] && people[k].name) || k;
+        users.forEach(r => { try { const u = JSON.parse(r.val); people[r.path.slice(6)] = { key: r.path.slice(6), name: u.name, created: u.created || 0 }; } catch (e) {} });
+        seen.forEach(r => { const k = r.path.slice(5), sv = seenOf(r.val); people[k] = Object.assign(people[k] || { key: k, name: k }, { seen: sv.t, lat: sv.lat, lon: sv.lon }); });
+        // totals across every player record
+        const tot = { opened: 0, trades: 0, hidden: 0, miles: 0, coins: 0, coinsEarned: 0, items: 0, crafted: 0, merges: 0, drones: 0, roadCoins: 0, logins: 0 };
+        players.forEach(r => {
+          try {
+            const p = JSON.parse(r.val), st = p.stats || {}, k = r.path.slice(8);
+            tot.opened += Object.keys(st.visited || {}).length; tot.trades += st.ex || 0; tot.hidden += st.hidden || 0;
+            tot.miles += (st.walkedM || 0) / 1609.344; tot.coins += p.coins || 0; tot.coinsEarned += st.coinsEarned || 0;
+            tot.items += Object.keys(p.dex || {}).length; tot.crafted += st.crafted || 0; tot.merges += st.merges || 0;
+            tot.roadCoins += st.roadCoins || 0; tot.logins += (p.daily && p.daily.n) || 0; if (p.drone && p.drone.lvl) tot.drones++;
+            if (people[k]) { people[k].miles = +((st.walkedM || 0) / 1609.344).toFixed(1); people[k].opened = Object.keys(st.visited || {}).length; people[k].trades = st.ex || 0; people[k].title = p.title || ''; }
+          } catch (e) {}
+        });
+        tot.miles = +tot.miles.toFixed(1);
+        const hiddenChests = cells.map(r => { try { const c = JSON.parse(r.val), seg = r.path.split('/'); return { id: seg[2], cell: seg[1], name: c.name, lat: c.lat, lon: c.lon, by: c.by || '', at: c.at || 0 }; } catch (e) { return null; } })
+          .filter(Boolean).sort((a, b) => (b.at || 0) - (a.at || 0));
+        const list = Object.values(people);
+        const since = ms => list.filter(p => p.seen && now - p.seen < ms).length;
         return json({
-          now, accounts: users.length,
-          online: since(ONLINE_MS), active24h: since(86400000), active7d: since(7 * 86400000),
-          onlineList: last.filter(x => now - x.t < ONLINE_MS).sort((a, b) => b.t - a.t).map(x => ({ name: nameOf(x.key), t: x.t })),
-          recent: last.sort((a, b) => b.t - a.t).slice(0, 15).map(x => ({ name: nameOf(x.key), t: x.t })),
-          newest: Object.values(people).filter(p => p.created).sort((a, b) => b.created - a.created).slice(0, 15),
+          now, accounts: users.length, online: since(ONLINE_MS), active24h: since(86400000), active7d: since(7 * 86400000),
+          signups7d: list.filter(p => p.created && now - p.created < 7 * 86400000).length,
+          totals: tot, chestsHidden: hiddenChests.length, chestsRemoved: (blocked && blocked.n) || 0,
+          players: list.sort((a, b) => (b.seen || 0) - (a.seen || 0)).slice(0, 300),
+          hiddenChests: hiddenChests.slice(0, 60),
           events: events.slice(0, 100)
         }, 200, cors);
+      }
+
+      // one player's record, for the admin's player card
+      if (url.pathname === '/admin/user' && req.method === 'GET') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        const k = String(url.searchParams.get('u') || '').toLowerCase(); if (!SEG.test(k)) return json({ error: 'bad name' }, 400, cors);
+        const u = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + k).first();
+        if (!u) return json({ error: 'no such player' }, 404, cors);
+        const p = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('players/' + k).first();
+        const sn = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('seen/' + k).first();
+        const inv = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('invites/' + k).first();
+        let pl = {}; try { pl = p ? JSON.parse(p.val) : {}; } catch (e) {}
+        const st = pl.stats || {}, uu = JSON.parse(u.val), sv = sn ? seenOf(sn.val) : {};
+        return json({
+          key: k, name: uu.name, created: uu.created || 0, seen: sv.t || 0, lat: sv.lat, lon: sv.lon,
+          title: pl.title || '', coins: pl.coins || 0, coinsEarned: st.coinsEarned || 0,
+          opened: Object.keys(st.visited || {}).length, trades: st.ex || 0, hidden: st.hidden || 0, gifts: st.given || 0,
+          items: Object.keys(pl.dex || {}).length, pack: Object.values(pl.inv || {}).reduce((a, b) => a + b, 0),
+          crafted: st.crafted || 0, merges: st.merges || 0, miles: +((st.walkedM || 0) / 1609.344).toFixed(2),
+          roadCoins: st.roadCoins || 0, logins: (pl.daily && pl.daily.n) || 0, streak: (pl.daily && pl.daily.max) || 0,
+          drone: (pl.drone && pl.drone.lvl) || 0, achievements: Object.keys(pl.ach || {}).length,
+          invited: inv ? +JSON.parse(inv.val) || 0 : 0, ref: pl.ref || ''
+        }, 200, cors);
+      }
+
+      // remove a hidden chest for everyone, straight away
+      if (url.pathname === '/admin/remove' && req.method === 'POST') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''), cell = String(b.cell || '');
+        if (!SEG.test(chest)) return json({ error: 'bad chest' }, 400, cors);
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind('block/' + chest, '1').run();
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('chests/' + chest).run();
+        if (/^-?\d+_-?\d+$/.test(cell)) await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('cells/' + cell + '/' + chest).run();
+        else await env.DB.prepare("DELETE FROM kv WHERE path LIKE ? ").bind('cells/%/' + chest).run();
+        return json({ ok: true }, 200, cors);
       }
 
       // ---- account recovery -------------------------------------------------------
@@ -361,6 +428,16 @@ export default {
           const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
           if (!me) return json({ error: 'not logged in' }, 401, cors);
           if (segs[0] === 'players' && segs[1] !== me) return json({ error: 'not your record' }, 403, cors);
+          // Who hid a chest is written by the server, never taken from the client: a new hidden
+          // chest (cells entry, or a u_ chest record) gets the writer's name, and later writes
+          // (trades) keep whatever was there.
+          if (segs[0] === 'cells' || (segs[0] === 'chests' && /^u_/.test(segs[1]))) {
+            const ex = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind(path).first();
+            let keep = null; if (ex) { try { const o = JSON.parse(ex.val); if (o && o.by) keep = { by: o.by, at: o.at }; } catch (e) {} }
+            if (keep) { value.by = keep.by; value.at = keep.at || 0; }
+            else if (ex) { delete value.by; delete value.at; }            // older chest: nobody on record
+            else { value.by = (await nameOfUser(env, me)).slice(0, 16); value.at = Date.now(); }
+          }
 
           // Keep the previous chest so we can tell whose item just left it.
           let prevChest = null;

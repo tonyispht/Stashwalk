@@ -137,10 +137,24 @@ window.DB = (function () {
       return j;
     },
     // presence: the game says it is open once a minute
-    async ping() {
+    async ping(loc) {
       if (!W || !auth) return null;
-      const r = await fetch(W + '/ping', { method: 'POST', headers: whead(), body: '{}' });
+      const r = await fetch(W + '/ping', { method: 'POST', headers: whead(), body: JSON.stringify(loc || {}) });
       if (!r.ok) return null; return r.json();
+    },
+    async adminUser(name) {
+      const r = await fetch(W + '/admin/user?u=' + encodeURIComponent(String(name).toLowerCase()), { headers: whead() });
+      const j = await r.json().catch(() => null);
+      if (!j) throw new Error('the Worker needs updating for player details');
+      if (!r.ok) throw new Error(j.error || 'admin ' + r.status);
+      return j;
+    },
+    async adminRemove(chest, cell) {
+      const r = await fetch(W + '/admin/remove', { method: 'POST', headers: whead(), body: JSON.stringify({ chest, cell }) });
+      const j = await r.json().catch(() => null);
+      if (!j) throw new Error('the Worker needs updating to remove chests');
+      if (!r.ok) throw new Error(j.error || 'admin ' + r.status);
+      return j;
     },
     async adminStats() {
       if (!W) throw new Error('admin stats need the shared world (Worker)');

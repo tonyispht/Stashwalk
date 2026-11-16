@@ -786,3 +786,31 @@ button.phead{width:100%;background:none;border:0;color:inherit;font:inherit;text
 .droneicon::before{content:"";position:absolute;left:8px;right:8px;bottom:-6px;height:12px;border-radius:50%;
   background:radial-gradient(ellipse at center,#000a 0%,#0000 70%);pointer-events:none}
 .ios .searchq span{animation:none}
+
+/* ---- admin tools ---- */
+.astat b{font-size:clamp(14px,4.4vw,20px);overflow:hidden;text-overflow:ellipsis}
+.admbtns{padding:0;margin:10px 0 4px;flex-wrap:wrap;gap:6px}
+.admtabs{display:flex;gap:4px;margin:10px 0 8px}
+.admtabs button{flex:1;min-width:0;background:#0f1d15;border:1px solid #24402f;color:var(--mut);border-radius:9px;padding:7px 4px;font:inherit;font-size:12px;cursor:pointer}
+.admtabs button.on{background:#1d3a28;color:var(--acc2);border-color:var(--acc2)}
+.admq{width:100%;box-sizing:border-box;margin:0 0 6px}
+.alist{max-height:340px;overflow:auto}
+.alist > div{align-items:center}
+.alist > div > span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ulink{background:none;border:0;padding:0;font:inherit;color:var(--acc2);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.ustats{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:10px 0;font-size:13px}
+.ustats > div{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;background:#0f1d15;border-radius:8px}
+.ustats b{color:var(--acc2)}
+.chestby{text-align:center;margin:-4px 0 6px;font-size:12.5px;color:var(--mut)}
+.day em{display:block;font-style:normal;font-size:9.5px;color:#f2c94c;white-space:nowrap;overflow:hidden}
+.admpin{background:none;border:0}
+.admpin > div{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer}
+.admpin span{background:#10241a;color:#fff;border:1px solid #6fcf97;border-radius:8px;padding:2px 7px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px #0008}
+.admpin i{order:2;width:14px;height:14px;border-radius:50%;background:#6fcf97;border:2px solid #fff;margin-top:3px;box-shadow:0 0 0 4px #6fcf9740}
+.admpin.off span{border-color:#8a9a90;color:#cfd8d2}.admpin.off i{background:#8a9a90;box-shadow:none}
+.admpin.focus span{background:#f2b84b;color:#1a1206;border-color:#fff}.admpin.focus i{background:#f2b84b;box-shadow:0 0 0 6px #f2b84b55}
+.admpin.chest i{border-radius:3px}
+.admbar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px 7px 14px;background:#3a2a0a;color:#ffe2a8;font-size:13px;border-bottom:1px solid #f2b84b66}
+.admbar[hidden]{display:none!important}
+body.admplacing #map{cursor:crosshair}
+body.admplacing .leaflet-overlay-pane path,body.admplacing .leaflet-marker-icon,body.admplacing .leaflet-interactive{pointer-events:none!important}

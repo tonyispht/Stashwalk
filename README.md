@@ -389,6 +389,34 @@ to tonyispht) - the game's own check only decides whether to show the card.
   is tapped - a system notification while the game is in the background. Tapping it opens the
   panel. These work while the game is open or backgrounded, not when it is fully closed.
 
+
+### More admin tools
+- **Game-wide totals**: new accounts this week, chests opened, trades, miles walked, coins earned,
+  items collected, merges + crafts, road coins, player-hidden chests, chests removed, drones owned
+  and daily claims - added up from every player record by `GET /admin/stats`.
+- **Clickable names**: every username in the admin card (players, hidden chests, activity) opens a
+  player card (`GET /admin/user?u=`) with their coins, opens, trades, hides, items, miles, streak,
+  drone level and more, plus **Show on map**, which jumps to their last known spot.
+- **Players on the map**: "Show players on map" pins everyone who has shared a location
+  (green = online, grey = away). Tap a pin for their card.
+- **Locations**: `/ping` may carry the player's position; the server rounds it to 3 decimals
+  (~100 m) and keeps only the latest one in `seen/<user>`. Players get a one-time notice and can
+  turn it off in Me › Settings ("Share my rough location"), which also clears the stored spot.
+- **Hide anywhere, no limits**: "Place chests on the map" puts the map in placement mode - tap
+  anywhere to hide a chest there, stocked with any item in the game (not taken from the pack).
+  The admin also skips the daily hide limits and the spacing rule when hiding normally.
+- **Remove chests**: the Hidden chests tab lists player-made chests newest first, with a Remove
+  button (`POST /admin/remove`) that deletes it for everyone at once.
+
+### Who hid a chest
+Player chests show "Hidden by <name> · 3 d ago" in the list and when opened; built-in chests say
+"Stashwalk chest". The name is stamped by the Worker when the chest is first written and kept on
+every later write, so it cannot be faked. Chests hidden before this update show "Hidden by a player".
+
+### Daily coins
+Every day on the Daily calendar shows the coins it pays (base + streak bonus, bigger on days 7,
+14, 21 and 28), assuming the streak continues from today.
+
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are
 version-stamped, but index.html itself can be served from cache and pin a player to an old build;
