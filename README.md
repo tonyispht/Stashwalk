@@ -454,3 +454,21 @@ several looping animations are switched off. The gameplay is identical.
 
 ## Sound, effects, fullscreen
 Sounds are synthesized in the browser (no audio files). Header buttons toggle sound (🔊) and fullscreen (⛶); Me tab → Settings also toggles visual effects/vibration. Fullscreen turns on at login by default. Effects default off if the device asks for reduced motion.
+
+## UI layout (2026-11 refresh)
+- **Five bottom tabs** instead of seven: Explore, **Items** (Pack + Shelf behind a sub-toggle),
+  Daily, **Shop** (Shop + Craft behind a sub-toggle), Me. `itemsSub`/`shopSub` remember the
+  last half you viewed; `setSub()` switches them.
+- **Header** is one compact stat strip (coins, streak, pack) beside the name. The title line and
+  the sound/fullscreen buttons moved out — those toggles already live in Me › Settings.
+- **Explore is a draggable bottom sheet.** The grip (`#sheetGrip`) drags to resize; tapping the
+  grip or the list header cycles three snaps (peek / half / full). Default is peek so the map is
+  large. Remembered in `sw_snap`.
+- **Map legend** (the ❔ map button, `#legend`) explains the markers. Found chests that would
+  overlap at the current zoom collapse into a numbered **cluster** bubble (`drawChestMarkers()`,
+  re-run on `zoomend`) that fits-bounds to spread apart when tapped.
+- **Empty states** (`emptyState()`) give pack/shelf/GPS-off a big icon, one line, and an action.
+- **First-run coachmarks** (`coachOnce()`, once via `sw_coach`) point at the map, the sheet grip
+  and the Daily tab.
+- **Polish**: skeleton shimmer while the admin panel loads, tabular numerals on all counters,
+  a soft view-change transition, 42px icon buttons, and `prefers-reduced-motion` honored.

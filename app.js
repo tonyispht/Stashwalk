@@ -337,10 +337,10 @@ function spend(n) {
   renderCoins(); return true;
 }
 function renderCoins() {
-  const c = $('#hCoins'); if (!c || !P) return;
-  c.textContent = '🪙 ' + fmtC(P.coins || 0);
+  const c = $('#hCoins'), v = $('#hCoinsV'); if (!c || !P) return;
+  if (v) v.textContent = fmtC(P.coins || 0);
   c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump');
-  if (view === 'shop') renderShopHead();
+  if (view === 'shop' && shopSub === 'shop') renderShopHead();
 }
 // "+15 🪙 New chest" just under the coin counter. Several earned at once (a trade that is
 // also new for your shelf) become one pop rather than a stack of them.
@@ -376,7 +376,7 @@ function showCoinIntro(amt, tries) {
     achievements pay out too. Spend them in the new <b>Shop</b> on the exact items your merges and recipes need.</p>
     <p class="sub" style="color:var(--acc2)"><b>+${fmtC(amt)} 🪙</b> for everything you have already done.</p>
     <div class="trade"><button class="btn ghost" id="okBtn">Later</button><button class="btn" id="goShop">Open the shop</button></div></div>`,
-    m => { $('#okBtn', m).onclick = closeModal; $('#goShop', m).onclick = () => { closeModal(); show('shop'); };
+    m => { $('#okBtn', m).onclick = closeModal; $('#goShop', m).onclick = () => { closeModal(); shopSub='shop'; show('shop'); };
            FX.sfx('coin'); });
 }
 
@@ -416,7 +416,7 @@ function addWalk(m) {
 const milesOf = () => (P.stats.walkedM || 0) / MI;
 function renderWalk() {
   const el = $('#walkTxt'); if (el && P) el.textContent = '🥾 ' + milesOf().toFixed(2) + ' mi';
-  if (view === 'shop') renderShopHead();
+  if (view === 'shop' && shopSub === 'shop') renderShopHead();
 }
 
 // ---------------- shop ----------------
@@ -598,7 +598,7 @@ const joy = { x: 0, y: 0 };
 const keys = {};
 function launchDrone() {
   if (fly) return;
-  if (!hasDrone()) return show('shop');
+  if (!hasDrone()) { shopSub = 'shop'; return show('shop'); }
   if (!pos || !map || !window.L) return toast('Turn on GPS first', 'bad');
   if (needNet('Flying the drone')) return;
   const d = droneState();
@@ -1174,13 +1174,16 @@ async function adminNotify(e) {
 // Who put a chest there: player chests carry the hider's name (stamped by the server).
 const chestBy = c => c.src === 'player' ? (c.by ? `Hidden by ${esc(c.by)}${c.at ? ' · ' + ago(c.at) : ''}` : 'Hidden by a player') : 'Stashwalk chest';
 const ago = t => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : Math.floor(s / 86400) + ' d ago'; };
-function adminCardShell() { return isAdmin() ? `<div class="card admincard" id="adminCard"><b>🛡️ Admin</b><p class="fine">Loading…</p></div>` : ''; }
+const adminSkeleton = () => `<div class="ahead"><b>🛡️ Admin</b></div>
+  <div class="apills">${'<div class="apill skel"></div>'.repeat(4)}</div>
+  <div class="arows">${'<div class="arow skel"></div>'.repeat(8)}</div>`;
+function adminCardShell() { return isAdmin() ? `<div class="card admincard" id="adminCard">${adminSkeleton()}</div>` : ''; }
 let admTab = 'players', admQ = '';
 const uLink = (name, extra) => `<button class="ulink" data-user="${esc(name)}">${esc(name)}</button>${extra || ''}`;
 function renderAdmin() {
   const el = $('#adminCard'); if (!el) return;
   if (adminErr) { el.innerHTML = `<b>🛡️ Admin</b><p class="fine" style="color:var(--bad)">${esc(adminErr)}</p><button class="btn sm ghost" id="admRefresh">Try again</button>`; }
-  else if (!adminData) { el.innerHTML = `<b>🛡️ Admin</b><p class="fine">Loading…</p>`; }
+  else if (!adminData) { el.innerHTML = adminSkeleton(); }
   else {
     const d = adminData, perm = window.Notification ? Notification.permission : 'unsupported', T = d.totals || {}, now = Date.now();
     const pill = (n, l) => `<div class="apill"><b>${typeof n === 'number' ? fmtC(n) : n}</b><span>${l}</span></div>`;
@@ -1632,24 +1635,71 @@ async function boot(key, p) {
   initMap(); renderHeader(); renderAll(); checkAch(); show('explore');
   startGPS(true);
   if (P.daily.last !== dayKey()) { show('daily'); setTimeout(() => toast('🎁 Your daily reward is ready!', 'gold'), 300); }
+  setTimeout(coachOnce, 1500);
+}
+
+// First-run coachmarks: a few pointers at the map, the sheet grip and the Daily tab. Shown
+// once. Waits politely if the welcome or daily modal is still up.
+function coachOnce() {
+  try { if (localStorage.getItem('sw_coach')) return; } catch (e) { return; }
+  if (modalOpen() || view !== 'explore') { setTimeout(coachOnce, 1800); return; }
+  try { localStorage.setItem('sw_coach', '1'); } catch (e) {}
+  runCoach([
+    { sel: '#map', text: '🗺️ Walk toward chests here. A dashed circle means an undiscovered chest is inside it.' },
+    { sel: '#sheetGrip', text: '📋 Drag this handle up for the full list of nearby chests.' },
+    { sel: '[data-v="daily"]', text: '🎁 Come back each day for a free reward and a coin bonus.' }
+  ], 0);
+}
+function runCoach(steps, i) {
+  const old = $('#coach'); if (old) old.remove();
+  if (i >= steps.length) return;
+  const s = steps[i], tgt = $(s.sel);
+  if (!tgt) return runCoach(steps, i + 1);
+  const r = tgt.getBoundingClientRect();
+  const wrap = document.createElement('div'); wrap.id = 'coach'; wrap.className = 'coach';
+  const pad = 6, ringTop = Math.max(4, r.top - pad), ringH = Math.min(innerHeight - ringTop - 4, r.height + pad * 2);
+  const below = ringTop + ringH + 12, place = below + 120 < innerHeight ? below : Math.max(12, ringTop - 112);
+  wrap.innerHTML = `<div class="coachring" style="left:${Math.max(4, r.left - pad)}px;top:${ringTop}px;width:${Math.min(innerWidth - 8, r.width + pad * 2)}px;height:${ringH}px"></div>
+    <div class="coachtip" style="top:${place}px"><p>${s.text}</p><div class="coachrow"><small>${i + 1} / ${steps.length}</small><button class="btn sm" id="coachNext">${i === steps.length - 1 ? 'Got it' : 'Next'}</button></div></div>`;
+  document.body.appendChild(wrap);
+  const next = () => runCoach(steps, i + 1);
+  $('#coachNext', wrap).onclick = e => { e.stopPropagation(); FX.vibe(8); next(); };
+  wrap.onclick = next;
 }
 
 // ---------------- navigation / rendering ----------------
 let view = 'explore';
+// The Items tab holds Pack + Shelf; the Shop tab holds Shop + Craft. These remember which
+// half you were last looking at.
+let itemsSub = 'pack', shopSub = 'shop';
+function syncSubViews() {
+  $$('#itemsSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === itemsSub));
+  $$('#shopSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === shopSub));
+  const sp = $('#sub-pack'), sd = $('#sub-dex'); if (sp && sd) { sp.hidden = itemsSub !== 'pack'; sd.hidden = itemsSub !== 'dex'; }
+  const ss = $('#sub-shop'), sc = $('#sub-craft'); if (ss && sc) { ss.hidden = shopSub !== 'shop'; sc.hidden = shopSub !== 'craft'; }
+}
+function setSub(group, sub) {
+  if (group === 'items') itemsSub = sub; else shopSub = sub;
+  syncSubViews(); FX.sfx('tap'); FX.vibe(8);
+  if (group === 'items') (itemsSub === 'pack' ? renderPack() : renderDex());
+  else (shopSub === 'shop' ? renderShop() : renderCraft());
+  const sv = $('#v-' + group); if (sv) sv.scrollTop = 0;
+}
 function show(v) {
   if (v !== 'explore' && fly) endFlight('home');
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
   if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
+  if (v === 'items' || v === 'shop') syncSubViews();
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   renderAll(); window.scrollTo(0, 0);
   if (v === 'explore' && map) setTimeout(() => map.invalidateSize(), 50);
   if (v === 'me') refreshInvites();
 }
 function renderHeader() {
-  $('#hAv').textContent = P.name[0].toUpperCase(); $('#hName').textContent = P.name; $('#hTitle').textContent = P.title;
-  $('#hStreak').textContent = '🔥 ' + (streakNow()); $('#hPack').textContent = '🎒 ' + packCount();
-  $('#hCoins').textContent = '🪙 ' + fmtC(P.coins || 0);
+  $('#hAv').textContent = P.name[0].toUpperCase(); $('#hName').textContent = P.name;
+  $('#hStreakV').textContent = streakNow(); $('#hPackV').textContent = packCount();
+  $('#hCoinsV').textContent = fmtC(P.coins || 0);
   renderWalk(); renderDroneBtn();
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
@@ -1658,11 +1708,9 @@ function renderAll() {
   if (!P) return; renderHeader();
   renderNextAch();
   if (view === 'explore') renderNearby();
-  else if (view === 'pack') renderPack();
-  else if (view === 'dex') renderDex();
+  else if (view === 'items') (itemsSub === 'pack' ? renderPack() : renderDex());
   else if (view === 'daily') renderDaily();
-  else if (view === 'craft') renderCraft();
-  else if (view === 'shop') renderShop();
+  else if (view === 'shop') (shopSub === 'shop' ? renderShop() : renderCraft());
   else if (view === 'me') renderMe();
 }
 
@@ -1680,12 +1728,21 @@ function showStarter(ids, then) {
            setTimeout(() => { FX.sfx('reveal', best.r); FX.confetti(['#ffd98a', '#f2b84b', '#ffffff'], 40); }, 250); });
 }
 
+// A friendly empty state: big icon, one line, optional action button.
+function emptyState(icon, msg, btnLabel, btnId) {
+  return `<div class="empty full"><div class="eico">${icon}</div><p>${msg}</p>${btnLabel ? `<button class="btn sm" id="${btnId}">${btnLabel}</button>` : ''}</div>`;
+}
 // ---- pack ----
 function renderPack() {
   const ids = Object.keys(P.inv).map(id => BY_ID[id]).filter(Boolean).sort((a, b) => b.r - a.r || a.n.localeCompare(b.n));
-  $('#packNote').textContent = ids.length ? 'Tap an item for details. Trade at chests – everything you have ever owned stays on your Shelf.' : '';
-  $('#packGrid').innerHTML = ids.length ? ids.map(it => tile(it, { count: P.inv[it.id] })).join('')
-    : '<div class="empty" style="grid-column:1/-1">Your pack is empty. Claim today\'s login reward on the Daily tab to get your first item.</div>';
+  if (ids.length) {
+    $('#packNote').textContent = 'Tap an item for details. Trade at chests – everything you have ever owned stays on your Shelf.';
+    $('#packGrid').innerHTML = ids.map(it => tile(it, { count: P.inv[it.id] })).join('');
+  } else {
+    $('#packNote').textContent = '';
+    $('#packGrid').innerHTML = emptyState('🎒', 'Your pack is empty. Claim today\'s login reward to get your first item.', '🎁 Open Daily', 'emptyDaily');
+    const b = $('#emptyDaily'); if (b) b.onclick = () => show('daily');
+  }
 }
 function showStats() {
   const s = statView(), got = ACH.filter(a => P.ach[a.id]);
@@ -1803,7 +1860,7 @@ function renderDex() {
     if (q) return g && it.n.toLowerCase().includes(q); return true;
   });
   $('#dexGrid').innerHTML = list.map(it => tile(it, P.dex[it.id] ? { count: 0 } : { sil: true })).join('') ||
-    '<div class="empty" style="grid-column:1/-1">Nothing here yet.</div>';
+    emptyState('📚', dexFilter === 'got' ? 'No items collected yet. Open chests to start your shelf.' : 'Nothing matches this filter.');
 }
 
 // ---- daily ----
@@ -2123,6 +2180,8 @@ function initMap() {
   map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
   applyBasemap();
   map.on('click', e => { if (admPlacing) return adminMapClick(e); if (DEV) setPos(e.latlng.lat, e.latlng.lng, 2, true); });
+  // re-cluster the chest markers whenever the view changes
+  map.on('zoomend', () => drawChestMarkers());
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
   [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
   addEventListener('resize', fix); addEventListener('orientationchange', () => setTimeout(fix, 300));
@@ -2401,16 +2460,41 @@ function inRadius() {
 }
 function refreshChestViews() {
   if (view === 'explore') renderNearby();
-  if (!map || !window.L) return; markers.forEach(m => m.remove()); markers = [];
+  if (!map || !window.L) return;
   refreshSearch(true);
-  inRadius().filter(isFound).slice(0, 200).forEach(c => {
+  drawChestMarkers();
+}
+// Found chests on the map. When several would overlap at the current zoom they collapse into a
+// numbered cluster bubble that spreads apart as you zoom in, so a dense park is not a pile.
+function drawChestMarkers() {
+  if (!map || !window.L || !pos) return;
+  markers.forEach(m => m.remove()); markers = [];
+  const found = inRadius().filter(isFound).slice(0, 200);
+  const openOne = c => {
+    const d = dist(pos, c);
+    if (d <= unlockM(c)) return openChest(c.id);
+    toast(`${c.name} – ${fmtDist(d)} ${dirName(pos, c)}. Walk closer to open it.`);
+    const row = $('[data-open="' + c.id + '"]');
+    if (row && row.closest('.chest')) row.closest('.chest').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  const one = c => {
     const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
-    markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => {
-      const d = dist(pos, c);
-      if (d <= unlockM(c)) return openChest(c.id);                       // close enough - just open it
-      toast(`${c.name} – ${fmtDist(d)} ${dirName(pos, c)}. Walk closer to open it.`);
-      const row = $('[data-open="' + c.id + '"]');
-      if (row && row.closest('.chest')) row.closest('.chest').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => openOne(c)));
+  };
+  // bucket by a ~52px pixel grid at the current zoom
+  const CELL = 52, buckets = new Map();
+  found.forEach(c => {
+    let pt; try { pt = map.latLngToContainerPoint([c.lat, c.lon]); } catch (e) { return one(c); }
+    const key = Math.floor(pt.x / CELL) + '_' + Math.floor(pt.y / CELL);
+    (buckets.get(key) || buckets.set(key, []).get(key)).push(c);
+  });
+  buckets.forEach(group => {
+    if (group.length === 1) return one(group[0]);
+    const near = group.some(c => dist(pos, c) <= unlockM(c));
+    const lat = group.reduce((s, c) => s + c.lat, 0) / group.length, lon = group.reduce((s, c) => s + c.lon, 0) / group.length;
+    const ic = L.divIcon({ className: 'cmcluster' + (near ? ' near' : ''), html: '<span>' + group.length + '</span>', iconSize: [34, 34] });
+    markers.push(L.marker([lat, lon], { icon: ic, title: group.length + ' chests' }).addTo(map).on('click', () => {
+      try { map.fitBounds(group.map(c => [c.lat, c.lon]), { padding: [60, 60], maxZoom: 17 }); } catch (e) { map.setView([lat, lon], Math.min(17, map.getZoom() + 2)); }
     }));
   });
 }
@@ -2432,7 +2516,7 @@ function renderNearby(force) {
   const hb = $('#hereBar'), here = pos ? inRadius().filter(c => c.d <= unlockM(c) && isFound(c)) : [];
   hb.hidden = !here.length;
   if (here.length) hb.innerHTML = '<b>📦 ' + esc(here[0].name) + '</b><button class="btn sm" data-open="' + esc(here[0].id) + '">Open chest</button>';
-  if (!pos) { el.innerHTML = '<div class="empty">Turn on GPS to see chests around you.</div>'; $('#radInfo').textContent = ''; return; }
+  if (!pos) { el.innerHTML = emptyState('📍', 'Turn on location to see chests around you.', 'Enable GPS', 'emptyGps'); const g = $('#emptyGps'); if (g) g.onclick = () => startGPS(); $('#radInfo').textContent = ''; return; }
   const every = inRadius(), all = every.filter(isFound), unknown = every.length - all.length, list = all.slice(0, 60);
   $('#radInfo').textContent = `${unknown} undiscovered within ${radiusMi} mi` + (loading ? ' · searching parks…' : '') + (osmErr ? ' · park data unavailable' : '');
   $('#panelTitle').textContent = all.length ? `${all.length} found nearby` : 'Chests nearby';
@@ -2965,35 +3049,61 @@ function wire() {
     if (t.closest('#tabs')) FX.sfx('tab'); else if (t.id !== 'claimBtn') FX.sfx('tap');
   }, true);
   const sync = () => {
-    $('#hSnd').textContent = FX.prefs.snd ? '🔊' : '🔇'; $('#hFs').textContent = FX.inFs() ? '🗗' : '⛶'; $('#hFs').hidden = !FX.fsSupported;
     const sf = $('#setFs'); if (sf) sf.checked = FX.inFs();
   };
   FX.onChange(sync); sync();
   $('#hWho').onclick = showStats;
-  $('#hCoins').onclick = () => show('shop');
+  $('#hCoins').onclick = () => { shopSub = 'shop'; show('shop'); };
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.openAdmin && isAdmin()) show('me'); });
-  // the chest list folds away to give the map the room; the choice is remembered
-  const setList = closed => {
-    $('#v-explore .panel').classList.toggle('closed', closed);
-    $('#pheadBtn').setAttribute('aria-expanded', String(!closed));
-    try { localStorage.setItem('sw_listClosed', closed ? '1' : '0'); } catch (e) {}
-    if (!closed) { lastRender = 0; lastRowIds = ''; if (P) renderNearby(true); }
-    if (map) setTimeout(() => { try { map.invalidateSize({ animate: false }); } catch (e) {} }, 60);
-  };
-  let listClosed = false; try { listClosed = localStorage.getItem('sw_listClosed') === '1'; } catch (e) {}
-  if (listClosed) setList(true);
-  $('#pheadBtn').onclick = () => { listClosed = !listClosed; setList(listClosed); };
+  // The chest list is a draggable bottom sheet with three heights: peek (map gets the room),
+  // half, and full. Drag the grip to resize, or tap the grip / list header to cycle. Remembered.
+  (function sheet() {
+    const panel = $('#v-explore .panel'), grip = $('#sheetGrip');
+    if (!panel) return;
+    const vh = () => { const e = $('#v-explore'); return (e && e.clientHeight) || innerHeight; };
+    const heightFor = snap => snap === 'half' ? Math.round(vh() * 0.46) : snap === 'full' ? Math.round(vh() * 0.84) : 0;
+    const SNAPS = ['peek', 'half', 'full'];
+    let snap = 'peek'; try { snap = SNAPS.includes(localStorage.getItem('sw_snap')) ? localStorage.getItem('sw_snap') : 'peek'; } catch (e) {}
+    function paint(px, live) {
+      const peek = px <= heightFor('half') * 0.4;
+      panel.classList.toggle('closed', peek);
+      if (live) { panel.style.transition = 'none'; panel.style.height = px ? px + 'px' : ''; panel.style.maxHeight = px ? 'none' : ''; }
+      else { panel.style.transition = ''; panel.style.height = px ? px + 'px' : ''; panel.style.maxHeight = px ? 'none' : ''; }
+    }
+    function apply(s, persist) {
+      snap = s; const px = heightFor(s); paint(px, false);
+      $('#pheadBtn').setAttribute('aria-expanded', String(s !== 'peek'));
+      if (persist) try { localStorage.setItem('sw_snap', s); } catch (e) {}
+      if (s !== 'peek') { lastRender = 0; lastRowIds = ''; if (P) renderNearby(true); }
+      if (map) setTimeout(() => { try { map.invalidateSize({ animate: false }); } catch (e) {} }, 190);
+    }
+    const nearest = px => { const o = SNAPS.map(s => [s, Math.abs(heightFor(s) - px)]).sort((a, b) => a[1] - b[1]); return o[0][0]; };
+    const cycle = () => apply(SNAPS[(SNAPS.indexOf(snap) + 1) % 3], true);
+    apply(snap, false);
+    let drag = null;
+    const down = e => { drag = { y: (e.touches ? e.touches[0] : e).clientY, h: panel.getBoundingClientRect().height, moved: false }; try { grip.setPointerCapture(e.pointerId); } catch (x) {} };
+    const move = e => { if (!drag) return; const y = (e.touches ? e.touches[0] : e).clientY, dy = drag.y - y; if (Math.abs(dy) > 5) drag.moved = true; const px = Math.max(0, Math.min(vh() * 0.86, drag.h + dy)); paint(px, true); if (e.cancelable) e.preventDefault(); };
+    const up = () => { if (!drag) return; const cur = panel.getBoundingClientRect().height; if (!drag.moved) cycle(); else apply(nearest(cur), true); drag = null; };
+    if (grip) {
+      grip.addEventListener('pointerdown', down); grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
+    }
+    $('#pheadBtn').onclick = cycle;
+    addEventListener('resize', () => apply(snap, false));
+  })();
   $('#updNow').onclick = e => { e.target.disabled = true; e.target.textContent = 'Updating…'; applyUpdate(); };
   $('#droneBtn').onclick = launchDrone;
   wireDrone();
   // walking only pays out every tenth of a mile, so write what is in hand when the app is put away
   document.addEventListener('visibilitychange', () => { if (document.hidden && P && KEY) save(); });
-  $('#hSnd').onclick = () => { FX.set('snd', !FX.prefs.snd); FX.sfx('coin'); };
-  $('#hFs').onclick = () => FX.toggleFs();
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };
+  // sub-toggles inside the merged Items and Shop tabs
+  $('#itemsSeg').onclick = e => { const b = e.target.closest('button'); if (b) setSub('items', b.dataset.sub); };
+  $('#shopSeg').onclick = e => { const b = e.target.closest('button'); if (b) setSub('shop', b.dataset.sub); };
   $('#gpsBtn').onclick = () => startGPS();
   $('#admBarStop').onclick = () => adminPlaceMode(false);
   $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
+  $('#legendBtn').onclick = () => { const l = $('#legend'); if (l) l.hidden = !l.hidden; };
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';

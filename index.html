@@ -15,7 +15,7 @@
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=202611162040">
+<link rel="stylesheet" href="style.css?v=202611162100">
 </head>
 <body>
 <div id="toasts"></div>
@@ -45,8 +45,13 @@
 <!-- GAME -->
 <div id="app" hidden>
   <header class="top">
-    <button class="who" id="hWho"><div class="av" id="hAv">?</div><div><b id="hName">-</b><small id="hTitle">-</small></div></button>
-    <div class="chips"><span class="chip offpill" id="hOff" hidden title="No connection">📴</span><button class="chip ibtn" id="hSnd" title="Sound">🔊</button><button class="chip ibtn" id="hFs" title="Fullscreen">⛶</button><button class="chip coinchip" id="hCoins" title="Trail Coins – open the shop">🪙 0</button><span class="chip" id="hStreak">🔥 0</span><span class="chip" id="hPack">🎒 0</span></div>
+    <button class="who" id="hWho"><div class="av" id="hAv">?</div><b id="hName">-</b></button>
+    <div class="statstrip">
+      <span class="offpill" id="hOff" hidden title="No connection">📴</span>
+      <button class="s3 coinchip" id="hCoins" title="Trail Coins – open the shop"><i>🪙</i><b id="hCoinsV">0</b></button>
+      <span class="s3" title="Login streak"><i>🔥</i><b id="hStreakV">0</b></span>
+      <span class="s3" title="Items in your pack"><i>🎒</i><b id="hPackV">0</b></span>
+    </div>
   </header>
 
   <div class="admbar" id="admBar" hidden><span>📍 Admin: tap the map to hide a chest anywhere</span><button class="btn sm" id="admBarStop">Done</button></div>
@@ -64,10 +69,19 @@
         <div class="mapbtns">
           <button class="iconbtn" id="locateBtn" title="Center on me">📍</button>
           <button class="iconbtn" id="refreshBtn" title="Refresh chests">🔄</button>
+          <button class="iconbtn" id="legendBtn" title="What the markers mean">❔</button>
           <button class="iconbtn dronebtn" id="droneBtn" title="Launch drone" hidden>🛸</button>
+        </div>
+        <div class="legend" id="legend" hidden>
+          <div class="lgrow"><span class="lgm found">⛺</span>Chest you've found</div>
+          <div class="lgrow"><span class="lgm near">⛺</span>Close enough to open</div>
+          <div class="lgrow"><span class="lgm cluster">3</span>Several chests — zoom in</div>
+          <div class="lgrow"><span class="lgm q">?</span>Undiscovered — walk closer</div>
+          <div class="lgrow"><span class="lgm me"></span>You</div>
         </div>
       </div>
       <div class="panel">
+        <button class="sheetgrip" id="sheetGrip" aria-label="Drag or tap to resize the list"><i></i></button>
         <div class="ctl">
           <input type="range" id="rad" min="1" max="100" step="1" value="25" aria-label="Show chests within">
           <b id="rVal">25 mi</b>
@@ -82,18 +96,19 @@
       </div>
     </section>
 
-    <section id="v-pack" class="view" hidden>
-      <h2 class="sec">Your pack</h2>
-      <p class="fine" id="packNote"></p>
-      <div id="packGrid" class="grid"></div>
-    </section>
-
-    <section id="v-dex" class="view" hidden>
-      <h2 class="sec">Collection shelf <small id="dexCount"></small></h2>
-      <div class="bar"><i id="dexBar"></i></div>
-      <div class="filters" id="dexFilters"></div>
-      <input id="dexSearch" class="search" placeholder="Search collected items…">
-      <div id="dexGrid" class="grid dex"></div>
+    <section id="v-items" class="view" hidden>
+      <div class="seg subseg" id="itemsSeg"><button data-sub="pack" class="on">🎒 Pack</button><button data-sub="dex">📚 Shelf</button></div>
+      <div id="sub-pack">
+        <p class="fine subnote" id="packNote"></p>
+        <div id="packGrid" class="grid"></div>
+      </div>
+      <div id="sub-dex" hidden>
+        <div class="dexhead"><small id="dexCount"></small></div>
+        <div class="bar"><i id="dexBar"></i></div>
+        <div class="filters" id="dexFilters"></div>
+        <input id="dexSearch" class="search" placeholder="Search collected items…">
+        <div id="dexGrid" class="grid dex"></div>
+      </div>
     </section>
 
     <section id="v-daily" class="view" hidden>
@@ -101,9 +116,11 @@
       <div id="dailyBox"></div>
     </section>
 
-    <section id="v-craft" class="view" hidden><div id="craftBox"></div></section>
-
-    <section id="v-shop" class="view" hidden><div id="shopBox"></div></section>
+    <section id="v-shop" class="view" hidden>
+      <div class="seg subseg" id="shopSeg"><button data-sub="shop" class="on">🪙 Shop</button><button data-sub="craft">⚒️ Craft</button></div>
+      <div id="sub-shop"><div id="shopBox"></div></div>
+      <div id="sub-craft" hidden><div id="craftBox"></div></div>
+    </section>
 
     <section id="v-me" class="view" hidden>
       <div id="meBox"></div>
@@ -112,23 +129,21 @@
 
   <nav class="tabs" id="tabs">
     <button data-v="explore" class="on"><i>🗺️</i>Explore</button>
-    <button data-v="pack"><i>🎒</i>Pack</button>
-    <button data-v="dex"><i>📚</i>Shelf</button>
+    <button data-v="items"><i>🎒</i>Items</button>
     <button data-v="daily"><i>🎁</i>Daily<u id="dailyDot" hidden></u></button>
-    <button data-v="craft"><i>⚒️</i>Craft</button>
-    <button data-v="shop"><i>🪙</i>Shop</button>
+    <button data-v="shop"><i>🛍️</i>Shop</button>
     <button data-v="me"><i>🏅</i>Me<u id="meDot" hidden></u></button>
   </nav>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>window.ASSET_V="202611162040"</script>
-<script src="config.js?v=202611162040"></script>
-<script src="items.js?v=202611162040"></script>
-<script src="relics.js?v=202611162040"></script>
-<script src="db.js?v=202611162040"></script>
-<script src="fx.js?v=202611162040"></script>
-<script src="app.js?v=202611162040"></script>
+<script>window.ASSET_V="202611162100"</script>
+<script src="config.js?v=202611162100"></script>
+<script src="items.js?v=202611162100"></script>
+<script src="relics.js?v=202611162100"></script>
+<script src="db.js?v=202611162100"></script>
+<script src="fx.js?v=202611162100"></script>
+<script src="app.js?v=202611162100"></script>
 </body>
 </html>

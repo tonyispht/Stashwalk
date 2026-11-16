@@ -1,4 +1,4 @@
-:root{--bg:#0f1a14;--bg2:#13221a;--card:#183024;--card2:#1e3b2c;--ink:#e9f1ec;--mut:#9db3a6;--acc:#f2b84b;--acc2:#ffd98a;--bad:#ff7a6b;--ok:#6fe39a;
+:root{--bg:#0f1a14;--bg2:#13221a;--card:#183024;--card2:#1e3b2c;--ink:#e9f1ec;--mut:#a7bdb1;--acc:#f2b84b;--acc2:#ffd98a;--bad:#ff7a6b;--ok:#6fe39a;
 --r0:#8fa39a;--r1:#5ec27a;--r2:#4aa3ff;--r3:#b46bff;--r4:#ffb02e;--tab:64px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -819,3 +819,80 @@ button.phead{width:100%;background:none;border:0;color:inherit;font:inherit;text
 .admbar[hidden]{display:none!important}
 body.admplacing #map{cursor:crosshair}
 body.admplacing .leaflet-overlay-pane path,body.admplacing .leaflet-marker-icon,body.admplacing .leaflet-interactive{pointer-events:none!important}
+
+/* ============================================================
+   UI refresh: header strip, merged tabs, bottom sheet, legend,
+   clusters, empty states, coachmarks, skeletons, a11y
+   ============================================================ */
+
+/* header: one compact stat strip, no title line, no sound/fullscreen (those live in Settings) */
+.statstrip{display:flex;align-items:center;gap:6px;flex:none}
+.statstrip .s3{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid #244030;border-radius:99px;padding:5px 9px;font-size:13px;line-height:1}
+.statstrip .s3 i{font-style:normal;font-size:14px}
+.statstrip .s3 b{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:800}
+.coinchip{cursor:pointer}
+.coinchip b{color:var(--acc2)}
+.coinchip.bump{animation:coinBump .45s cubic-bezier(.2,1.6,.4,1)}
+.offpill{background:#7a2b2b;color:#ffd9d9;border:1px solid #a33;border-radius:99px;padding:4px 8px;font-size:13px}
+.who b{font-size:15px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:360px){.statstrip .s3{padding:5px 7px;font-size:12px}.who b{max-width:26vw}}
+
+/* merged Items / Shop tabs: sub-toggle + spacing */
+.subseg{margin:12px 14px 6px}
+.subnote{margin:0 14px 8px}
+.dexhead{display:flex;justify-content:flex-end;padding:2px 14px 0;color:var(--mut);font-size:12.5px}
+.dexhead small{font-variant-numeric:tabular-nums}
+
+/* draggable bottom sheet */
+.panel{transition:height .22s ease}
+.sheetgrip{display:block;width:100%;border:0;background:none;padding:7px 0 1px;cursor:grab;touch-action:none;-webkit-tap-highlight-color:transparent}
+.sheetgrip i{display:block;width:40px;height:5px;border-radius:99px;background:#3a5a48;margin:0 auto;transition:background .15s}
+.sheetgrip:active i{background:var(--acc)}
+
+/* map legend */
+.legend{position:absolute;top:8px;left:8px;z-index:500;background:#0f1a14f2;border:1px solid #2a4a39;border-radius:12px;padding:9px 11px;font-size:12px;color:var(--ink);display:grid;gap:6px;max-width:66%;box-shadow:0 6px 20px #0008}
+.legend[hidden]{display:none}
+.lgrow{display:flex;align-items:center;gap:9px}
+.lgm{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:13px;background:#183024;border:2px solid #3a6a50;flex:none}
+.lgm.near{border-color:var(--acc);background:#4a3a12}
+.lgm.cluster{background:var(--acc);color:#2a1d00;border-color:var(--acc2);font-weight:800;font-size:12px}
+.lgm.q{background:#2a2108;border:2px dashed #f2b84b99;color:#f2b84b;font-weight:700}
+.lgm.me{width:16px;height:16px;background:#4ea1ff;border-color:#bfe0ff}
+
+/* cluster bubbles */
+.cmcluster span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--acc);color:#2a1d00;border:2px solid var(--acc2);font-weight:800;font-size:14px;box-shadow:0 2px 8px #0008}
+.cmcluster.near span{box-shadow:0 0 14px var(--acc)}
+.darkmap .cmcluster span{box-shadow:0 2px 10px #000a}
+
+/* friendly empty states */
+.empty.full{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 18px;text-align:center}
+.eico{font-size:40px;opacity:.92;line-height:1}
+.empty.full p{margin:0;max-width:280px;line-height:1.5}
+
+/* first-run coachmarks */
+.coach{position:fixed;inset:0;z-index:1300;animation:fade .2s}
+.coachring{position:absolute;border:2px solid var(--acc2);border-radius:14px;box-shadow:0 0 0 9999px #0008,0 0 18px #f2b84baa;pointer-events:none}
+.coachtip{position:absolute;left:50%;transform:translateX(-50%);width:min(88vw,340px);background:var(--card2);border:1px solid var(--acc);border-radius:14px;padding:14px;box-shadow:0 10px 30px #000a}
+.coachtip p{margin:0 0 10px;font-size:14px;line-height:1.45}
+.coachrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.coachrow small{color:var(--mut);font-variant-numeric:tabular-nums}
+
+/* skeleton shimmer */
+.skel{position:relative;overflow:hidden;background:#13251b!important;border:1px solid #1d3326!important}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,#ffffff14,transparent);animation:shimmer 1.2s infinite}
+.apill.skel{height:48px}.arow.skel{height:30px}
+
+/* tabular numbers where they shift */
+.chest .cd,#rVal,#radInfo,.nextach u{font-variant-numeric:tabular-nums}
+
+/* a11y: bigger tap targets, gentle view transition */
+.iconbtn{width:42px;height:42px}
+.view:not(.explore){animation:viewIn .18s ease-out}
+@keyframes viewIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes shimmer{to{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){
+  .skel::after,.coinchip.bump{animation:none}
+  .view:not(.explore){animation:none}
+  .panel{transition:none}
+}
