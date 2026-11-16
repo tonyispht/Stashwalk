@@ -731,3 +731,11 @@ body.flying #v-explore{padding-bottom:0}
 .rcfly.stack{width:20px;height:20px;margin:-10px 0 0 -10px}
 .ios .rcm.tug i{animation:none;transform:scale(1.2)}
 @media (prefers-reduced-motion:reduce){.rcm.tug i{animation:none}}
+
+/* ================= collapsible chest list ================= */
+button.phead{width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;align-items:center}
+.phead small{flex:1}
+.phead .chev{font-style:normal;color:var(--acc2);font-size:15px;transition:transform .2s ease-out;flex:none}
+.panel.closed .chev{transform:rotate(-90deg)}
+.panel.closed #nearby{display:none}
+.panel.closed .phead{padding-bottom:10px}

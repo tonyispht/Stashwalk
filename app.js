@@ -2622,6 +2622,17 @@ function wire() {
   FX.onChange(sync); sync();
   $('#hWho').onclick = showStats;
   $('#hCoins').onclick = () => show('shop');
+  // the chest list folds away to give the map the room; the choice is remembered
+  const setList = closed => {
+    $('#v-explore .panel').classList.toggle('closed', closed);
+    $('#pheadBtn').setAttribute('aria-expanded', String(!closed));
+    try { localStorage.setItem('sw_listClosed', closed ? '1' : '0'); } catch (e) {}
+    if (!closed) { lastRender = 0; lastRowIds = ''; if (P) renderNearby(true); }
+    if (map) setTimeout(() => { try { map.invalidateSize({ animate: false }); } catch (e) {} }, 60);
+  };
+  let listClosed = false; try { listClosed = localStorage.getItem('sw_listClosed') === '1'; } catch (e) {}
+  if (listClosed) setList(true);
+  $('#pheadBtn').onclick = () => { listClosed = !listClosed; setList(listClosed); };
   $('#updNow').onclick = e => { e.target.disabled = true; e.target.textContent = 'Updating…'; applyUpdate(); };
   $('#droneBtn').onclick = launchDrone;
   wireDrone();
