@@ -399,7 +399,6 @@ function addWalk(m) {
     }
     checkAch(); save();
   } else snapshot();
-  if (hasDrone() && droneRecharge()) { renderDroneBtn(); if (view === 'shop') renderShop(); toast('🔋 Drone charge restored'); save(); }
   renderWalk();
 }
 const milesOf = () => (P.stats.walkedM || 0) / MI;
@@ -532,50 +531,30 @@ function doBuy(ids, price, label, after) {
 // Bought and upgraded in the shop, flown from the map. You steer it with the stick in the
 // corner; the map follows it, and the locator's heat bar, ticking and sonar all run from
 // the drone instead of from you. Hover it close to a chest and it can open it for you.
-// It runs on a small battery: each chest it opens uses a charge, and walking puts charges
-// back - so it stretches your reach rather than replacing the walk.
+// The only limit is range, set by its level.
 const DL = C.DRONE_LEVELS || [{ ft: 300, cost: 0 }];
 const DRONE_MAX = DL.length;
 const droneRangeM = lvl => (DL[Math.max(0, Math.min(DRONE_MAX, lvl) - 1)] || DL[0]).ft * 0.3048;
-const droneCap = lvl => (C.DRONE_CHARGES || 3) + (lvl >= 4 ? 1 : 0) + (lvl >= 8 ? 1 : 0);
 const DRONE_REACH = () => (C.DRONE_REACH_FT || 50) * 0.3048;
 const DRONE_LISTEN = () => (C.DRONE_LISTEN_FT || 400) * 0.3048;
-const CHARGE_M = () => (C.DRONE_CHARGE_MI || 0.25) * MI;
 const fmtFt = m => { const ft = m * FT; return ft >= 1000 ? (ft / 5280).toFixed(2) + ' mi' : Math.round(ft) + ' ft'; };
 
 function droneState() {
-  if (!P.drone || typeof P.drone !== 'object') P.drone = { lvl: 0, charges: 0, walkMark: 0, freeDay: 0 };
+  if (!P.drone || typeof P.drone !== 'object') P.drone = { lvl: 0 };
   return P.drone;
 }
 const hasDrone = () => droneState().lvl > 0;
-// walking tops the battery up; one free flight a day if it is flat
-function droneRecharge() {
-  const d = droneState(); if (!d.lvl) return false;
-  const cap = droneCap(d.lvl), walked = P.stats.walkedM || 0;
-  let changed = false;
-  if (d.charges >= cap) { d.walkMark = walked; }
-  else while (walked - d.walkMark >= CHARGE_M() && d.charges < cap) { d.charges++; d.walkMark += CHARGE_M(); changed = true; }
-  if (d.charges >= cap) d.walkMark = walked;
-  const today = utcDay();
-  if (d.freeDay !== today) { d.freeDay = today; if (d.charges < 1) { d.charges = 1; changed = true; } }
-  return changed;
-}
-function nextChargeIn() {
-  const d = droneState(); if (d.charges >= droneCap(d.lvl)) return 0;
-  return Math.max(0, CHARGE_M() - ((P.stats.walkedM || 0) - d.walkMark));
-}
 function buyDrone() {
   if (needNet('Buying')) return;
   if (hasDrone()) return;
   if (!spend(C.DRONE_PRICE || 500)) return toast('Not enough coins', 'bad');
   const d = droneState();
-  d.lvl = 1; d.charges = droneCap(1); d.walkMark = P.stats.walkedM || 0; d.freeDay = utcDay();
+  d.lvl = 1;
   P.stats.bought = (P.stats.bought || 0) + 1;
   save(); checkAch(); renderAll(); FX.sfx('drone');
   modal(`<div style="text-align:center">${droneSVG('big')}<h3>Your drone is ready</h3>
     <p class="sub">Tap 🛸 on the map to launch it. Steer with the stick, follow the ticking, and hover it
     over a chest to open it from up to ${fmtFt(droneRangeM(1))} away.</p>
-    <p class="fine">Each chest it opens uses a battery charge; walking ${C.DRONE_CHARGE_MI || 0.25} mi recharges one.</p>
     <button class="btn big" id="okBtn">Let's fly</button></div>`, m => { $('#okBtn', m).onclick = closeModal; });
 }
 function upgradeDrone() {
@@ -583,9 +562,7 @@ function upgradeDrone() {
   const d = droneState(); if (!d.lvl || d.lvl >= DRONE_MAX) return;
   const cost = DL[d.lvl].cost;
   if (!spend(cost)) return toast('Not enough coins', 'bad');
-  const oldCap = droneCap(d.lvl);
   d.lvl++;
-  if (droneCap(d.lvl) > oldCap) d.charges++;                   // a bigger battery arrives charged
   save(); checkAch(); renderAll(); FX.sfx('ach'); FX.vibe([20, 30, 20]);
   toast(`🛸 Drone level ${d.lvl} – range ${fmtFt(droneRangeM(d.lvl))}`, 'gold');
 }
@@ -610,9 +587,7 @@ function launchDrone() {
   if (!hasDrone()) return show('shop');
   if (!pos || !map || !window.L) return toast('Turn on GPS first', 'bad');
   if (needNet('Flying the drone')) return;
-  droneRecharge();
   const d = droneState();
-  if (d.charges < 1) return toast(`🔋 Battery flat – walk ${fmtFt(nextChargeIn())} to recharge`, 'bad');
   stopLocate(true);
   const ll = { lat: pos.lat, lon: pos.lon };
   const icon = L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneSVG()}</div>`, iconSize: [52, 52] });
@@ -685,11 +660,10 @@ function probeFromDrone() {
 }
 function renderDroneHud(build) {
   const hud = $('#droneHud'); if (!hud || !fly) return;
-  const d = droneState(), cap = droneCap(d.lvl), R = droneRangeM(d.lvl), out = dist(pos, fly.ll);
+  const d = droneState(), R = droneRangeM(d.lvl), out = dist(pos, fly.ll);
   if (build || !hud.firstChild) {
     hud.hidden = false;
     hud.innerHTML = `<div class="dhead"><i>🛸</i><b>Drone · Lv ${d.lvl}</b>
-        <span class="dbat" title="Battery">${Array.from({ length: cap }, (_, i) => `<u class="${i < d.charges ? 'on' : ''}"></u>`).join('')}</span>
         <button class="locx" id="droneHome" title="Bring it home">✕</button></div>
       <div class="drange"><span class="bar"><i id="dRange"></i></span><small id="dRangeTxt"></small></div>
       <div class="locbar"><i id="dFill"></i></div>
@@ -716,11 +690,7 @@ function renderDroneHud(build) {
 }
 async function droneOpen() {
   if (!fly || !fly.near || fly.near.d > DRONE_REACH()) return;
-  const d = droneState();
-  if (d.charges < 1) return toast('🔋 Battery flat', 'bad');
   const id = fly.near.c.id;
-  d.charges--;
-  if (d.charges < droneCap(d.lvl) && (P.stats.walkedM || 0) - d.walkMark > CHARGE_M()) d.walkMark = P.stats.walkedM || 0;
   P.stats.droneOpens = (P.stats.droneOpens || 0) + 1;
   endFlight('open');
   await openChest(id, true);
@@ -748,7 +718,6 @@ function wireDrone() {
 function renderDroneBtn() {
   const b = $('#droneBtn'); if (!b || !P) return;
   b.hidden = !hasDrone();
-  if (hasDrone()) { droneRecharge(); const d = droneState(); b.dataset.c = d.charges; b.title = `Launch drone (${d.charges} charge${d.charges === 1 ? '' : 's'})`; }
 }
 // the drone card at the top of the shop
 function droneCard() {
@@ -758,12 +727,11 @@ function droneCard() {
       Upgrades reach ${fmtFt(droneRangeM(DRONE_MAX))} at level ${DRONE_MAX}.</small></div></div>
       <button class="btn big" id="buyDrone" ${can(price) ? '' : 'disabled'}>Buy drone · 🪙 ${fmtC(price)}</button>
       ${can(price) ? '' : `<p class="fine" style="margin:6px 0 0;text-align:center">${fmtC(price - (P.coins || 0))} more 🪙 – about ${((price - (P.coins || 0)) / CO.mile).toFixed(1)} mi of walking</p>`}</div>`;
-  droneRecharge();
-  const cap = droneCap(d.lvl), next = d.lvl < DRONE_MAX ? DL[d.lvl] : null;
+  const next = d.lvl < DRONE_MAX ? DL[d.lvl] : null;
   const pips = Array.from({ length: DRONE_MAX }, (_, i) => `<u class="${i < d.lvl ? 'on' : ''}"></u>`).join('');
   return `<div class="card dronecard"><div class="dtop">${droneSVG('shop')}<div><b>Scout drone · level ${d.lvl}</b>
       <span class="dlv">${pips}</span>
-      <small>Range ${fmtFt(droneRangeM(d.lvl))} · battery ${d.charges}/${cap}${d.charges < cap ? ` · next charge in ${fmtFt(nextChargeIn())} of walking` : ' · full'}</small></div></div>
+      <small>Range ${fmtFt(droneRangeM(d.lvl))}${next ? ` · level ${d.lvl + 1} reaches ${fmtFt(next.ft * 0.3048)}` : ''}</small></div></div>
     ${next ? `<button class="btn big" id="upDrone" ${can(next.cost) ? '' : 'disabled'}>Upgrade to level ${d.lvl + 1} – range ${fmtFt(next.ft * 0.3048)} · 🪙 ${fmtC(next.cost)}</button>`
            : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – a full mile of range.</p>`}</div>`;
 }
@@ -2381,5 +2349,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, launchDrone, endFlight, droneOpen, droneState, droneRecharge, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

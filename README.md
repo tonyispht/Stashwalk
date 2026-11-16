@@ -291,10 +291,8 @@ Within `DRONE_REACH_FT` of a chest an "Open" button appears; that plays the full
 trade dialog as normal. The usual one-trade-per-chest-per-day rule still applies. Switching tabs
 or tapping ✕ brings it home.
 
-The battery is what keeps the drone from replacing the walk: `DRONE_CHARGES` charges (one more at
-levels 4 and 8), one used per chest opened, one restored every `DRONE_CHARGE_MI` walked, plus one
-free flight a day if it is flat. Flying around and bringing it home without opening anything
-costs nothing.
+There is no battery or cooldown: the drone can fly and open chests as often as you like. Its
+only limit is range, set by its level.
 
 ## Update banner
 When the service worker finds a newer build, a bar appears under the header on every screen -

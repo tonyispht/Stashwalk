@@ -61,7 +61,5 @@ window.GEO_CONFIG = {
   ],
   DRONE_REACH_FT: 50,      // how close the drone has to hover to open a chest
   DRONE_SPEED_MPS: 22,     // top speed (about 50 mph)
-  DRONE_LISTEN_FT: 400,    // the locator's hot/cold scale while flying
-  DRONE_CHARGES: 3,        // battery: one charge per chest opened, +1 at levels 4 and 8
-  DRONE_CHARGE_MI: 0.25    // walking this far puts one charge back (plus one free flight a day)
+  DRONE_LISTEN_FT: 400     // the locator's hot/cold scale while flying
 };

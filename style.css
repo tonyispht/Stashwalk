@@ -659,9 +659,6 @@ body.locating .me-dot::after{animation-delay:calc(var(--sonar,1.2s) / 2)}
 
 /* ================= drone ================= */
 .dronebtn{position:relative}
-.dronebtn::after{content:attr(data-c);position:absolute;right:-4px;bottom:-4px;min-width:16px;height:16px;border-radius:8px;
-  background:var(--acc);color:#1a1205;font-size:10px;font-weight:800;line-height:16px;text-align:center;padding:0 3px}
-.dronebtn[data-c="0"]::after{background:#5a3a34;color:#ffd9d4}
 
 .droneicon{background:none;border:0}
 .dronewrap{position:relative;width:52px;height:52px;transform:rotate(var(--tilt,0deg));transition:transform .2s ease-out;
@@ -686,9 +683,7 @@ body.flying .dronejoy{display:block}
 .dhead{display:flex;align-items:center;gap:8px}
 .dhead i{font-style:normal;font-size:16px}
 .dhead b{flex:1;font-size:13px;color:#bff6ff}
-.dbat{display:flex;gap:3px}
-.dbat u,.dlv u{display:block;width:10px;height:14px;border-radius:3px;background:#1d2d26;border:1px solid #33544a}
-.dbat u.on{background:#7ff0ff;border-color:#bff6ff;box-shadow:0 0 6px #7ff0ff88}
+.dlv u{display:block;width:10px;height:14px;border-radius:3px;background:#1d2d26;border:1px solid #33544a}
 .drange{display:flex;align-items:center;gap:8px;margin-top:6px}
 .drange .bar{flex:1;height:5px}
 .drange small{font-size:11px;color:var(--mut);white-space:nowrap}
