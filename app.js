@@ -609,7 +609,7 @@ function launchDrone() {
     ll, raf: 0, last: performance.now(), near: null, lastProbe: 0,
     marker: L.marker([ll.lat, ll.lon], { icon, zIndexOffset: 2000, interactive: false, keyboard: false }).addTo(map),
     tether: L.polyline([[pos.lat, pos.lon], [ll.lat, ll.lon]], { color: '#7ff0ff', weight: 2, opacity: .55, dashArray: '4 6', interactive: false }).addTo(map),
-    ring: L.circle([pos.lat, pos.lon], { radius: droneRangeM(d.lvl), color: '#7ff0ff', weight: 1.5, opacity: .5, fillOpacity: .04, dashArray: '6 8', interactive: false }).addTo(map),
+    ring: L.circle([pos.lat, pos.lon], { radius: droneRangeM(d.lvl), color: '#7ff0ff', weight: 1.5, opacity: .45, fillOpacity: .04, interactive: false }).addTo(map),
     layer: L.layerGroup().addTo(map), local: [], scanAt: null
   };
   droneScan(true);
@@ -671,7 +671,7 @@ function flyStep(now) {
     if (ox || oy) map.panBy([ox, oy], { animate: false });
   }
   fly.tether.setLatLngs([[pos.lat, pos.lon], [fly.ll.lat, fly.ll.lon]]);
-  fly.ring.setLatLng([pos.lat, pos.lon]);
+  if (!fly.ringAt || fly.ringAt.lat !== pos.lat || fly.ringAt.lon !== pos.lon) { fly.ring.setLatLng([pos.lat, pos.lon]); fly.ringAt = { lat: pos.lat, lon: pos.lon }; }
   if (now - fly.lastProbe > 160) { fly.lastProbe = now; probeFromDrone(); rcEnsureAround(fly.ll); rcDraw(); }
   rcCollect(fly.ll, true);
   fly.raf = requestAnimationFrame(flyStep);
@@ -1023,8 +1023,8 @@ function rcCollect(at, byDrone) {
   RC.marks.forEach((m, id) => {
     const c = m.coin; if (!c || m.flying) return;
     const d = dist(at, c);
-    const el = m.getElement && m.getElement();
-    if (el) el.classList.toggle('tug', d <= R * 2);
+    const tug = d <= R * 2;
+    if (m.tug !== tug) { m.tug = tug; const el = m.getElement && m.getElement(); if (el) el.classList.toggle('tug', tug); }
     if (d > R) return;
     if (byDrone && RCF.dronePerDay && g.drone >= RCF.dronePerDay) return;
     (g.got[c.k] = g.got[c.k] || []).push(c.i);
@@ -2275,7 +2275,9 @@ async function loadNearby() {
 }
 function updateRadiusCircle() {
   if (!map || !window.L || !pos) return;
-  if (!radCircle) radCircle = L.circle([pos.lat, pos.lon], { radius: radiusM(), weight: 1.5, dashArray: '6 6', color: '#f2b84b', fillOpacity: 0.03, interactive: false }).addTo(map);
+  // solid on purpose: dashes on a circle this big are computed along its whole length on every
+  // redraw, which made panning and the drone view stutter
+  if (!radCircle) radCircle = L.circle([pos.lat, pos.lon], { radius: radiusM(), weight: 1.5, opacity: .55, color: '#f2b84b', fillOpacity: 0.03, interactive: false }).addTo(map);
   else radCircle.setLatLng([pos.lat, pos.lon]).setRadius(radiusM());
 }
 function inRadius() {

@@ -771,3 +771,18 @@ button.phead{width:100%;background:none;border:0;color:inherit;font:inherit;text
 .day small{display:block;max-width:100%;font-size:clamp(7.5px,2.2vw,10px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .day{aspect-ratio:.7;gap:1px}
 .day span{line-height:1.15}
+
+/* ================= drawing cost (build 202611161600) =================
+   Anything animated on Leaflet's SVG line layer forces the whole layer to redraw every frame,
+   so nothing there animates any more: the search circles are still, and the "?" in the middle
+   pulses instead (an ordinary element, cheap to move). Coins tug with transform only. */
+.searchzone{animation:none}
+.searchq span{animation:searchQ 2.4s ease-in-out infinite}
+@keyframes searchQ{50%{transform:scale(1.18)}}
+@keyframes rcTug{50%{transform:scale(1.28)}}
+/* the drone's shadow is a soft ellipse underneath rather than a filter recomputed every frame */
+.dronewrap{filter:none}
+.dronewrap > svg{position:relative;z-index:1}
+.droneicon::before{content:"";position:absolute;left:8px;right:8px;bottom:-6px;height:12px;border-radius:50%;
+  background:radial-gradient(ellipse at center,#000a 0%,#0000 70%);pointer-events:none}
+.ios .searchq span{animation:none}
