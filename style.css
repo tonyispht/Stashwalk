@@ -896,3 +896,9 @@ body.admplacing .leaflet-overlay-pane path,body.admplacing .leaflet-marker-icon,
   .view:not(.explore){animation:none}
   .panel{transition:none}
 }
+
+/* tappable header stat buttons + next-achievement card */
+.statstrip button.s3{font:inherit;cursor:pointer;color:var(--ink)}
+.statstrip button.s3:active{transform:scale(.94)}
+.nextach{cursor:pointer}
+.nextach:active{transform:scale(.99)}

@@ -1372,6 +1372,11 @@ function nextAch() {
   });
   return best;
 }
+// Jump to the Me tab and scroll the Achievements list into view.
+function openAchievements() {
+  closeModal(); show('me');
+  setTimeout(() => { const a = $('#achSec'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);
+}
 function renderNextAch() {
   const el = $('#nextAch'); if (!el) return;
   const n = nextAch();
@@ -1771,7 +1776,7 @@ function showStats() {
     m => {
       $('#okBtn', m).onclick = closeModal;
       $('#titleSel2', m).onchange = e => { P.title = e.target.value; save(); renderHeader(); toast('Title set to ' + P.title); };
-      $('#allAch', m).onclick = () => { closeModal(); show('me'); setTimeout(() => { const a = $('#meBox .sec'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); };
+      $('#allAch', m).onclick = openAchievements;
     });
 }
 
@@ -1946,11 +1951,16 @@ function renderMe() {
       <button class="btn sm ghost" id="refBtn" style="margin-left:6px">Check</button></p>
     <div id="qr"></div><div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
     ${navigator.share ? '<button class="btn ghost big" id="shareBtn" style="margin-top:8px">Share…</button>' : ''}</div>
-    <h2 class="sec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2><div style="padding:0 14px">`;
-  ACH.forEach(a => {
-    const v = Math.min(a.get(s), a.goal), got = !!P.ach[a.id];
+    <h2 class="sec" id="achSec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2>
+    <p class="fine pad" style="margin-top:-2px">Closest to earning first · completed at the bottom.</p><div style="padding:0 14px">`;
+  // closest-to-done first, then the ones already earned (most recent first)
+  const sorted = ACH.map(a => { const v = Math.min(a.get(s), a.goal); return { a, v, got: !!P.ach[a.id], frac: v / a.goal }; })
+    .sort((x, y) => (x.got !== y.got) ? (x.got ? 1 : -1)
+      : x.got ? (P.ach[y.a.id] || 0) - (P.ach[x.a.id] || 0)
+      : (y.frac - x.frac) || (x.a.goal - y.a.goal) || x.a.n.localeCompare(y.a.n));
+  sorted.forEach(({ a, v, got }) => {
     const pct = Math.round(v / a.goal * 100);
-    h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${got ? a.icon : a.icon}</div><div><b>${esc(a.n)}</b>
+    h += `<div class="ach${got ? '' : ' lock'}"><div class="ai">${a.icon}</div><div><b>${esc(a.n)}</b>
       <small style="display:inline;color:var(--acc2)">${got ? '· ' + esc(a.t) : ''}</small>
       <small>${esc(a.d)}</small>
       <div class="achbar"><span class="bar"><i style="width:${got ? 100 : pct}%" class="${got ? 'done' : ''}"></i></span>
@@ -3054,6 +3064,9 @@ function wire() {
   FX.onChange(sync); sync();
   $('#hWho').onclick = showStats;
   $('#hCoins').onclick = () => { shopSub = 'shop'; show('shop'); };
+  $('#hPack').onclick = () => { itemsSub = 'pack'; show('items'); };
+  $('#hStreak').onclick = () => show('daily');
+  $('#nextAch').onclick = openAchievements;
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.openAdmin && isAdmin()) show('me'); });
   // The chest list is a draggable bottom sheet with three heights: peek (map gets the room),
   // half, and full. Drag the grip to resize, or tap the grip / list header to cycle. Remembered.
