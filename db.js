@@ -136,6 +136,19 @@ window.DB = (function () {
       if (!r.ok) throw new Error(j.error || 'could not reset');
       return j;
     },
+    // presence: the game says it is open once a minute
+    async ping() {
+      if (!W || !auth) return null;
+      const r = await fetch(W + '/ping', { method: 'POST', headers: whead(), body: '{}' });
+      if (!r.ok) return null; return r.json();
+    },
+    async adminStats() {
+      if (!W) throw new Error('admin stats need the shared world (Worker)');
+      const r = await fetch(W + '/admin/stats', { headers: whead() });
+      if (r.status === 404) throw new Error('the Worker has not been updated for admin stats yet');
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'admin ' + r.status);
+      return r.json();
+    },
     async verify(user, hash) {                       // does this name+hash belong to a real account?
       if (W) { try { const r = await fetch(W + '/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user, hash }) }); return !!(await r.json()).ok; } catch (e) { return false; } }
       const u = await this.get('users/' + String(user).toLowerCase()); return !!u && u.hash === hash;

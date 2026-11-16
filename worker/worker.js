@@ -4,6 +4,7 @@
 // Bindings/variables needed:
 //   DB               (D1 database binding)
 //   ALLOWED_ORIGINS  (text, comma separated, e.g. https://tonyispht.github.io)  - only these sites may call the Worker
+//   ADMIN_USERS      (optional text, comma separated) - accounts that can see the admin stats; defaults to TonyIspht
 
 const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites', 'feed']);
 const FLAGS_TO_REMOVE = 3;   // distinct players who must flag a chest before it is dropped
@@ -101,6 +102,22 @@ async function pushFeed(env, user, ev) {
 
 const limit = { users: 600, players: 60000, invites: 20, cells: 400, chests: 3000 };
 
+// ---- admin ----
+// Only the server knows every account, so the admin numbers are worked out here. Who counts
+// as admin is decided here too - the game's own check only decides whether to show the panel.
+const adminsOf = env => new Set(String(env.ADMIN_USERS || 'tonyispht').toLowerCase().split(',').map(s => s.trim()).filter(Boolean));
+const ONLINE_MS = 150000;          // seen in the last 2.5 minutes = online (the game pings once a minute)
+const AWAY_MS = 10 * 60000;        // back after this long counts as "came online" again
+async function adminEvent(env, ev) {
+  const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('admin/events').first();
+  let list = [];
+  if (row) { try { list = JSON.parse(row.val) || []; } catch (e) { list = []; } }
+  list.unshift(ev);
+  if (list.length > 200) list.length = 200;
+  await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
+    .bind('admin/events', JSON.stringify(list)).run();
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url), origin = req.headers.get('Origin') || '';
@@ -177,6 +194,50 @@ export default {
           .bind('invites/' + ref, '1').run();
         const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('invites/' + ref).first();
         return json({ ok: true, counted: true, referrer: ref, total: row ? JSON.parse(row.val) : 1 }, 200, cors);
+      }
+
+      // ---- presence & admin --------------------------------------------------------
+      // The game pings once a minute while it is open. Coming back after ten minutes away is
+      // recorded as an "online" event for the admin.
+      if (url.pathname === '/ping' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const now = Date.now();
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('seen/' + me).first();
+        const prev = row ? +row.val || 0 : 0;
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
+          .bind('seen/' + me, String(now)).run();
+        if (!prev || now - prev > AWAY_MS) {
+          let name = me, created = 0;
+          try { const u = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + me).first(); if (u) { const o = JSON.parse(u.val); name = o.name || me; created = o.created || 0; } } catch (e) {}
+          // a brand-new account already announced itself with its sign-up
+          if (!(created && now - created < 5 * 60000)) await adminEvent(env, { k: 'online', u: String(name).slice(0, 16), t: now });
+        }
+        return json({ ok: true, admin: adminsOf(env).has(me) }, 200, cors);
+      }
+
+      if (url.pathname === '/admin/stats' && req.method === 'GET') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        if (!adminsOf(env).has(me)) return json({ error: 'not an admin' }, 403, cors);
+        const now = Date.now();
+        const users = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'users/%' LIMIT 50000").all()).results;
+        const seen = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'seen/%' LIMIT 50000").all()).results;
+        const evRow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('admin/events').first();
+        let events = []; if (evRow) { try { events = JSON.parse(evRow.val) || []; } catch (e) {} }
+        const people = {};
+        users.forEach(r => { try { const u = JSON.parse(r.val); people[r.path.slice(6)] = { name: u.name, created: u.created || 0 }; } catch (e) {} });
+        const last = seen.map(r => ({ key: r.path.slice(5), t: +r.val || 0 })).filter(x => x.t);
+        const since = ms => last.filter(x => now - x.t < ms).length;
+        const nameOf = k => (people[k] && people[k].name) || k;
+        return json({
+          now, accounts: users.length,
+          online: since(ONLINE_MS), active24h: since(86400000), active7d: since(7 * 86400000),
+          onlineList: last.filter(x => now - x.t < ONLINE_MS).sort((a, b) => b.t - a.t).map(x => ({ name: nameOf(x.key), t: x.t })),
+          recent: last.sort((a, b) => b.t - a.t).slice(0, 15).map(x => ({ name: nameOf(x.key), t: x.t })),
+          newest: Object.values(people).filter(p => p.created).sort((a, b) => b.created - a.created).slice(0, 15),
+          events: events.slice(0, 100)
+        }, 200, cors);
       }
 
       // ---- account recovery -------------------------------------------------------
@@ -293,6 +354,7 @@ export default {
 
           if (segs[0] === 'users') {                                   // accounts can only be created, never overwritten
             const r = await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind(path, JSON.stringify(value)).run();
+            if (r.meta.changes) { try { await adminEvent(env, { k: 'signup', u: String(value.name).slice(0, 16), t: Date.now() }); } catch (e) {} }
             return r.meta.changes ? json({ ok: true, v: 1 }, 200, cors) : json({ error: 'exists' }, 409, cors);
           }
           if (segs[0] === 'invites' || segs[0] === 'feed') return json({ error: 'set by the server only' }, 403, cors);

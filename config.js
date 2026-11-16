@@ -1,6 +1,7 @@
 // ---- Stashwalk settings (edit freely) ----
 window.GEO_CONFIG = {
   APP_NAME: "Stashwalk",
+  ADMIN_USER: "TonyIspht",   // shows the admin panel; the Worker's ADMIN_USERS decides who really is admin
 
   // "" = LOCAL mode: everything is saved in the browser on that device, no server of any kind.
   // Paste a Firebase Realtime Database URL to turn on SHARED mode, so every player sees the same
@@ -72,7 +73,7 @@ window.GEO_CONFIG = {
   DRONE_EDGE_S: 30,        // ...so the edge of its range is about this many seconds away at full stick
   DRONE_LISTEN_FT: 400,    // the locator's hot/cold scale while flying
   DRONE_HIDES_PER_DAY: 2,  // chests the drone can hide in a day (these count toward HIDE_PER_DAY too)
-  DRONE_HIDE_NEAR_M: 250,  // the drone can only hide a chest this close to a park, campground or other public place (0 = anywhere)
+  DRONE_HIDE_NEAR_M: 0,    // 0 = the drone can hide a chest anywhere; set metres to require a nearby park or public place
 
   // ---- Road coins ----
   // Coins scattered along real streets and trails (OpenStreetMap data via OpenFreeMap - free,

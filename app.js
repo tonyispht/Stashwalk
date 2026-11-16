@@ -1125,6 +1125,78 @@ function fogIntroOnce() {
   setTimeout(() => go(0), 3000);
 }
 
+// ---------------- presence & admin ----------------
+// Every player's game says "I'm here" once a minute while it is on screen; that is what the
+// online count is made of. The admin (C.ADMIN_USER, enforced by the Worker) gets a panel in
+// the Me tab and a notification when someone signs up or comes back online.
+const isAdmin = () => !!KEY && KEY === String(C.ADMIN_USER || 'TonyIspht').toLowerCase();
+let pingTimer = null, adminTimer = null, adminData = null, adminErr = '';
+function startPresence() {
+  const beat = () => { if (!document.hidden && !OFFLINE) DB.ping().catch(() => {}); };
+  clearInterval(pingTimer); beat(); pingTimer = setInterval(beat, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) beat(); });
+  if (isAdmin()) { clearInterval(adminTimer); adminPoll(); adminTimer = setInterval(adminPoll, 30000); }
+}
+const adminSeen = () => { try { return +localStorage.getItem('sw_admin_seen') || 0; } catch (e) { return 0; } };
+const setAdminSeen = t => { try { localStorage.setItem('sw_admin_seen', String(t)); } catch (e) {} };
+function evText(e) {
+  return e.k === 'signup' ? `🆕 ${e.u} created an account` : e.k === 'online' ? `🟢 ${e.u} came online` : `${e.u} ${e.k}`;
+}
+async function adminPoll() {
+  if (!isAdmin() || OFFLINE) return;
+  try { adminData = await DB.adminStats(); adminErr = ''; }
+  catch (e) { adminErr = e.message || 'could not load'; if (view === 'me') renderAdmin(); return; }
+  const me = (P && P.name || '').toLowerCase();
+  const evs = (adminData.events || []).filter(e => String(e.u).toLowerCase() !== me);
+  const seen = adminSeen(), fresh = evs.filter(e => e.t > seen).reverse();
+  if (!seen) setAdminSeen(evs.length ? evs[0].t : Date.now());       // first run: start from now, no backlog
+  else if (fresh.length) {
+    setAdminSeen(fresh[fresh.length - 1].t);
+    fresh.slice(-5).forEach((e, i) => setTimeout(() => adminNotify(e), i * 900));
+    $('#meDot').hidden = view === 'me';
+  }
+  if (view === 'me') renderAdmin();
+}
+async function adminNotify(e) {
+  const text = evText(e);
+  if (!document.hidden) { toast(text, 'gold'); FX.sfx('ping'); }
+  // a system notification too, so it shows when the game is in the background
+  try {
+    if (window.Notification && Notification.permission === 'granted' && (document.hidden || isStandalone())) {
+      const reg = await navigator.serviceWorker.ready;
+      reg.showNotification('Stashwalk', { body: text, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'sw-admin-' + e.t });
+    }
+  } catch (er) {}
+}
+const ago = t => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + ' min ago' : s < 86400 ? Math.floor(s / 3600) + ' h ago' : Math.floor(s / 86400) + ' d ago'; };
+function adminCardShell() { return isAdmin() ? `<div class="card admincard" id="adminCard"><b>🛡️ Admin</b><p class="fine">Loading…</p></div>` : ''; }
+function renderAdmin() {
+  const el = $('#adminCard'); if (!el) return;
+  if (adminErr) { el.innerHTML = `<b>🛡️ Admin</b><p class="fine" style="color:var(--bad)">${esc(adminErr)}</p><button class="btn sm ghost" id="admRefresh">Try again</button>`; }
+  else if (!adminData) { el.innerHTML = `<b>🛡️ Admin</b><p class="fine">Loading…</p>`; }
+  else {
+    const d = adminData, perm = window.Notification ? Notification.permission : 'unsupported';
+    const stat = (n, l) => `<div class="astat"><b>${fmtC(n)}</b><small>${l}</small></div>`;
+    el.innerHTML = `<div class="ahead"><b>🛡️ Admin</b><button class="btn sm ghost" id="admRefresh">↻</button></div>
+      <div class="astats">${stat(d.accounts, 'accounts')}${stat(d.online, 'online now')}${stat(d.active24h, 'last 24 h')}${stat(d.active7d, 'last 7 days')}</div>
+      <div class="lbl">Online now</div>
+      ${d.onlineList.length ? `<div class="alist">${d.onlineList.map(u => `<div><span>🟢 ${esc(u.name)}</span><small>${ago(u.t)}</small></div>`).join('')}</div>` : '<p class="fine">Nobody else right now.</p>'}
+      <div class="lbl">Newest accounts</div>
+      <div class="alist">${d.newest.slice(0, 8).map(u => `<div><span>${esc(u.name)}</span><small>${ago(u.created)}</small></div>`).join('') || '<p class="fine">None yet.</p>'}</div>
+      <div class="lbl">Recent activity</div>
+      <div class="alist">${d.events.slice(0, 12).map(e => `<div><span>${esc(evText(e))}</span><small>${ago(e.t)}</small></div>`).join('') || '<p class="fine">Nothing yet.</p>'}</div>
+      ${perm === 'granted' ? '<p class="fine" style="margin-top:10px">🔔 Notifications are on for new accounts and players coming online.</p>'
+        : perm === 'denied' ? '<p class="fine" style="margin-top:10px">🔕 Notifications are blocked for this site in your browser settings.</p>'
+        : perm === 'unsupported' ? '<p class="fine" style="margin-top:10px">This browser cannot show notifications – you will still get alerts in the game.</p>'
+        : '<button class="btn sm" id="admNotify" style="margin-top:10px">🔔 Turn on notifications</button>'}`;
+  }
+  const r = $('#admRefresh', el); if (r) r.onclick = () => { r.disabled = true; adminPoll(); };
+  const n = $('#admNotify', el); if (n) n.onclick = async () => {
+    try { const res = await Notification.requestPermission(); toast(res === 'granted' ? '🔔 Notifications on' : 'Notifications not allowed', res === 'granted' ? 'gold' : 'bad'); } catch (e) {}
+    renderAdmin();
+  };
+}
+
 // ---------------- achievements ----------------
 const ACH = [];
 function ach(id, n, t, d, get, goal, icon) { ACH.push({ id, n, t, d, get, goal, icon: icon || '🏅' }); }
@@ -1442,6 +1514,7 @@ async function boot(key, p) {
   setTimeout(() => checkFeed(), 2200);
   setTimeout(() => maybeNudgeInstall(), 4000);
   setTimeout(() => nudgeRecovery(), 2600);
+  startPresence();
   fogIntroOnce();
   snapshot();                       // keep a copy on the device for offline launches
   $('#auth').hidden = true; $('#app').hidden = false;
@@ -1693,7 +1766,7 @@ function renderMe() {
   const s = statView(), unlocked = ACH.filter(a => P.ach[a.id]);
   const titles = ['Newcomer'].concat(unlocked.map(a => a.t));
   const link = location.origin + location.pathname.replace(/index\.html$/, '') + '?ref=' + encodeURIComponent(P.name);
-  let h = `<div class="card"><b>${esc(P.name)}</b><br><small class="fine">Equipped title</small>
+  let h = adminCardShell() + `<div class="card"><b>${esc(P.name)}</b><br><small class="fine">Equipped title</small>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
     <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p></div>
     <div class="card"><b>Invite friends</b>
@@ -1738,6 +1811,7 @@ function renderMe() {
     <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
     <button class="btn sm ghost" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>`;
   $('#meBox').innerHTML = h;
+  if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
   $('#titleSel').onchange = e => { P.title = e.target.value; save(); renderHeader(); };
   $('#refBtn').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; const was = inviteCount; await refreshInvites(); if (inviteCount === was) toast(`${inviteCount} friend${inviteCount === 1 ? '' : 's'} joined so far`); renderMe(); };
   $('#copyBtn').onclick = () => { const i = $('#inviteLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } toast('Invite link copied'); };
@@ -2571,15 +2645,14 @@ function hideDialog(spot, byDrone) {
   const pool = byDrone && fly ? droneCandidates() : chests;
   const near = pool.find(c => dist(at, c) < C.MIN_CHEST_GAP_M);
   if (near) return toast(`Too close to ${isFound(near) ? '"' + near.name + '"' : 'another chest'} – move ${C.MIN_CHEST_GAP_M} m away`, 'bad');
-  // Nobody is standing there to judge a remote spot, so the drone may only hide next to a known
-  // park, campground or other public place - never in somebody's back garden.
+  // Optional: require remote hides to be near a known park or public place (off by default).
   if (byDrone && C.DRONE_HIDE_NEAR_M) {
     const ok = pool.some(c => c.src !== 'player' && dist(at, c) <= C.DRONE_HIDE_NEAR_M) || placesWithin(at.lat, at.lon, C.DRONE_HIDE_NEAR_M).length;
     if (!ok) return toast('The drone can only hide chests in or beside a park, campground or other public place', 'bad');
   }
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r); if (!mine.length) return toast('You need an item to hide inside', 'bad');
   let give = null;
-  modal(`<h3>🫳 ${byDrone ? 'Hide a chest where the drone is' : 'Hide a chest here'}</h3><p class="sub">${byDrone ? `Drone hides left today: ${droneMax - (P.hideDroneN || 0)}. ` : ''}Public places only (parks, campgrounds, trails). The chest is stocked with a few random items plus the one you leave inside – yours stays until another player swaps it.</p>
+  modal(`<h3>🫳 ${byDrone ? 'Hide a chest where the drone is' : 'Hide a chest here'}</h3><p class="sub">${byDrone ? `Drone hides left today: ${droneMax - (P.hideDroneN || 0)}. ` : ''}Hide it anywhere you like. The chest is stocked with a few random items plus the one you leave inside – yours stays until another player swaps it.</p>
     <input id="hideName" placeholder="Name this spot (e.g. Pine Loop Campsite 12)" maxlength="40">
     <div class="lbl">Item to leave inside</div><div class="grid" id="hGrid">${mine.map(it => tile(it, { count: P.inv[it.id] })).join('')}</div>
     <div class="trade"><button class="btn ghost" id="cancelBtn">Cancel</button><button class="btn" id="goHide" disabled>Hide it</button></div>`, m => {
@@ -2746,6 +2819,7 @@ function wire() {
   FX.onChange(sync); sync();
   $('#hWho').onclick = showStats;
   $('#hCoins').onclick = () => show('shop');
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.openAdmin && isAdmin()) show('me'); });
   // the chest list folds away to give the map the room; the choice is remembered
   const setList = closed => {
     $('#v-explore .panel').classList.toggle('closed', closed);
@@ -2797,5 +2871,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

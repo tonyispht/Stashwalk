@@ -750,3 +750,24 @@ button.phead{width:100%;background:none;border:0;color:inherit;font:inherit;text
 .dhide{background:#2c2209;border:1px solid #f2b84b88;color:var(--acc2);border-radius:99px;padding:3px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .ios .searchzone{animation:none}
 @media (prefers-reduced-motion:reduce){.searchzone{animation:none}}
+
+/* ================= admin ================= */
+.admincard{border-color:#6a5acd88}
+.ahead{display:flex;justify-content:space-between;align-items:center}
+.astats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+.astat{background:#0f1d15;border:1px solid #24402f;border-radius:10px;padding:8px 4px;text-align:center}
+.astat b{display:block;font-size:20px;color:var(--acc2)}
+.astat small{display:block;font-size:10.5px;color:var(--mut)}
+.alist{display:grid;gap:4px;font-size:13px}
+.alist > div{display:flex;justify-content:space-between;gap:8px;padding:5px 8px;background:#0f1d15;border-radius:8px}
+.alist small{color:var(--mut);white-space:nowrap}
+
+/* daily calendar: seven columns that are allowed to shrink. A plain 1fr will not go below
+   its content, so day 28's "Legendary" label used to push the last column off the screen. */
+.cal{grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.day{min-width:0;padding:2px 1px;overflow:hidden}
+.day b{font-size:clamp(8.5px,2.6vw,11px);white-space:nowrap}
+.day span{font-size:clamp(16px,5.2vw,22px)}
+.day small{display:block;max-width:100%;font-size:clamp(7.5px,2.2vw,10px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day{aspect-ratio:.7;gap:1px}
+.day span{line-height:1.15}

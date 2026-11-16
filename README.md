@@ -369,10 +369,25 @@ Chests stay off the map and out of the nearby list until you find them.
 ## Hiding with the drone
 The drone HUD has a "🫳 Hide" button that hides a chest where the drone is hovering, using the
 normal hide dialog. `DRONE_HIDES_PER_DAY` (2) a day, and they count toward `HIDE_PER_DAY` too. The
-usual 20 m gap from other chests applies. Because nobody is standing there to judge the spot, a
-remote hide must be within `DRONE_HIDE_NEAR_M` (250 m) of a known park, campground or other public
-place from the bundled list - so the drone cannot drop a chest in someone's back garden. Set it to
-0 to allow anywhere.
+usual 20 m gap from other chests applies. Chests can be hidden anywhere, on foot or by drone;
+reporting (three reports removes a chest) is the safety valve. `DRONE_HIDE_NEAR_M` can optionally
+require remote hides to be within that many metres of a known park or public place (0 = off).
+
+## Admin
+The account named in `ADMIN_USER` (config.js, "TonyIspht") gets a 🛡️ Admin card at the top of
+the Me tab. Who is really an admin is decided by the Worker (`ADMIN_USERS` variable, defaulting
+to tonyispht) - the game's own check only decides whether to show the card.
+
+- **Numbers**: accounts, online now, active in the last 24 hours and 7 days; who is online,
+  the newest accounts and recent activity. `GET /admin/stats`, admin only (403 otherwise).
+- **Presence**: every player's game pings `POST /ping` once a minute while on screen; the server
+  keeps `seen/<user>`. Online = seen in the last 2.5 minutes. Neither path is readable through
+  `/kv`.
+- **Notifications**: the server records sign-ups and players coming back after 10+ minutes away
+  in `admin/events` (last 200; a brand-new account's first ping is not reported twice). The admin's
+  game checks every 30 s and shows a toast, a dot on the Me tab, and - once "Turn on notifications"
+  is tapped - a system notification while the game is in the background. Tapping it opens the
+  panel. These work while the game is open or backgrounded, not when it is fully closed.
 
 ## Hard refresh
 Me tab -> "This build" shows the version stamp and a Hard refresh button. Scripts and styles are

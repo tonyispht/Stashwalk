@@ -3,7 +3,7 @@
 // cache anything that comes from the shared world database (that must always be live).
 //
 // VERSION must match window.ASSET_V in index.html - bump both together on every deploy.
-const VERSION = '202611161515';
+const VERSION = '202611161505';
 const SHELL   = 'stashwalk-shell-' + VERSION;   // app code, replaced on every deploy
 const PLACES  = 'stashwalk-places-v1';          // park/campground tiles, never change
 const TILES   = 'stashwalk-maptiles-v1';        // map images, capped below
@@ -49,6 +49,15 @@ self.addEventListener('activate', e => {
     for (const k of await caches.keys()) if (k.startsWith('stashwalk-') && !keep.has(k)) await caches.delete(k);
     if (self.registration.navigationPreload) try { await self.registration.navigationPreload.enable(); } catch (err) {}
     await self.clients.claim();
+  })());
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (all.length) { all[0].focus(); all[0].postMessage({ openAdmin: true }); }
+    else await self.clients.openWindow('./');
   })());
 });
 
