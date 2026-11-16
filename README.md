@@ -295,8 +295,10 @@ There is no battery or cooldown: the drone can fly and open chests as often as y
 only limit is range, set by its level.
 
 The player is always in control. Speed comes from the stick alone - analog and eased, so a light
-push creeps and a full push races - and top speed scales with range (`DRONE_EDGE_S`), so the edge
-is about 70 seconds away at any level: 22 m/s at the low levels, ~115 m/s at level 8. The drone
+push creeps and a full push races, with 85% of the way out already counting as full since thumbs
+rarely reach the rim. Top speed is at least `DRONE_SPEED_MPS` (45 m/s, ~100 mph) and scales with
+range (`DRONE_EDGE_S`) so the edge is never more than ~30 s away: 80 m/s at level 6, 148 at
+level 7, 268 m/s (~600 mph) at level 8. The drone
 never slows, steers or opens anything by itself; it only *offers* the Open button once you have
 flown it within reach, and nothing happens until you tap it.
 

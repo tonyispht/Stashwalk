@@ -60,8 +60,8 @@ window.GEO_CONFIG = {
     { ft: 26400, cost: 2300 }    // level 8 - five miles
   ],
   DRONE_REACH_FT: 50,      // how close the drone has to hover to open a chest
-  DRONE_SPEED_MPS: 22,     // slowest top speed (about 50 mph); bigger ranges fly faster...
-  DRONE_EDGE_S: 70,        // ...so the edge of its range is about this many seconds away at full stick
+  DRONE_SPEED_MPS: 45,     // slowest top speed (about 100 mph); bigger ranges fly faster...
+  DRONE_EDGE_S: 30,        // ...so the edge of its range is about this many seconds away at full stick
   DRONE_LISTEN_FT: 400,    // the locator's hot/cold scale while flying
 
   // ---- Road coins ----

@@ -539,7 +539,7 @@ const droneRangeM = lvl => (DL[Math.max(0, Math.min(DRONE_MAX, lvl) - 1)] || DL[
 const DRONE_REACH = () => (C.DRONE_REACH_FT || 50) * 0.3048;
 const DRONE_LISTEN = () => (C.DRONE_LISTEN_FT || 400) * 0.3048;
 const fmtFt = m => { const ft = m * FT; return ft >= 1000 ? (ft / 5280).toFixed(2) + ' mi' : Math.round(ft) + ' ft'; };
-const droneTop = lvl => Math.max(C.DRONE_SPEED_MPS || 22, droneRangeM(lvl) / (C.DRONE_EDGE_S || 70));
+const droneTop = lvl => Math.max(C.DRONE_SPEED_MPS || 45, droneRangeM(lvl) / (C.DRONE_EDGE_S || 30));
 
 function droneState() {
   if (!P.drone || typeof P.drone !== 'object') P.drone = { lvl: 0 };
@@ -638,7 +638,8 @@ function flyStep(now) {
   if (kx || ky) { const l = Math.hypot(kx, ky); ix = kx / l; iy = ky / l; }
   // speed is the stick and nothing else: a light push creeps, a full push races, and the
   // drone never slows, steers or opens anything on its own
-  const sp = droneTop(droneState().lvl) * Math.pow(Math.min(1, Math.hypot(ix, iy)), 1.6);
+  // a thumb rarely reaches the rim of the stick, so 85% of the way out already counts as full
+  const sp = droneTop(droneState().lvl) * Math.pow(Math.min(1, Math.hypot(ix, iy) / 0.85), 1.3);
   if (sp > 0.01) {
     const a = Math.atan2(iy, ix), mx = Math.cos(a) * sp * dt, my = -Math.sin(a) * sp * dt;   // screen up = north
     let lat = fly.ll.lat + my / 111320, lon = fly.ll.lon + mx / (111320 * Math.cos(fly.ll.lat * Math.PI / 180));
