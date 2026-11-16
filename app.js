@@ -1537,7 +1537,7 @@ function renderCraft() {
 }
 
 // ---- dex ----
-let dexFilter = 'all';
+let dexFilter = 'got';      // the shelf opens on what you have collected
 function renderDex() {
   const have = Object.keys(P.dex).filter(id => BY_ID[id]).length;
   $('#dexCount').textContent = `${have} / ${ITEMS.length}`; $('#dexBar').style.width = (have / ITEMS.length * 100) + '%';
