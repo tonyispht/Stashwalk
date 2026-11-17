@@ -205,6 +205,12 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
+    async call(path, body) {                       // POST to the Worker; errors carry the server's reply in .data
+      const r = await fetch(W + path, { method: 'POST', headers: whead(), body: JSON.stringify(body || {}) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(j.error || path + ' ' + r.status); e.data = j; throw e; }
+      return j;
+    },
     async linkMake(from, to) {
       const r = await fetch(W + '/links/make', { method: 'POST', headers: whead(), body: JSON.stringify({ from, to }) });
       const j = await r.json().catch(() => ({}));

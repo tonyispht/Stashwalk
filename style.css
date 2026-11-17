@@ -1393,3 +1393,14 @@ body.linkpick .droneicon.parked,body.linkpick .me-icon{display:none!important}
 .lkchip.none{max-width:none;border-color:#2a4a39;background:#0f1a14f2;color:var(--mut);font-size:12.5px;cursor:default;white-space:normal}
 .lktray{position:absolute;left:0;right:0;bottom:30px;z-index:620;display:flex;gap:8px;overflow-x:auto;padding:4px 12px;scrollbar-width:none}
 .lktray::-webkit-scrollbar{display:none}
+
+/* ---- shields & towers ---- */
+.chsh{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;border:1px solid var(--tc);font-size:11px;font-weight:700;color:var(--ink);white-space:nowrap}
+.towermark{background:none!important;border:0!important}
+.towermark .tw{display:grid;place-items:center;width:40px;height:40px;border-radius:12px 12px 12px 4px;background:#0f1a14;border:2.5px solid var(--tc);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--tc) 25%,transparent),0 4px 12px #000a;font-size:21px}
+.towermark .twsh{position:absolute;right:-8px;top:-8px;padding:1px 5px;border-radius:99px;background:#13304a;border:1.5px solid #9fd0ff;font-size:10px;color:#dff1ff;white-space:nowrap}
+.towercard .dtop{display:flex;gap:12px;align-items:flex-start}
+.towercard .twbig{font-size:34px;line-height:1}
+.towercard small{display:block;color:var(--mut);font-size:12px;margin-top:3px;line-height:1.35}
+body.linkpick .towermark{display:none!important}

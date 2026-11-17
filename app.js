@@ -2,6 +2,13 @@
 'use strict';
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
+// Shields: five craft-only tiers (never in chests). Installed on chests and towers they soak up
+// enemy Hard glyph hacks before links, fields or the tower itself can be broken.
+const SHIELDS = [['Wooden Shield', 'Rough planks lashed together. Better than nothing.'], ['Iron Shield', 'Dented, dependable, and heavy.'],
+  ['Steel Shield', 'Rings like a bell when something hits it.'], ['Mythril Shield', 'Light as a leaf, hard as a mountain.'],
+  ['Aegis Shield', 'Nothing has ever made it past this one.']].map(([n, flavor], r) => ({ id: 'sh' + r, e: '🛡️', n, r, h: [30, 210, 190, 280, 45][r], base: -2, shield: true, flavor }));
+SHIELDS.forEach(it => { if (!BY_ID[it.id]) { ITEMS.push(it); BY_ID[it.id] = it; } });
+const SHIELD_HP = [1, 2, 3, 5, 8], SHIELD_CRAFT_COINS = [30, 60, 120, 250, 500];
 const UNLOCK_M = C.UNLOCK_FT * 0.3048, FT = 3.28084;
 const unlockM = () => C.UNLOCK_FT * 0.3048;
 const DEV = /[?&]dev=1/.test(location.search);
@@ -178,8 +185,8 @@ function mergeOptions() {
   Object.keys(P.inv).forEach(id => {
     const it = BY_ID[id];
     if (!it || it.crafted || it.r >= 4 || P.inv[id] < C.MERGE_COUNT) return;
-    const to = BY_R[it.r + 1].find(x => x.base === it.base);
-    if (to) out.push({ from: it, to, have: P.inv[id], ok: lvl >= it.r + 1 });
+    const to = it.shield ? SHIELDS[it.r + 1] : BY_R[it.r + 1].find(x => x.base === it.base);
+    if (to) out.push({ from: it, to, have: P.inv[id], ok: it.shield || lvl >= it.r + 1 });
   });
   return out.sort((a, b) => b.from.r - a.from.r || a.from.n.localeCompare(b.from.n));
 }
@@ -187,8 +194,8 @@ function doMerge(id) {
   if (needNet('Merging')) return;
   const it = BY_ID[id];
   if (!it || P.inv[id] < C.MERGE_COUNT || it.r >= 4) return toast('Not enough to merge', 'bad');
-  if (workshopLevel() < it.r + 1) return toast(`Workshop level ${it.r + 1} needed for that`, 'bad');
-  const to = BY_R[it.r + 1].find(x => x.base === it.base);
+  if (!it.shield && workshopLevel() < it.r + 1) return toast(`Workshop level ${it.r + 1} needed for that`, 'bad');
+  const to = it.shield ? SHIELDS[it.r + 1] : BY_R[it.r + 1].find(x => x.base === it.base);
   if (!to) return toast('Nothing to merge into', 'bad');
   for (let i = 0; i < C.MERGE_COUNT; i++) removeItem(id);
   const isNew = addItem(to.id);
@@ -474,6 +481,7 @@ function mergeOffers() {
   Object.keys(P.inv).forEach(id => {
     const it = BY_ID[id]; if (!it || it.crafted || it.r >= 4) return;
     const have = P.inv[id]; if (have >= C.MERGE_COUNT) return;
+    if (it.shield) return;                       // shields are crafted, not bought
     const need = C.MERGE_COUNT - have, to = BY_R[it.r + 1].find(x => x.base === it.base);
     if (to) out.push({ it, to, need, have, price: Math.round(priceOf(it) * need * 0.9), locked: lvl < it.r + 1 });
   });
@@ -766,7 +774,7 @@ function renderShopHead() {
 function renderShop() {
   const st = shopState(), stock = dailyStock(), merges = mergeOffers(), crafts = craftOffers();
   const can = n => (P.coins || 0) >= n;
-  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard();
+  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard() + towerCard();
   h += `<h2 class="sec">Today's stock <small>new stock in ${timeToReset()}${sundayShop(utcDay()) ? ' · 🌟 Sunday Legendary' : ''}</small></h2>
     <div class="grid shopgrid">${stock.map((it, i) => {
       const sold = !!st.bought[i];
@@ -797,6 +805,7 @@ function renderShop() {
   renderShopHead();
   const bd = $('#buyDrone'); if (bd) bd.onclick = buyDrone;
   const ud = $('#upDrone'); if (ud) ud.onclick = upgradeDrone;
+  wireTowerCard(document);
   $('#shopBox').onclick = e => {
     const b = e.target.closest('[data-buy]'); if (!b) return;
     const k = b.dataset.buy, i = +k.slice(1);
@@ -1992,6 +2001,12 @@ ach('bigfield', 'Big Sky', 'Big Sky', 'Make a field of 1 km² or more', s => s.b
 ach('broke1', 'Saboteur', 'Saboteur', 'Break an enemy link', s => s.broke, 1, '💥');
 ach('broke10', 'Link Breaker', 'Link Breaker', 'Break 10 enemy links', s => s.broke, 10, '⛓️');
 ach('states3', 'State Hopper', 'State Hopper', 'Score points in 3 states', s => s.states, 3, '🇺🇸');
+ach('shield1', 'Shieldsmith', 'Shieldsmith', 'Craft a shield', s => s.shieldsMade, 1, '🛡️');
+ach('shieldup', 'Defender', 'Defender', 'Install 5 shields', s => s.shieldsInstalled, 5, '🏰');
+ach('shieldhit', 'Siege Breaker', 'Siege Breaker', 'Hit enemy shields 10 times', s => s.shieldHits, 10, '🪓');
+ach('tower1', 'Raise the Banner', 'Banner Raiser', 'Place a faction tower', s => s.towersPlaced, 1, '🗼');
+ach('towerdown', 'Tower Toppler', 'Tower Toppler', 'Destroy an enemy tower', s => s.towersDestroyed, 1, '💥');
+ach('towerloot', 'Spoils of War', 'Quartermaster', 'Get 25 tower bonus items', s => s.towerBonus, 25, '🎁');
 // The locked achievement you are nearest to finishing - something concrete to aim at.
 function nextAch() {
   const s = statView();
@@ -2030,7 +2045,8 @@ function statView() {
            glyphBest: P.stats.glyphBest || 0, keysGot: P.stats.keysGot || 0, links: P.stats.links || 0, fields: P.stats.fields || 0,
            broke: P.stats.broke || 0, longestLinkKm: (P.stats.longestLinkM || 0) / 1000, bigFieldKm2: P.stats.bigFieldKm2 || 0,
            levelUps: P.stats.levelUps || 0, maxChestLvl: P.stats.maxChestLvl || 1, rareOpens: P.stats.rareOpens || 0, fx: P.stats.fx || 0,
-           states: Object.keys(P.stats.states || {}).length };
+           states: Object.keys(P.stats.states || {}).length, shieldsMade: P.stats.shieldsMade || 0, shieldsInstalled: P.stats.shieldsInstalled || 0,
+           shieldHits: P.stats.shieldHits || 0, towersPlaced: P.stats.towersPlaced || 0, towersDestroyed: P.stats.towersDestroyed || 0, towerBonus: P.stats.towerBonus || 0 };
 }
 function checkAch() {
   const s = statView(), got = [];
@@ -2438,7 +2454,7 @@ function standRows(d) {
       <div class="standtop"><span class="standrank">${i + 1}</span><span>${T.icon} <b>${T.name}</b>${t === mine ? ' <small>you</small>' : ''}</span>
       <span class="standnum"><b>${fmtC(r.cells)}</b> field${r.cells === 1 ? '' : 's'}</span></div>
       <div class="standbar"><i style="width:${Math.round(r.cells / maxC * 100)}%"></i></div>
-      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}${r.links ? ` · 🔗 ${fmtC(r.links)}` : ''}${r.fields ? ` · 🔺 ${fmtC(r.fields)} (${r.km2 < 10 ? r.km2.toFixed(2) : fmtC(r.km2)} km²)` : ''}${(d.held && d.held[t] || []).length ? ' · ' + d.held[t].slice(0, 6).map(fieldName).map(esc).join(', ') + (d.held[t].length > 6 ? ' +' + (d.held[t].length - 6) : '') : ''}</small></div>`; }).join('');
+      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}${r.links ? ` · 🔗 ${fmtC(r.links)}` : ''}${r.fields ? ` · 🔺 ${fmtC(r.fields)} (${r.km2 < 10 ? r.km2.toFixed(2) : fmtC(r.km2)} km²)` : ''}${r.towers ? ` · 🗼 ${fmtC(r.towers)}` : ''}${(d.held && d.held[t] || []).length ? ' · ' + d.held[t].slice(0, 6).map(fieldName).map(esc).join(', ') + (d.held[t].length > 6 ? ' +' + (d.held[t].length - 6) : '') : ''}</small></div>`; }).join('');
 }
 function paintFacBar(d) {
   const b = $('#facBar'); if (!b) return;
@@ -2555,6 +2571,10 @@ const GUIDE = () => {
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
+  ['🛡️', 'Shields & towers', `<ul><li><b>Shields</b> come in five tiers – Wooden, Iron, Steel, Mythril and Aegis – blocking 1, 2, 3, 5 and 8 hacks. Craft them in Shop → Craft from 3 items of the same rarity, or merge 3 shields into the next tier.</li>
+    <li>Tap <b>🛡️ Shield</b> in a chest to protect it for your faction. Each enemy Hard glyph win wears it down by 1; their links and fields there only break once it's gone.</li>
+    <li><b>Faction towers</b> are bought in the Shop (${fmtC(TOWER_PRICE)} 🪙) and placed where you stand. Your faction gets a bonus item from every chest within 5 miles, once a chest per day (two towers in range give two).</li>
+    <li>Tap a tower on the map to shield it (your faction) or attack it with Hard glyph hacks (enemies). Get close, or fly your drone over it.</li></ul>`],
   ['🎆', 'Beacons & fireworks', `<p>Tap <b>🎆 Celebrate</b> in a chest to light it up for everyone's map: a <b>🔆 Beacon</b> in your faction colour (1 hour, 80 🪙) or <b>🎆 Fireworks</b> (30 min, 50 🪙). One effect per chest at a time.</p>`],
   ['🗺️', 'Map buttons & layers', `<ul><li>📍 centre on you · 🔄 refresh chests · 🫳 hide a chest here · 🏆 leaderboards · <b>layers</b> · ❔ this key.</li>
     <li><b>Layers</b> toggles road coins, faction fields and the standings bar, and opens the global control map.</li>
@@ -2575,6 +2595,105 @@ function openGuide(at) {
     $('#gdClose', m).onclick = closeModal; $('#gdOk', m).onclick = closeModal;
     $$('details', m).forEach(d => d.addEventListener('toggle', () => { if (d.open) $$('details', m).forEach(o => { if (o !== d) o.open = false; }); }));
   });
+}
+
+// ---- shields on chests & towers, faction towers ----
+const TOWER_PRICE = 2500, TOWER_RADIUS_M = 8047, TOWER_MAX = 3, NEAR_M = 60;
+const shieldOn = target => (linkData.shields || []).find(s => s.target === target) || null;
+const nearSpot = ll => (pos && dist(pos, ll) <= NEAR_M) || (fly && dist(fly.ll, ll) <= Math.max(DRONE_REACH(), NEAR_M));
+function shieldLabel(sh) { return sh ? `${SHIELDS[sh.r].n.replace(' Shield', '')} ${sh.hp}/${sh.max}` : ''; }
+async function freshShield(target, ll) {
+  const d = 0.004, got = await DB.links(ll.lat - d, ll.lon - d, ll.lat + d, ll.lon + d);
+  (got.shields || []).forEach(s => { const i = (linkData.shields || []).findIndex(x => x.target === s.target); if (i >= 0) linkData.shields[i] = s; else (linkData.shields = linkData.shields || []).push(s); });
+  if (!(got.shields || []).some(s => s.target === target)) linkData.shields = (linkData.shields || []).filter(s => s.target !== target);
+  return shieldOn(target);
+}
+// Install one of your shields on a chest or a tower (kind), then go back where you came from.
+async function shieldDialog(target, kind, ll, title, back) {
+  if (!P.team) return chooseTeamDialog(false);
+  const cur = await freshShield(target, ll), T = TEAMS[P.team];
+  const enemy = cur && cur.team !== P.team, mine = cur && cur.team === P.team;
+  const owned = SHIELDS.map((sh, r) => ({ sh, r, n: P.inv[sh.id] || 0 }));
+  const can = r => !enemy && (!mine || r > cur.r);
+  modal(`<h3>🛡️ Shield ${esc(title)}</h3>
+    <p class="sub">${enemy ? `${TEAMS[cur.team].icon} ${TEAMS[cur.team].name} have a <b>${SHIELDS[cur.r].n}</b> here (${cur.hp}/${cur.max}). Break it with Hard glyph hacks first.`
+      : mine ? `Your faction's <b>${SHIELDS[cur.r].n}</b> is up (${cur.hp}/${cur.max}). You can swap in a stronger tier.`
+      : `Each enemy Hard glyph win wears a shield down by 1. ${kind === 'tower' ? 'The tower can only fall once the shield is gone.' : 'Links and fields here only break once the shield is gone.'}`}</p>
+    <div class="keylist">${owned.map(o => `<button class="keyrow pick${o.n && can(o.r) ? '' : ' off'}" data-shi="${o.r}" ${o.n && can(o.r) ? '' : 'disabled'}>
+      <span class="kic">🛡️</span><span class="ktx"><b>${esc(o.sh.n)} <small class="fine">×${o.n}</small></b><small>${RAR[o.r].n} · blocks ${SHIELD_HP[o.r]} hack${SHIELD_HP[o.r] === 1 ? '' : 's'}</small></span>${o.n && can(o.r) ? '<span class="kgo">Install</span>' : ''}</button>`).join('')}</div>
+    ${owned.some(o => o.n) ? '' : '<p class="fine">You have no shields yet – craft them in Shop → Craft from 3 items of the same rarity.</p>'}
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Back</button></div>`, m => {
+    $('#cancelBtn', m).onclick = back;
+    $$('[data-shi]', m).forEach(b => b.onclick = async () => {
+      const r = +b.dataset.shi; b.disabled = true;
+      try { await DB.call('/shield/install', { target, kind, r, lat: ll.lat, lon: ll.lon }); }
+      catch (e) { b.disabled = false; const d = e.data || {}; return toast(d.error === 'enemy shield' ? 'An enemy shield is up here' : d.error === 'already shielded' ? 'A shield at least that strong is already up' : 'Could not install: ' + e.message, 'bad'); }
+      removeItem(SHIELDS[r].id); P.stats.shieldsInstalled = (P.stats.shieldsInstalled || 0) + 1; save(); checkAch(); renderAll();
+      act('shield', `${SHIELDS[r].n} on ${title}`, ll); FX.sfx('place'); toast(`🛡️ ${SHIELDS[r].n} installed on ${title} for ${T.name}`, 'gold');
+      await loadLinks(true); back();
+    });
+  });
+}
+// ---- towers ----
+function towerCard() {
+  if (!DB.remote) return '';
+  const have = P.towers || 0, can = (P.coins || 0) >= TOWER_PRICE;
+  return `<div class="card towercard"><div class="dtop"><span class="twbig">🗼</span><div><b>Faction tower</b>
+    <small>Your faction gets a bonus item from every chest within 5 miles (once a chest per day). Place it where you stand; enemies can knock it down with Hard glyph hacks, so shield it. Up to ${TOWER_MAX} placed.</small></div></div>
+    <div class="row2" style="padding:0;margin-top:10px"><button class="btn" id="twBuy" ${can ? '' : 'disabled'}>Buy · 🪙 ${fmtC(TOWER_PRICE)}</button>
+    ${have ? `<button class="btn ghost" id="twPlace">📍 Place here (${have} ready)</button>` : ''}</div></div>`;
+}
+function wireTowerCard(box) {
+  const b = $('#twBuy', box); if (b) b.onclick = () => { if (!spend(TOWER_PRICE)) return toast('Not enough coins', 'bad'); P.towers = (P.towers || 0) + 1; save(); renderAll(); toast('🗼 Tower bought – place it from here or the Shop when you’re at the spot', 'gold'); };
+  const pl = $('#twPlace', box); if (pl) pl.onclick = placeTower;
+}
+async function placeTower() {
+  if (!P.team) return chooseTeamDialog(false);
+  if (!pos) return toast('Turn on GPS first', 'bad');
+  if (!(P.towers > 0)) return toast('Buy a tower in the Shop first', 'bad');
+  try { const r = await DB.call('/tower/place', { lat: pos.lat, lon: pos.lon });
+    P.towers--; P.stats.towersPlaced = (P.stats.towersPlaced || 0) + 1; save(); checkAch(); renderAll();
+    act('tower', `placed a ${TEAMS[P.team].name} tower`, pos); FX.sfx('place'); FX.confetti([TEAMS[P.team].c, '#fff'], 50);
+    toast('🗼 Tower placed! Chests within 5 miles now give your faction a bonus item', 'gold'); show('explore'); loadLinks(true); fillStandings(true);
+  } catch (e) { const d = e.data || {}; toast(d.error === 'too close' ? 'Too close to another tower – towers need 1 km between them' : d.error === 'tower limit' ? `You already have ${d.max} towers placed` : 'Could not place: ' + e.message, 'bad'); }
+}
+async function towerSheet(t) {
+  const T = TEAMS[t.team], mine = t.team === P.team, near = nearSpot(t), d = pos ? dist(pos, t) : null;
+  const sh = await freshShield(t.id, t);
+  modal(`<div class="gdhead"><h3>🗼 ${T.icon} ${T.name} tower</h3><button class="locx" id="twClose">✕</button></div>
+    <p class="sub" style="margin-top:4px">Placed by ${esc(t.by || 'a player')} · ${ago(t.at)}${d != null ? ' · ' + fmtDist(d) + ' away' : ''}</p>
+    <p class="fine">${T.name} players get a bonus item from chests within 5 miles of this tower.</p>
+    <div class="lvlchip" style="--lc:${sh ? '#9fd0ff' : '#6b7d72'}"><b>🛡️</b><span>${sh ? `${SHIELDS[sh.r].n} · ${sh.hp}/${sh.max}` : 'No shield'}</span></div>
+    <div class="admacts">${mine ? `<button class="btn" id="twShield" ${near ? '' : 'disabled'}>🛡️ ${sh ? 'Upgrade shield' : 'Install shield'}</button>`
+      : `<button class="btn danger" id="twAttack" ${near ? '' : 'disabled'}>⚔️ Attack (Hard glyph)</button>`}
+    ${near ? '' : `<p class="fine" style="margin:0">Get within ${Math.round(NEAR_M * FT)} ft (or fly your drone over it) to ${mine ? 'shield' : 'attack'} it.</p>`}</div>`, m => {
+    $('#twClose', m).onclick = closeModal;
+    const s2 = $('#twShield', m); if (s2) s2.onclick = () => shieldDialog(t.id, 'tower', t, 'this tower', () => towerSheet(t));
+    const a = $('#twAttack', m); if (a) a.onclick = () => {
+      const gid = 'tw_' + t.id;
+      if (glyphLeft(gid) > 0) return toast(`You can attack this tower again in ${Math.ceil(glyphLeft(gid) / 60000)} min`, 'bad');
+      runGlyph(gid, null, 5, true, async () => {
+        let r; try { r = await DB.call('/tower/attack', { tower: t.id }); } catch (e) { return toast('Attack failed: ' + e.message, 'bad'); }
+        if (r.destroyed) { earn(150, '💥 Tower destroyed'); P.stats.towersDestroyed = (P.stats.towersDestroyed || 0) + 1; act('towerdown', `${T.name} tower`, t);
+          setTimeout(() => toast(`💥 You brought down the ${T.name} tower! +150 🪙`, 'gold'), 1600); }
+        else if (r.shield) { earn(10, '🛡️ Shield hit'); setTimeout(() => toast(r.shield.gone ? `💥 Shield shattered – one more Hard hack brings the tower down` : `🛡️ Their ${SHIELDS[r.shield.r].n} took the hit – ${r.shield.hp}/${r.shield.max} left`, 'gold'), 1600); }
+        save(); checkAch(); loadLinks(true); fillStandings(true);
+      });
+    };
+  });
+}
+// Bonus loot from your faction's towers: once per chest per day, +1 item per tower in range (max 2).
+function towerBonus(meta) {
+  if (!DB.remote || !P.team) return [];
+  const day = utcDay(); P.towerDay = P.towerDay || {};
+  if (P.towerDay[meta.id] === day) return [];
+  const n = Math.min(2, (linkData.towers || []).filter(t => t.team === P.team && dist(t, meta) <= TOWER_RADIUS_M).length);
+  if (!n) return [];
+  Object.keys(P.towerDay).forEach(k => { if (P.towerDay[k] !== day) delete P.towerDay[k]; });
+  P.towerDay[meta.id] = day;
+  const got = []; for (let i = 0; i < n; i++) { const it = rollItem(Math.random, 1.3); addItem(it.id); got.push(it); }
+  P.stats.towerBonus = (P.stats.towerBonus || 0) + n; save();
+  return got;
 }
 
 // ---- beacons & fireworks: short-lived effects at a chest that every player can see ----
@@ -2861,6 +2980,9 @@ function drawLinks() {
   if (!LAYERS.links) return;
   (linkData.fields || []).forEach(f => { const T = TEAMS[f.team]; if (!T) return;
     L.polygon(f.pts.map(p => [p.lat, p.lon]), { stroke: false, fillColor: T.c, fillOpacity: .2, interactive: false }).addTo(linkLayer); });
+  (linkData.towers || []).forEach(t => { const T = TEAMS[t.team]; if (!T) return; const sh = shieldOn(t.id);
+    L.marker([t.lat, t.lon], { icon: L.divIcon({ className: 'towermark', html: `<span class="tw" style="--tc:${T.c}">🗼</span>${sh ? `<b class="twsh" title="Shield">🛡️${sh.hp}</b>` : ''}`, iconSize: [40, 40], iconAnchor: [20, 34] }),
+      zIndexOffset: 1600, keyboard: false }).addTo(linkLayer).on('click', () => towerSheet(t)); });
   (linkData.links || []).forEach(l => { const T = TEAMS[l.team]; if (!T) return;
     L.polyline([[l.alat, l.alon], [l.blat, l.blon]], { color: T.c, weight: 7, opacity: .18, interactive: false, lineCap: 'round' }).addTo(linkLayer);
     L.polyline([[l.alat, l.alon], [l.blat, l.blon]], { color: T.c2, weight: 2, opacity: .95, interactive: false }).addTo(linkLayer); });
@@ -2868,6 +2990,12 @@ function drawLinks() {
 async function breakLinksAt(id) {
   if (!DB.remote || !P.team) return;
   const r = await DB.linksBreak(id);
+  if (r && r.shield) {
+    const sh = r.shield, T = TEAMS[sh.team]; earn(10, '🛡️ Shield hit');
+    P.stats.shieldHits = (P.stats.shieldHits || 0) + 1; save();
+    setTimeout(() => toast(sh.gone ? `💥 You shattered ${T ? T.name + "'s" : 'the'} ${SHIELDS[sh.r].n}! Hack again to break their links here.` : `🛡️ ${T ? T.name + "'s" : 'An enemy'} ${SHIELDS[sh.r].n} took the hit – ${sh.hp}/${sh.max} left`, 'gold'), 1600);
+    loadLinks(true); return;
+  }
   if (!r || !(r.links || r.fields)) return;
   const c = 20 * r.links + 30 * r.fields; earn(c, '💥 Broke enemy links');
   P.stats.broke = (P.stats.broke || 0) + r.links; save();
@@ -2978,7 +3106,7 @@ function glyphGame(id, after, chestLvl) {
     $$('.gmode', m).forEach(btn => btn.onclick = () => runGlyph(id, after, lvl, btn.dataset.gm === '1'));
   });
 }
-function runGlyph(id, after, lvl, hard) {
+function runGlyph(id, after, lvl, hard, onWin) {
   glyphMark(id); P.stats.glyphs = (P.stats.glyphs || 0) + 1; if (hard) P.stats.glyphHard = (P.stats.glyphHard || 0) + 1; save();
   const G = glyphSpec(lvl, hard), N = 9, len = G.len, seq = [];
   while (seq.length < len) { const n = Math.floor(Math.random() * N); if (!seq.includes(n)) seq.push(n); }
@@ -3008,8 +3136,8 @@ function runGlyph(id, after, lvl, hard) {
           const item = gotItem ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
           earn(coins, hard ? '🔥 Hard glyph bonus' : '✨ Glyph bonus'); if (item) addItem(item.id);
           P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; if (hard) P.stats.glyphHardWins = (P.stats.glyphHardWins || 0) + 1; checkAch(); save();
-          glyphLevelPoint(id, G.points);
-          if (hard) breakLinksAt(id);
+          if (onWin) onWin();
+          else { glyphLevelPoint(id, G.points); if (hard) breakLinksAt(id); }
           const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${hard ? '🔥 hard ' : ''}${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
           msg.innerHTML = `${hard ? '🔥' : '✨'} <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
           if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
@@ -3240,6 +3368,7 @@ function renderCraft() {
     </div>`).join('') + '</div>'
     : `<div class="empty">Nothing to merge yet. Collect ${C.MERGE_COUNT} of the same item and you can fuse them.</div>`;
 
+  h += shieldCraftHtml();
   h += `<h2 class="sec">Relics <small>${statView().relics} / ${RELICS.length} collected</small></h2>
     <p class="fine pad">Relics are craft-only — they never appear in chests.</p><div class="list">`;
   RELICS.forEach(r => {
@@ -3254,6 +3383,35 @@ function renderCraft() {
   });
   h += '</div>';
   $('#craftBox').innerHTML = h;
+  $$('[data-shcraft]', $('#craftBox')).forEach(b => b.onclick = () => craftShield(+b.dataset.shcraft));
+}
+// items that can be fed into a shield of rarity r: ordinary loot of that rarity, most duplicated first
+function shieldFodder(r) {
+  return Object.keys(P.inv).map(id => BY_ID[id]).filter(it => it && it.r === r && !it.shield && !it.crafted)
+    .sort((a, b) => (P.inv[b.id] - P.inv[a.id]) || a.n.localeCompare(b.n));
+}
+function shieldCraftHtml() {
+  let h = `<h2 class="sec">🛡️ Shields <small>install on chests &amp; towers</small></h2>
+    <p class="fine pad">Shields soak up enemy Hard glyph hacks before your faction's links, fields or towers can break. Craft one from 3 items of the same rarity, or merge 3 shields into the next tier.</p><div class="list">`;
+  SHIELDS.forEach((sh, r) => {
+    const pool = shieldFodder(r), have = pool.reduce((n, it) => n + P.inv[it.id], 0), cost = SHIELD_CRAFT_COINS[r];
+    const ok = have >= 3 && (P.coins || 0) >= cost;
+    h += `<div class="mrow${ok ? '' : ' off'}">${tile(sh, { count: P.inv[sh.id] || 0 })}<div class="otxt"><b>${esc(sh.n)}</b>
+      <small>3 ${RAR[r].n} items + ${fmtC(cost)} 🪙 · blocks ${SHIELD_HP[r]} hack${SHIELD_HP[r] === 1 ? '' : 's'} · you have ${have} ${RAR[r].n.toLowerCase()}</small></div>
+      <button class="btn sm" data-shcraft="${r}" ${ok ? '' : 'disabled'}>Craft</button></div>`;
+  });
+  return h + '</div>';
+}
+function craftShield(r) {
+  if (needNet('Crafting')) return;
+  const pool = shieldFodder(r), cost = SHIELD_CRAFT_COINS[r];
+  if (pool.reduce((n, it) => n + P.inv[it.id], 0) < 3) return toast(`You need 3 ${RAR[r].n} items`, 'bad');
+  if (!spend(cost)) return toast('Not enough coins', 'bad');
+  let left = 3; for (const it of pool) { while (left && P.inv[it.id]) { removeItem(it.id); left--; } if (!left) break; }
+  const sh = SHIELDS[r], isNew = addItem(sh.id);
+  P.stats.shieldsMade = (P.stats.shieldsMade || 0) + 1; act('craft', sh.n);
+  save(); checkAch(); renderAll();
+  showMade(sh, '3 items became', isNew);
 }
 
 // ---- dex ----
@@ -3419,7 +3577,9 @@ function statsCard(s) {
     ${grp('✨ Glyph hacks', [row('Attempts', fmtC(s.glyphs)), row('Wins', fmtC(s.glyphWins)), row('Win rate', s.glyphs ? Math.round(s.glyphWins / s.glyphs * 100) + '%' : '–'),
       row('Hard wins', fmtC(s.glyphHard)), row('Fast solves', fmtC(s.glyphFast)), row('Best speed', s.glyphBest ? s.glyphBest.toFixed(2) + ' s / point' : '–')])}
     ${grp('⚑ Faction', [row('Keys collected', fmtC(s.keysGot)), row('Links made', fmtC(s.links)), row('Longest link', s.longestLinkKm ? s.longestLinkKm.toFixed(2) + ' km' : '–'),
-      row('Fields made', fmtC(s.fields)), row('Biggest field', s.bigFieldKm2 ? s.bigFieldKm2.toFixed(2) + ' km²' : '–'), row('Enemy links broken', fmtC(s.broke)), row('States scored', fmtC(s.states))])}
+      row('Fields made', fmtC(s.fields)), row('Biggest field', s.bigFieldKm2 ? s.bigFieldKm2.toFixed(2) + ' km²' : '–'), row('Enemy links broken', fmtC(s.broke)), row('States scored', fmtC(s.states)),
+      row('Shields crafted', fmtC(s.shieldsMade)), row('Shields installed', fmtC(s.shieldsInstalled)), row('Enemy shield hits', fmtC(s.shieldHits)),
+      row('Towers placed', fmtC(s.towersPlaced)), row('Enemy towers destroyed', fmtC(s.towersDestroyed)), row('Tower bonus items', fmtC(s.towerBonus))])}
     ${grp('🔁 Trading & items', [row('Trades', fmtC(s.ex)), row('Gifts left', fmtC(s.given)), row('Chests hidden', fmtC(s.hidden)), row('Items collected', s.dex + ' / ' + ITEMS.length),
       row('Merges', fmtC(s.merges)), row('Relics crafted', fmtC(s.crafted)), row('Beacons & fireworks', fmtC(s.fx))])}
   </div></details>`;
@@ -4280,6 +4440,8 @@ async function openChest(id, byDrone) {
     await cine.done;
     showChest(meta, r.value, firstVisit);
     gainKey(meta);
+    const tb = towerBonus(meta);
+    if (tb.length) setTimeout(() => { toast(`🗼 Tower bonus: +${tb.map(it => it.n).join(', ')}`, 'gold'); renderAll(); }, 2400);
     act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(chestXP(r.value)) + ')' + (byDrone ? ' by drone' : ''), meta);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { P.stats.rareOpens = (P.stats.rareOpens || 0) + 1; earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
@@ -4335,9 +4497,10 @@ function showChest(meta, chest, canGlyph) {
   const sub = isRare(meta) ? '✨ Rare cache · Epic or better inside' : meta.src === 'player' || meta.kind === 'player' ? chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at })) : kindInfo(meta.kind)[0];
   const tileBtn = (id, ic, label, note, cls, dis) => `<button class="actile ${cls || ''}" id="${id}" ${dis ? 'disabled' : ''}><span class="ati">${ic}</span><b>${label}</b><small>${note}</small></button>`;
   const glyphNote = gLeft ? `ready in ${Math.ceil(gLeft / 60000)} min` : 'bonus coins';
+  const csh = shieldOn(meta.id), shNote = csh ? (csh.team === P.team ? shieldLabel(csh) : `${TEAMS[csh.team] ? TEAMS[csh.team].name : 'enemy'} ${csh.hp}/${csh.max}`) : 'protect it';
   modal(`<button class="shclose" id="cancelBtn" aria-label="Close">✕</button>
     <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic cm2${meta.kind === 'player' ? ' pl' : ''}${isRare(meta) ? ' rare' : ''}"><span class="pin">${CHEST_SVG}</span></span>
-      <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}</p></div></div>
+      <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}${csh && TEAMS[csh.team] ? ` <span class="chsh" style="--tc:${TEAMS[csh.team].c}">🛡️ ${TEAMS[csh.team].icon} ${csh.hp}/${csh.max}</span>` : ''}</p></div></div>
     ${lvlChip(chest)}
     <h4 class="chsec">Inside the chest</h4>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '', mine: !!chest.items[s].by && String(chest.items[s].by).toLowerCase() === String(P.name).toLowerCase() }) : ''; }).join('')}</div>
@@ -4346,6 +4509,7 @@ function showChest(meta, chest, canGlyph) {
     <div class="actiles">
       ${tileBtn('glyphBtn', '✨', 'Glyph hack', glyphNote, gLeft ? 'wait' : 'hot', !!gLeft)}
       ${DB.remote ? tileBtn('linkBtn', '🔗', 'Link', P.team ? Object.keys(P.keys || {}).filter(k => k !== meta.id).length + ' keys' : 'join a faction') : ''}
+      ${DB.remote ? tileBtn('shBtn', '🛡️', 'Shield', shNote) : ''}
       ${DB.remote ? tileBtn('fxBtn', '🎆', 'Celebrate', 'light it up') : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? tileBtn('giveBtn', '🎁', 'Gift', 'leave an item') : ''}
     </div>
@@ -4355,6 +4519,7 @@ function showChest(meta, chest, canGlyph) {
     $('#flagBtn', m).onclick = () => flagDialog(meta);
     const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta, chest);
     const lb = $('#linkBtn', m); if (lb) lb.onclick = () => linkDialog(meta, chest);
+    const shb = $('#shBtn', m); if (shb) shb.onclick = () => shieldDialog(meta.id, 'chest', meta, meta.name, () => backToChest(meta, chest));
     const ar = $('#admRen', m); if (ar) ar.onclick = () => adminRenameDialog(chests.find(c => c.id === meta.id) || meta);
     const am = $('#admRm', m); if (am) am.onclick = () => adminRemoveChest(meta.id);
     const gy = $('#glyphBtn', m);
@@ -4793,7 +4958,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { get map() { return map; }, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

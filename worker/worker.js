@@ -12,7 +12,7 @@ const SEG = /^[A-Za-z0-9_-]{1,64}$/;
 const TEAMS = new Set(['ember', 'tide', 'grove']);
 const TEAM_COOLDOWN = 7 * 86400000;        // switch teams at most once a week
 const FIELD_RE = /^([A-Z]{2}|g-?\d{1,2}_-?\d{1,3})$/;   // a US state code, or a ~5° grid sector elsewhere
-const ITEM_ID = /^(\d{1,3}_[0-4]|c\d{1,3})$/;   // base items, or crafted relics (c0, c1, ...)
+const ITEM_ID = /^(\d{1,3}_[0-4]|c\d{1,3}|sh[0-4])$/;   // base items, crafted relics (c0, c1, ...) or shields (sh0-sh4)
 let ready = false;
 
 const json = (obj, status, cors) => new Response(JSON.stringify(obj), {
@@ -131,6 +131,25 @@ async function adminEvent(env, ev) {
   await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
     .bind('admin/events', JSON.stringify(list)).run();
 }
+
+// ---- shields & towers -------------------------------------------------------------------
+// shield/<target> = { team, r, hp, max, by, at, lat, lon, kind }   target = chest id or tower id
+// tower/<id>      = { id, team, lat, lon, by, user, at }
+const SHIELD_HP = [1, 2, 3, 5, 8], TOWER_MAX = 3, TOWER_GAP_M = 1000;
+const teamOfUser = async (env, me) => { const t = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first(); try { const v = t && JSON.parse(t.val).team; return TEAMS.has(v) ? v : null; } catch (e) { return null; } };
+// An enemy shield on the target takes the hit instead: returns its state, or null when nothing shields it.
+async function shieldHit(env, target, attackerTeam) {
+  const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('shield/' + target).first();
+  if (!row) return null;
+  let sh; try { sh = JSON.parse(row.val); } catch (e) { return null; }
+  if (!sh || sh.team === attackerTeam || !(sh.hp > 0)) return null;
+  sh.hp -= 1;
+  if (sh.hp <= 0) await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('shield/' + target).run();
+  else await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ?').bind(JSON.stringify(sh), 'shield/' + target).run();
+  return { hp: Math.max(0, sh.hp), max: sh.max, r: sh.r, team: sh.team, gone: sh.hp <= 0 };
+}
+const geoM = (a, b) => { const rad = Math.PI / 180, dLa = (b.lat - a.lat) * rad, dLo = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
 
 export default {
   async fetch(req, env) {
@@ -316,6 +335,63 @@ export default {
         results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
         return json({ value: out }, 200, cors);
       }
+      // install a shield on a chest or one of your faction's towers
+      if (url.pathname === '/shield/install' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const team = await teamOfUser(env, me); if (!team) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const target = String(b.target || ''), kind = b.kind === 'tower' ? 'tower' : 'chest', r = Math.floor(+b.r);
+        if (!/^[a-z0-9_]{3,40}$/i.test(target) || !(r >= 0 && r <= 4)) return json({ error: 'bad shield' }, 400, cors);
+        let lat = +b.lat, lon = +b.lon;
+        if (kind === 'tower') {
+          const tw = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('tower/' + target).first();
+          if (!tw) return json({ error: 'no such tower' }, 404, cors);
+          const t = JSON.parse(tw.val); if (t.team !== team) return json({ error: 'not your faction\'s tower' }, 403, cors); lat = t.lat; lon = t.lon;
+        }
+        if (!isFinite(lat) || !isFinite(lon)) return json({ error: 'bad position' }, 400, cors);
+        const cur = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('shield/' + target).first();
+        if (cur) { try { const c = JSON.parse(cur.val);
+          if (c.team !== team && c.hp > 0) return json({ error: 'enemy shield', team: c.team, hp: c.hp, max: c.max }, 409, cors);
+          if (c.team === team && c.hp > 0 && r <= c.r) return json({ error: 'already shielded', r: c.r, hp: c.hp, max: c.max }, 409, cors); } catch (e) {} }
+        const rec = { team, r, hp: SHIELD_HP[r], max: SHIELD_HP[r], by: await nameOfUser(env, me), at: Date.now(), lat, lon, kind };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('shield/' + target, JSON.stringify(rec)).run();
+        return json({ ok: true, shield: rec }, 200, cors);
+      }
+      // place a faction tower where you stand (bought in the shop)
+      if (url.pathname === '/tower/place' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const team = await teamOfUser(env, me); if (!team) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const lat = +b.lat, lon = +b.lon;
+        if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad position' }, 400, cors);
+        const { results } = await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'tower/%' LIMIT 5000").all();
+        const all = []; results.forEach(r => { try { all.push(JSON.parse(r.val)); } catch (e) {} });
+        if (all.filter(t => t.user === me).length >= TOWER_MAX) return json({ error: 'tower limit', max: TOWER_MAX }, 409, cors);
+        const near = all.find(t => geoM(t, { lat, lon }) < TOWER_GAP_M);
+        if (near) return json({ error: 'too close', team: near.team, gap: TOWER_GAP_M }, 409, cors);
+        const id = 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const rec = { id, team, lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6, by: await nameOfUser(env, me), user: me, at: Date.now() };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1)').bind('tower/' + id, JSON.stringify(rec)).run();
+        return json({ ok: true, tower: rec }, 200, cors);
+      }
+      // a won Hard glyph hack against an enemy tower: its shield soaks the hit, otherwise it falls
+      if (url.pathname === '/tower/attack' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const team = await teamOfUser(env, me); if (!team) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const id = String(b.tower || ''); if (!/^t_[a-z0-9]{3,30}$/i.test(id)) return json({ error: 'bad tower' }, 400, cors);
+        const tw = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('tower/' + id).first();
+        if (!tw) return json({ error: 'no such tower' }, 404, cors);
+        const t = JSON.parse(tw.val); if (t.team === team) return json({ error: 'that tower is yours' }, 400, cors);
+        const sh = await shieldHit(env, id, team);
+        if (sh) return json({ ok: true, shield: sh, destroyed: false }, 200, cors);
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('tower/' + id).run();
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('shield/' + id).run();
+        return json({ ok: true, destroyed: true, team: t.team, by: t.by }, 200, cors);
+      }
       // ---- keys, links & fields (Ingress-style) -------------------------------------------
       // link/<a>~<b> = { a, b, alat, alon, blat, blon, an, bn, team, by, at }   (a < b)
       // field/<a>~<b>~<c> = { pts:[{id,lat,lon}x3], team, by, at, km2 }
@@ -385,7 +461,13 @@ export default {
         lr.forEach(r => { try { const l = JSON.parse(r.val); if (hit(l.alat, l.alon, l.blat, l.blon)) links.push(Object.assign({ id: r.path.slice(5) }, l)); } catch (e) {} });
         fr.forEach(r => { try { const f = JSON.parse(r.val), la = f.pts.map(p => p.lat), lo = f.pts.map(p => p.lon);
           if (hit(Math.min(...la), Math.min(...lo), Math.max(...la), Math.max(...lo))) fields.push(Object.assign({ id: r.path.slice(6) }, f)); } catch (e) {} });
-        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600) }, 200, cors);
+        // towers reach 5 miles, so look a little beyond the box for them
+        const pad = 0.09, towers = [], shields = [];
+        const { results: tr } = await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'tower/%' LIMIT 5000").all();
+        tr.forEach(r => { try { const t = JSON.parse(r.val); if (t.lat >= s0 - pad && t.lat <= n0 + pad && t.lon >= w0 - pad && t.lon <= e0 + pad) towers.push({ id: t.id, team: t.team, lat: t.lat, lon: t.lon, by: t.by, at: t.at }); } catch (e) {} });
+        const { results: sr } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'shield/%' LIMIT 5000").all();
+        sr.forEach(r => { try { const v = JSON.parse(r.val); if (v.hp > 0 && v.lat >= s0 - pad && v.lat <= n0 + pad && v.lon >= w0 - pad && v.lon <= e0 + pad) shields.push({ target: r.path.slice(7), team: v.team, r: v.r, hp: v.hp, max: v.max, kind: v.kind, by: v.by }); } catch (e) {} });
+        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600), towers: towers.slice(0, 300), shields: shields.slice(0, 800) }, 200, cors);
       }
       // a won Hard glyph hack at a chest breaks the other factions' links (and their fields) there
       if (url.pathname === '/links/break' && req.method === 'POST') {
@@ -396,6 +478,8 @@ export default {
         if (!TEAMS.has(team)) return json({ ok: true, links: 0, fields: 0 }, 200, cors);
         const b = await req.json().catch(() => ({}));
         const chest = String(b.chest || ''); if (!/^[a-z0-9_]{3,40}$/i.test(chest)) return json({ error: 'bad chest' }, 400, cors);
+        const sh = await shieldHit(env, chest, team);
+        if (sh) return json({ ok: true, links: 0, fields: 0, shield: sh }, 200, cors);
         const { results: lr } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? OR path LIKE ?').bind('link/' + chest + '~%', 'link/%~' + chest).all();
         const { results: fr } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? OR path LIKE ? OR path LIKE ?').bind('field/' + chest + '~%', 'field/%~' + chest + '~%', 'field/%~' + chest).all();
         const gone = [];
@@ -460,7 +544,7 @@ export default {
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
         if (!me) return json({ error: 'not logged in' }, 401, cors);
         const b = await req.json().catch(() => ({}));
-        const KINDS = new Set(['newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break']);
+        const KINDS = new Set(['newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break', 'shield', 'tower', 'towerdown']);
         const k = String(b.k || '');
         if (!KINDS.has(k)) return json({ error: 'bad kind' }, 400, cors);
         const ev = { k, u: String(await nameOfUser(env, me)).slice(0, 16), t: Date.now() };
@@ -532,6 +616,9 @@ export default {
         const fl = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'field/%' LIMIT 5000").all()).results;
         fl.forEach(r => { try { const f = JSON.parse(r.val); if (out[f.team]) { out[f.team].fields++; out[f.team].km2 += f.km2 || 0; } } catch (e) {} });
         TEAMS.forEach(t => { out[t].km2 = Math.round(out[t].km2 * 100) / 100; });
+        TEAMS.forEach(t => { out[t].towers = 0; });
+        const tw = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'tower/%' LIMIT 5000").all()).results;
+        tw.forEach(r => { try { const t = JSON.parse(r.val).team; if (out[t]) out[t].towers++; } catch (e) {} });
         return json({ value: out, held, cellsTotal: Object.keys(byCell).length, at: Date.now() }, 200, cors);
       }
 
