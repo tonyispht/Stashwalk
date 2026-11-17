@@ -3462,8 +3462,8 @@ function registerSW() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && PWA.reg) PWA.reg.update().catch(() => {});
   });
-  // people leave this open on walks for a long time - look for a new build every 15 minutes too
-  setInterval(() => { if (PWA.reg && !document.hidden) PWA.reg.update().catch(() => {}); }, 15 * 60 * 1000);
+  // people leave this open on walks for a long time - look for a new build every 5 minutes too
+  setInterval(() => { if (PWA.reg && !document.hidden) PWA.reg.update().catch(() => {}); }, 5 * 60 * 1000);
 }
 // A new build is sitting ready: say so on every screen, with one tap to switch.
 // Only a genuinely newer build gets the banner. A waiting worker that is the same build the
