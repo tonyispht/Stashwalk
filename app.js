@@ -62,6 +62,7 @@ function tile(it, o = {}) {
   if (o.sil) return `<div class="tile sil sr${it.r}" data-id="${it.id}" style="${pv}"><span class="em">${it.e}</span></div>`;
   return `<div class="tile r${it.r}${it.crafted ? ' cr' : ''}${o.sel ? ' sel' : ''}${o.big ? ' big' : ''}" data-id="${it.id}" data-slot="${o.slot || ''}" title="${esc(it.n)}" style="${pv}">` +
     (o.by ? `<span class="by">${esc(o.by)}</span>` : '') +
+    (!o.big && P && P.dex && !P.dex[it.id] ? `<i class="newtag${o.by ? ' r' : ''}" title="Not in your collection yet">NEW</i>` : '') +
     `<span class="em">${it.e}</span>` +
     (o.count > 1 ? `<b class="cnt">×${o.count}</b>` : '') + (o.big ? '' : `<i class="nm">${esc(it.n)}</i>`) + '</div>';
 }
@@ -719,7 +720,7 @@ function buyDrone() {
   P.stats.bought = (P.stats.bought || 0) + 1;
   save(); checkAch(); renderAll(); FX.sfx('drone');
   modal(`<div style="text-align:center">${droneSVG('big')}<h3>Your drone is ready</h3>
-    <p class="sub">Tap 🛸 on the map to launch it. Steer with the stick, follow the ticking, and hover it
+    <p class="sub">Tap the drone button on the map to launch it. Steer with the stick, follow the ticking, and hover it
     over a chest to open it from up to ${fmtFt(droneRangeM(1))} away.</p>
     <button class="btn big" id="okBtn">Let's fly</button></div>`, m => { $('#okBtn', m).onclick = closeModal; });
 }
@@ -733,14 +734,23 @@ function upgradeDrone() {
   toast(`🛸 Drone level ${d.lvl} – range ${fmtFt(droneRangeM(d.lvl))}`, 'gold');
 }
 function droneSVG(cls) {
+  // top-down quadcopter: X frame, motor pods with spinning two-blade props, a shell body in the
+  // drone colour, a gimbal camera at the nose, red nav lights in front and green behind
+  const M = [[13, 13], [51, 13], [13, 51], [51, 51]];
   return `<svg class="dronesvg ${cls || ''}" viewBox="0 0 64 64" aria-hidden="true">
-    <g class="darms" stroke="#2c3e35" stroke-width="5" stroke-linecap="round"><path d="M14 14 L50 50 M50 14 L14 50"/></g>
-    <g class="drotors">${[[14, 14], [50, 14], [14, 50], [50, 50]].map(([x, y]) =>
-      `<g transform="translate(${x} ${y})"><circle r="11" fill="#9fd6ff22" stroke="#9fd6ff66" stroke-width="1"/>
-       <g class="rotor"><rect x="-10" y="-1.6" width="20" height="3.2" rx="1.6" fill="#dff1ff"/></g>
-       <circle r="2.6" fill="#1b2a22"/></g>`).join('')}</g>
-    <rect x="22" y="22" width="20" height="20" rx="6" fill="var(--dronecol,#f2b84b)" stroke="#a8761f" stroke-width="2"/>
-    <circle cx="32" cy="32" r="4.5" fill="#1b2a22"/><circle cx="32" cy="32" r="2" fill="#7ff0ff"/>
+    <g class="dprops">${M.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="12" fill="#cfe6ff1c" stroke="#cfe6ff40" stroke-width=".8"/>`).join('')}</g>
+    <g stroke-linecap="round"><path d="M19 19 L13 13 M45 19 L51 13 M19 45 L13 51 M45 45 L51 51" stroke="#2a3138" stroke-width="6.5"/>
+      <path d="M19 19 L13 13 M45 19 L51 13 M19 45 L13 51 M45 45 L51 51" stroke="#5b6670" stroke-width="2"/></g>
+    <g class="drotors">${M.map(([x, y]) => `<g transform="translate(${x} ${y})">
+      <circle r="4.6" fill="#1d2329" stroke="#6b7782" stroke-width="1"/>
+      <g class="rotor"><path d="M-11 -.2 C-6 -2.6 -2 -2 0 0 C2 2 6 2.6 11 .2 C6 1.2 2 1.4 0 0 C-2 -1.4 -6 -1.2 -11 -.2Z" fill="#eef4f8" stroke="#9fb2c0" stroke-width=".4"/></g>
+      <circle r="1.7" fill="#aab6bf"/></g>`).join('')}</g>
+    <circle cx="17.5" cy="17.5" r="1.6" fill="#ff4d4d"/><circle cx="46.5" cy="17.5" r="1.6" fill="#ff4d4d"/>
+    <circle cx="17.5" cy="46.5" r="1.6" fill="#49e07f"/><circle cx="46.5" cy="46.5" r="1.6" fill="#49e07f"/>
+    <path d="M32 15.5 L40.5 21 L42 37 L37 47.5 L27 47.5 L22 37 L23.5 21 Z" fill="var(--dronecol,#f2b84b)" stroke="#0007" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M32 20 L37.5 23.5 L38.5 35 L32 38.5 L25.5 35 L26.5 23.5 Z" fill="#ffffff2e"/>
+    <path d="M28 42.5 H36 M28.5 45 H35.5" stroke="#0005" stroke-width="1.2" stroke-linecap="round"/>
+    <circle cx="32" cy="16.5" r="3.6" fill="#14181c" stroke="#5b6670" stroke-width=".8"/><circle cx="32" cy="16.5" r="1.7" fill="#7ff0ff"/><circle cx="31.4" cy="15.9" r=".5" fill="#fff"/>
   </svg>`;
 }
 
@@ -847,7 +857,7 @@ function droneScan(force) {
     // markers for what the player's own list does not already show
     fly.layer.clearLayers();
     local.filter(p => !known.has(p.id) && isFound(p)).slice(0, 80).forEach(c => {
-      L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'cm far', html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] }),
+      L.marker([c.lat, c.lon], { icon: chestPin(c, ' far'),
         interactive: false, keyboard: false }).addTo(fly.layer);
     });
   };
@@ -880,7 +890,7 @@ function renderDroneHud(build) {
   const d = droneState(), R = droneRangeM(d.lvl), out = dist(pos, fly.ll);
   if (build || !hud.firstChild) {
     hud.hidden = false;
-    hud.innerHTML = `<div class="dhead"><i>🛸</i><b>Drone · Lv ${d.lvl}</b>
+    hud.innerHTML = `<div class="dhead"><i class="dhic">${droneSVG('mini')}</i><b>Drone · Lv ${d.lvl}</b>
         <button class="dhide" id="droneHide" title="Hide a chest where the drone is">🫳 Hide</button>
         <button class="locx" id="droneHome" title="Bring it home">✕</button></div>
       <div class="drange"><span class="bar"><i id="dRange"></i></span><small id="dRangeTxt"></small></div>
@@ -935,6 +945,7 @@ function wireDrone() {
   const up = e => { if (e.pointerId !== pid) return; pid = null; joy.x = joy.y = 0; knob.style.transform = ''; };
   pad.addEventListener('pointerup', up); pad.addEventListener('pointercancel', up);
   $('#droneOpen').onclick = droneOpen;
+  const dbtn = $('#droneBtn'); if (dbtn) dbtn.innerHTML = droneSVG('mini');
   $('#droneHomeBtn').onclick = () => endFlight('home');
   addEventListener('keydown', e => {
     if (!fly || (e.target && e.target.closest && e.target.closest('input,textarea,select'))) return;
@@ -3100,6 +3111,19 @@ function refreshChestViews() {
 }
 // Found chests on the map. When several would overlap at the current zoom they collapse into a
 // numbered cluster bubble that spreads apart as you zoom in, so a dense park is not a pile.
+// Map pin for a chest: a little treasure chest in a pin. Colour says what it is (wood = place,
+// teal = hidden by a player, violet = rare); a small badge shows the kind; unopened ones carry
+// a bright dot, ones you've opened are calmer.
+const CHEST_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 10.6C3.6 7 6.2 5 12 5s8.4 2 8.4 5.6Z" fill="var(--lid)"/>
+  <rect x="3.6" y="10.6" width="16.8" height="8.9" rx="1.6" fill="var(--wood)"/><path d="M3.6 10.6h16.8" stroke="#0006" stroke-width="1.1"/>
+  <path d="M7.3 5.6v13.9M16.7 5.6v13.9" stroke="var(--band)" stroke-width="1.9"/>
+  <rect x="10.3" y="9" width="3.4" height="4.4" rx=".9" fill="var(--band)"/><circle cx="12" cy="11.3" r=".65" fill="#2a1606"/></svg>`;
+function chestPin(c, extra) {
+  const rare = isRare(c), seen = !!(P && P.stats.visited[c.id]);
+  const cls = 'cm cm2' + (c.kind === 'player' ? ' pl' : '') + (rare ? ' rare' : '') + (seen ? ' seen' : ' fresh') + (extra || '');
+  return L.divIcon({ className: cls, iconSize: [36, 44], iconAnchor: [18, 42],
+    html: `<div class="pin">${CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}` });
+}
 function drawChestMarkers() {
   if (!map || !window.L || !pos) return;
   markers.forEach(m => m.remove()); markers = [];
@@ -3112,7 +3136,7 @@ function drawChestMarkers() {
     if (row && row.closest('.chest')) row.closest('.chest').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   const one = c => {
-    const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : '') + (isRare(c) ? ' rare' : ''), html: '<span>' + (isRare(c) ? '✨' : kindInfo(c.kind)[1]) + '</span>', iconSize: [30, 30] });
+    const ic = chestPin(c, (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : ''));
     markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => openOne(c)));
   };
   // bucket by a ~52px pixel grid at the current zoom

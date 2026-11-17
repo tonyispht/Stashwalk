@@ -1028,3 +1028,39 @@ body.dot-rainbow .me-dot{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6
 /* drone: return-home button, parked just above the Open chest spot */
 .dronehome{position:absolute;right:14px;bottom:80px;z-index:520;font-size:13px;padding:9px 14px;background:#0f1a14ee;border:1px solid #2f6a63;color:#bff6ff;box-shadow:0 4px 16px #0008}
 body:not(.flying) .dronehome{display:none}
+
+/* ---- chest map pins ---- */
+.cm2{--wood:#9a5b22;--lid:#bd7430;--band:#f4c552;--pinbg:#1d3326;--pinbd:#e3a548;background:none!important;border:0!important}
+.cm2.pl{--wood:#1d6e68;--lid:#2b9289;--band:#c4f7ff;--pinbd:#58d4c8}
+.cm2.rare{--wood:#5a3a9c;--lid:#7b55cc;--band:#ffe4a6;--pinbg:#22183f;--pinbd:#c7a3ff}
+.cm2 .pin{position:absolute;left:3px;top:1px;width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);
+  background:radial-gradient(circle at 50% 35%,#2a4a37,var(--pinbg) 70%);border:2px solid var(--pinbd);box-shadow:0 3px 8px #0009;display:grid;place-items:center}
+.cm2 .pin svg{width:21px;height:21px;transform:rotate(45deg);filter:drop-shadow(0 1px 0 #0008)}
+.cm2::before{content:"";position:absolute;left:13px;top:37px;width:10px;height:4px;border-radius:50%;background:#0007;filter:blur(1px)}
+.cm2 .kb{position:absolute;right:-3px;top:-4px;width:17px;height:17px;border-radius:50%;background:#0f1a14;border:1.5px solid var(--pinbd);
+  display:grid;place-items:center;font-size:9.5px;line-height:1;font-weight:400}
+.cm2 .nd{position:absolute;left:-1px;top:-2px;width:9px;height:9px;border-radius:50%;background:#5dff9a;border:1.5px solid #0f1a14;box-shadow:0 0 6px #5dff9a}
+.cm2.seen .pin{filter:saturate(.7) brightness(.88)}
+.cm2.seen .kb{opacity:.85}
+.cm2.near .pin{--pinbd:var(--acc);box-shadow:0 0 0 3px #f2b84b40,0 0 16px var(--acc);filter:none;animation:pinPulse 1.4s ease-in-out infinite}
+.cm2.target .pin{box-shadow:0 0 0 3px #f2b84b55,0 0 18px #f2b84b99}
+.cm2.target::after{left:18px;top:16px}
+.cm2.rare .pin{box-shadow:0 0 0 3px #b88bff44,0 0 16px #b88bffcc;animation:pinRare 1.6s ease-in-out infinite;filter:none}
+.cm2.far .pin{opacity:.8;border-style:dashed}
+@keyframes pinPulse{0%,100%{transform:rotate(-45deg) scale(1)}50%{transform:rotate(-45deg) scale(1.1)}}
+@keyframes pinRare{0%,100%{box-shadow:0 0 0 3px #b88bff33,0 0 10px #b88bff88}50%{box-shadow:0 0 0 4px #b88bff66,0 0 22px #b88bffee}}
+body.modal-open .cm2 .pin,.ios .cm2.near .pin{animation:none}
+@media (prefers-reduced-motion:reduce){.cm2 .pin{animation:none!important}}
+
+/* ---- NEW tag on items not yet in the collection ---- */
+.tile .newtag{position:absolute;top:3px;left:3px;z-index:2;font-style:normal;font-size:7.5px;font-weight:800;letter-spacing:.04em;line-height:1;
+  padding:2px 3px 1.5px;border-radius:4px;background:#5dff9a;color:#06240f;box-shadow:0 0 6px #5dff9a99}
+.tile .newtag.r{left:auto;right:3px}
+
+/* ---- drone icon in buttons / HUD ---- */
+.dronesvg.mini{width:26px;height:26px;display:block}
+.dronesvg.mini .rotor{animation:none}
+#droneBtn{display:grid;place-items:center;padding:0}
+#droneBtn[hidden]{display:none}
+.dhead .dhic{display:grid;place-items:center;width:24px;height:24px}
+.dhead .dhic .dronesvg.mini{width:24px;height:24px}
