@@ -1255,3 +1255,4 @@ body.modal-open .avx::before,body.modal-open .avx .avin{animation-play-state:pau
 .keyrow .ktx b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
 .keyrow .ktx small{color:var(--mut,#9fb8aa);font-size:11.5px}
 .keyrow .kgo{color:var(--acc2);font-weight:700;font-size:12.5px;white-space:nowrap}
+body.flying #hideMapBtn{display:none}

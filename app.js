@@ -2490,7 +2490,7 @@ const GUIDE = () => {
     <li>Tap <b>📌 Park</b> to leave it hovering where it is – even if you close the app. Tap the drone button later to fly on from there (if it's in range) or call it home.</li>
     <li>Other players near you see your drone on their map, flying or parked – they can't touch it, and you can't touch theirs.</li>
     <li>Upgrades raise its range from ${ft(D[0] ? D[0].ft : 300)} up to ${(dmax / 5280).toFixed(0)} miles. Tap <b>🏠 Return home</b> or ✕ to land.</li></ul>`],
-  ['🫳', 'Hiding your own chests', `<ul><li>Tap <b>🫳 Hide</b> above the chest list to hide a chest where you stand, with one of your items inside. Up to ${C.HIDE_PER_DAY} a day (+${CO.hide} 🪙).</li>
+  ['🫳', 'Hiding your own chests', `<ul><li>Tap <b>🫳</b> on the map (or 🫳 Hide above the chest list) to hide a chest where you stand, with one of your items inside. Up to ${C.HIDE_PER_DAY} a day (+${CO.hide} 🪙).</li>
     <li>They must be at least ${Math.round((C.MIN_CHEST_GAP_M || 20) * 3.28)} ft from other chests. Pick public, safe places.</li>
     <li>You'll hear when people find and trade at your chests.</li></ul>`],
   ['⚑', 'Factions & state fields', `<p>Join one of three factions: ${TEAM_IDS.map(t => `<span class="gtag" style="--c:${TEAMS[t].c}">${TEAMS[t].icon} ${TEAMS[t].name}</span>`).join(' ')}. You can switch once a week.</p>
@@ -2503,7 +2503,7 @@ const GUIDE = () => {
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
   ['🎆', 'Beacons & fireworks', `<p>Tap <b>🎆 Celebrate</b> in a chest to light it up for everyone's map: a <b>🔆 Beacon</b> in your faction colour (1 hour, 80 🪙) or <b>🎆 Fireworks</b> (30 min, 50 🪙). One effect per chest at a time.</p>`],
-  ['🗺️', 'Map buttons & layers', `<ul><li>📍 centre on you · 🔄 refresh chests · 🏆 leaderboards · <b>layers</b> · ❔ this key.</li>
+  ['🗺️', 'Map buttons & layers', `<ul><li>📍 centre on you · 🔄 refresh chests · 🫳 hide a chest here · 🏆 leaderboards · <b>layers</b> · ❔ this key.</li>
     <li><b>Layers</b> toggles road coins, faction fields and the standings bar, and opens the global control map.</li>
     <li>Drag the handle on the chest list to give the map more room.</li></ul>`],
   ['🏆', 'Leaderboards, achievements & style', `<ul><li>Compete on all-time and weekly leaderboards (Me tab). You can hide yourself in Settings.</li>
@@ -4540,6 +4540,7 @@ function wire() {
   setTimeout(() => loadFx(true), 3000); setTimeout(() => loadLinks(true), 3200); setInterval(() => { if (!document.hidden && view === 'explore') loadLinks(); }, 90000); setInterval(() => { if (!document.hidden) { loadFx(); drawFx(); } }, 90000);
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
+  $('#hideMapBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';
   rad.oninput = () => { radiusMi = +rad.value; $('#rVal').textContent = radiusMi + ' mi'; updateRadiusCircle(); refreshChestViews(); };
   rad.onchange = () => {
