@@ -4571,6 +4571,11 @@ function wire() {
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
   $('#hideMapBtn').onclick = () => hideDialog();
+  // keep the round action buttons clear of the locator card: lift them by its height
+  { const loc = $('#locator'), row = $('#maprow');
+    const fit = () => { if (row && loc) row.style.setProperty('--locH', (loc.hidden ? 0 : loc.offsetHeight) + 'px'); };
+    if (loc && window.ResizeObserver) new ResizeObserver(fit).observe(loc);
+    if (loc && window.MutationObserver) new MutationObserver(fit).observe(loc, { attributes: true, attributeFilter: ['hidden'] }); fit(); }
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';
   rad.oninput = () => { radiusMi = +rad.value; $('#rVal').textContent = radiusMi + ' mi'; updateRadiusCircle(); refreshChestViews(); };
   rad.onchange = () => {

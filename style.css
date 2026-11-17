@@ -1328,3 +1328,5 @@ body.flying .mapacts{display:none}
 .admmini .linkbtn{color:#c7a3ff}
 /* section labels across the app: sentence case, not shouty caps */
 .lbl{text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink)}
+/* the action cluster rides above the locator card when it's showing */
+.mapacts{bottom:calc(30px + var(--locH, 0px));transition:bottom .2s ease-out}
