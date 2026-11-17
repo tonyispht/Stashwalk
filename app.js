@@ -96,7 +96,9 @@ function wildItems(id, day, boost, slots) {
 const isRare = c => !!c && c.kind !== 'player' && hashStr('rare|' + c.id) % 22 === 0;
 const RARE_BONUS = (C.COINS && C.COINS.rareChest) || 120;
 // ---- chest levels: a chest grows as more different explorers open it ----
-const LVL_AT = [0, 3, 6, 10, 16, 25, 40, 60];          // unique visitors needed for levels 1..8
+const LVL_AT = [0, 3, 6, 10, 16, 25, 40, 60];          // level points needed for levels 1..8
+// level points = different explorers who opened it + every successful glyph hack by anyone
+const chestXP = rec => rec ? (rec.visits || 0) + (rec.hacks || 0) : 0;
 const chestLevel = v => { let l = 1; for (let i = 1; i < LVL_AT.length; i++) if ((v || 0) >= LVL_AT[i]) l = i + 1; return l; };
 const lvlBoost = l => 1 + 0.15 * ((l || 1) - 1);      // loot rarity multiplier
 const LVLC = ['#9fb8aa', '#9fb8aa', '#6fd38d', '#49c2e0', '#5d8cff', '#a77bff', '#ff7bd5', '#ffb347', '#ffd84a'];
@@ -121,7 +123,7 @@ function refreshChest(cur, meta, day) {
   const wildSlots = Object.keys(items).filter(s => items[s].w);
   // Make sure the chest is never left empty, even if its stored record was damaged or partial.
   SLOT_IDS.slice(0, C.CHEST_SLOTS).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
-  const fresh = chestItems({ id: meta.id, kind: cur.kind || meta.kind, lvl: chestLevel(cur.visits) }, day, wildSlots);
+  const fresh = chestItems({ id: meta.id, kind: cur.kind || meta.kind, lvl: chestLevel(chestXP(cur)) }, day, wildSlots);
   cur.items = Object.assign(items, fresh); cur.day = day; return cur;
 }
 
@@ -2137,7 +2139,7 @@ function renderLegend() {
     ${row(miniPin('near fresh', '🏛️'), 'Close enough to open (20 ft)')}
     ${row(miniPin('pl seen', '📦'), 'Hidden by another player')}
     ${row(miniPin('rare fresh', '✨'), 'Rare chest – Epic or better inside')}
-    ${row(miniPin('seen', '🌳', `<b class="lvb" style="--lc:${LVLC[4]}">4</b>`), 'Chest level – more explorers, better loot')}
+    ${row(miniPin('seen', '🌳', `<b class="lvb" style="--lc:${LVLC[4]}">4</b>`), 'Chest level – grows with explorers & glyph hacks')}
     ${row('<span class="lgm cluster">3</span>', 'Several chests – zoom in')}
     ${row('<span class="lgm q">?</span>', 'Undiscovered – it’s somewhere in the circle')}
     ${row('<span class="lgm coin"><i></i></span>', 'Road coin – walk over it')}
@@ -2160,12 +2162,12 @@ const GUIDE = () => {
     <li>Opening a chest for the first time pays <b>+${CO.chestNew} 🪙</b>. <span class="gtag" style="--c:#b88bff">✨ Rare</span> chests pay +${RARE_BONUS} 🪙 and always hold an Epic or better.</li>
     <li>Chest types (the small badge): 🌳 park, 🏛️ landmark, ⛺ campsite, 🔭 viewpoint, 🥾 trail, 🚩 street, 📦 player-hidden, and more. Fancier places roll better loot.</li>
     <li>Spot a bad chest (private property, unsafe)? Tap <b>🚩 Report</b>. It's removed after ${C.FLAGS_TO_REMOVE} reports.</li></ul>`],
-  ['⬆️', 'Chest levels', `<p>Chests grow as more <b>different</b> explorers open them: level 2 at 3 explorers, then 6, 10, 16, 25, 40 and level 8 at 60.</p>
+  ['⬆️', 'Chest levels', `<p>Chests earn level points: one for every <b>different</b> explorer who opens them, plus one for <b>every successful glyph hack</b> by anyone. Level 2 at 3 points, then 6, 10, 16, 25, 40 and level 8 at 60.</p>
     <ul><li>The level shows as a coloured number on the pin and in the chest window.</li><li>Higher levels restock with rarer items and give tougher, better-paying glyph hacks.</li>
-    <li>If your visit pushes a chest up a level, you get a coin bonus.</li></ul>`],
+    <li>The chest window shows 👣 explorers and ✨ glyph hacks so far.</li><li>If your visit or hack pushes a chest up a level, you get a coin bonus.</li></ul>`],
   ['✨', 'Glyph hacking', `<p>Every chest has a <b>✨ Glyph hack</b> button. Watch the pattern light up, then tap it back in the same order.</p>
     <ul><li>Each chest can be hacked once every <b>30 minutes</b>.</li><li>Success pays bonus coins. A <b>fast solve</b> (under ~0.9 s per point) adds more coins and a chance at a free item.</li>
-    <li>Higher-level chests have longer, quicker patterns with bigger rewards and rarer items.</li>
+    <li>Higher-level chests have longer, quicker patterns with bigger rewards and rarer items.</li><li>Every successful hack adds a level point to the chest.</li>
     <li>Pick your trade items first, then hack – the trade goes through when the hack ends, win or lose.</li></ul>`],
   ['🎒', 'Items, merging & the Workshop', `<p>Items come in five rarities: <span class="gtag" style="--c:${RAR[0].c}">Common</span> <span class="gtag" style="--c:${RAR[1].c}">Uncommon</span> <span class="gtag" style="--c:${RAR[2].c}">Rare</span> <span class="gtag" style="--c:${RAR[3].c}">Epic</span> <span class="gtag" style="--c:${RAR[4].c}">Legendary</span></p>
     <ul><li>A tiny <span class="gtag new">NEW</span> tag means you've never had that item. New items add to your <b>Collection</b> (+${CO.newItem} 🪙).</li>
@@ -2407,7 +2409,7 @@ function glyphGame(id, after, chestLvl) {
           const coins = Math.round((20 + len * 6) * G.mult) + (fast ? G.fastBonus : 0);
           const item = fast && Math.random() < G.itemChance ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
           earn(coins, '✨ Glyph bonus'); if (item) addItem(item.id);
-          P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; checkAch(); save();
+          P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; checkAch(); save(); glyphLevelPoint(id);
           const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
           msg.innerHTML = `✨ <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
           if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
@@ -3608,15 +3610,15 @@ async function openChest(id, byDrone) {
       if (firstVisit) { cur.visits = (cur.visits || 0) + 1; changed = true; }   // each explorer counts once
       return changed ? cur : undefined;
     });
-    if (r.value) { const was = LVL.get(id) || 0; LVL.set(id, r.value.visits || 0); lvlAsked.set(id, Date.now());
-      if (chestLevel(was) !== chestLevel(r.value.visits)) drawChestMarkers();
+    if (r.value) { const was = LVL.get(id) || 0, xp = chestXP(r.value); LVL.set(id, xp); lvlAsked.set(id, Date.now());
+      if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
       // your visit was the one that pushed it over a threshold
-      if (firstVisit && LVL_AT.indexOf(r.value.visits) > 0) setTimeout(() => { toast(`⬆️ You levelled ${meta.name} up to level ${chestLevel(r.value.visits)}!`, 'gold'); act('levelup', meta.name + ' → Lv ' + chestLevel(r.value.visits), meta); earn(10 * chestLevel(r.value.visits), 'Chest level-up'); }, 2600); }
+      if (firstVisit && LVL_AT.indexOf(xp) > 0) setTimeout(() => levelUpReward(meta, xp), 2600); }
     P.stats.visited[id] = 1; save();
     if (locTarget === id) stopLocate(true);
     await cine.done;
     showChest(meta, r.value, firstVisit);
-    act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(r.value && r.value.visits) + ')' + (byDrone ? ' by drone' : ''), meta);
+    act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(chestXP(r.value)) + ')' + (byDrone ? ' by drone' : ''), meta);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
     if (firstVisit && DB.remote && P.team) { fieldKeyAt(meta.lat, meta.lon).then(k => DB.cellScore(k)).then(() => fillStandings(true)); drawCellsSoon(); }
@@ -3635,10 +3637,27 @@ async function openChest(id, byDrone) {
     }
   } catch (e) { cine.kill(); toast('Could not open chest: ' + e.message, 'bad'); }
 }
+function levelUpReward(meta, xp) {
+  const l = chestLevel(xp);
+  toast(`⬆️ You levelled ${meta.name} up to level ${l}!`, 'gold'); act('levelup', meta.name + ' → Lv ' + l, meta); earn(10 * l, 'Chest level-up');
+}
+// A successful glyph hack adds a level point to the chest for everyone.
+async function glyphLevelPoint(id) {
+  if (!DB.remote) return;
+  try {
+    const r = await DB.tx('chests/' + id, cur => { if (!cur) return undefined; cur.hacks = (cur.hacks || 0) + 1; return cur; });
+    if (!r || !r.value) return;
+    const was = LVL.get(id) || 0, xp = chestXP(r.value); LVL.set(id, xp); lvlAsked.set(id, Date.now());
+    if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
+    const meta = chests.find(c => c.id === id);
+    if (meta && LVL_AT.indexOf(xp) > 0) setTimeout(() => levelUpReward(meta, xp), 1500);
+  } catch (e) {}
+}
 function lvlChip(chest) {
-  const v = chest.visits || 0, l = chestLevel(v), next = LVL_AT[l];   // LVL_AT[l] = visitors needed for level l+1
+  const v = chestXP(chest), l = chestLevel(v), next = LVL_AT[l];   // LVL_AT[l] = points needed for level l+1
   const from = LVL_AT[l - 1], pct = next ? Math.round((v - from) / (next - from) * 100) : 100;
-  return `<div class="lvlchip" style="--lc:${LVLC[l]}"><b>Lv ${l}</b><span>${v} explorer${v === 1 ? '' : 's'}</span>
+  const ex = chest.visits || 0, hk = chest.hacks || 0;
+  return `<div class="lvlchip" style="--lc:${LVLC[l]}" title="${ex} explorer${ex === 1 ? '' : 's'} + ${hk} glyph hack${hk === 1 ? '' : 's'}"><b>Lv ${l}</b><span>👣 ${ex} · ✨ ${hk}</span>
     <span class="lvbar"><i style="width:${pct}%"></i></span><small>${next ? `Lv ${l + 1} at ${next}` : 'Max level'}</small></div>`;
 }
 function showChest(meta, chest, canGlyph) {
@@ -3673,7 +3692,7 @@ function showChest(meta, chest, canGlyph) {
     if (gy && !gy.disabled) gy.onclick = () => {
       // hack first, then the lined-up trade (if any) goes through whatever the glyph result
       const trade = !done && selGet && selGive ? [selGet, chest.items[selGet].id, selGive] : null;
-      glyphGame(meta.id, trade ? () => doTrade(meta, trade[0], trade[1], trade[2]) : null, chestLevel(chest.visits));
+      glyphGame(meta.id, trade ? () => doTrade(meta, trade[0], trade[1], trade[2]) : null, chestLevel(chestXP(chest)));
     };
     // Lid lifts, light spills out, then the items rise one after another. The whole
     // sequence lands in well under a second so it never feels like waiting.

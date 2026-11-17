@@ -371,7 +371,7 @@ export default {
           const part = ids.slice(i, i + 90);
           const { results } = await env.DB.prepare('SELECT path, val FROM kv WHERE path IN (' + part.map(() => '?').join(',') + ')')
             .bind(...part.map(x => 'chests/' + x)).all();
-          results.forEach(r => { try { const v = JSON.parse(r.val).visits; if (v) out[r.path.slice(7)] = v; } catch (e) {} });
+          results.forEach(r => { try { const c = JSON.parse(r.val), v = (c.visits || 0) + (c.hacks || 0); if (v) out[r.path.slice(7)] = v; } catch (e) {} });
         }
         return json({ value: out }, 200, cors);
       }
