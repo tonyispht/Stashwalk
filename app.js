@@ -2136,17 +2136,23 @@ async function drawCells(force) {
 }
 
 // ---------------- glyph hacking (optional bonus) ----------------
-// One hack every 30 minutes across all chests. The clock starts when a hack begins, so
+// Each chest can be hacked once every 30 minutes. The clock starts when a hack begins, so
 // backing out of a hard pattern doesn't reset it.
 const GLYPH_CD = 30 * 60000;
-const glyphLeft = () => Math.max(0, (P.glyphAt || 0) + GLYPH_CD - Date.now());
+// each chest has its own timer: P.glyphCd[chestId] = when it was last hacked
+const glyphLeft = id => { const cd = P.glyphCd || {}; return Math.max(0, (cd[id] || 0) + GLYPH_CD - Date.now()); };
+function glyphMark(id) {
+  const cd = P.glyphCd = P.glyphCd && typeof P.glyphCd === 'object' ? P.glyphCd : {}, now = Date.now();
+  for (const k in cd) if (now - cd[k] > GLYPH_CD) delete cd[k];      // keep the save small
+  cd[id] = now; delete P.glyphAt;
+}
 // A solve counts as fast at under ~0.9 s per glyph point; only fast solves can drop an item.
 const GLYPH_FAST_MS = 900, GLYPH_ITEM_CHANCE = 0.5;
 // `after` runs once the hack is over, win or lose: it carries out the trade the player had
 // lined up in the chest before starting the hack.
 function glyphGame(id, after) {
-  if (glyphLeft() > 0) { toast(`✨ Glyph recharging – ready in ${Math.ceil(glyphLeft() / 60000)} min`); return; }
-  P.glyphAt = Date.now(); P.stats.glyphs = (P.stats.glyphs || 0) + 1; save();
+  if (glyphLeft(id) > 0) { toast(`✨ This chest's glyph is recharging – ready in ${Math.ceil(glyphLeft(id) / 60000)} min`); return; }
+  glyphMark(id); P.stats.glyphs = (P.stats.glyphs || 0) + 1; save();
   const N = 9, len = 4 + Math.floor(Math.random() * 2), seq = [];
   while (seq.length < len) { const n = Math.floor(Math.random() * N); if (!seq.includes(n)) seq.push(n); }
   const dots = Array.from({ length: N }, (_, i) => `<button class="gdot" data-g="${i}"></button>`).join('');
@@ -3371,7 +3377,7 @@ async function openChest(id, byDrone) {
 }
 function showChest(meta, chest, canGlyph) {
   const wait = tradeWait(meta.id), done = wait > 0;
-  const gLeft = glyphLeft();
+  const gLeft = glyphLeft(meta.id);
   const slots = Object.keys(chest.items || {}).filter(s => chest.items[s] && BY_ID[chest.items[s].id]).sort();
   if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
@@ -3386,7 +3392,7 @@ function showChest(meta, chest, canGlyph) {
     <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button><button class="btn" id="swapBtn" disabled>Choose items</button></div>`}
     ${done ? '<div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>' : ''}
     <div class="chestfoot">
-      ${gLeft ? `<button class="btn sm ghost" id="glyphBtn" disabled title="One glyph hack every 30 minutes">\u{2728} Glyph ready in ${Math.ceil(gLeft / 60000)} min</button>`
+      ${gLeft ? `<button class="btn sm ghost" id="glyphBtn" disabled title="Each chest can be glyph hacked once every 30 minutes">\u{2728} Glyph ready in ${Math.ceil(gLeft / 60000)} min</button>`
         : `<button class="btn sm" id="glyphBtn">\u{2728} Glyph hack – bonus</button>`}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
       <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
