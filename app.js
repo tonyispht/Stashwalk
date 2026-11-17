@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181450';
+const APP_BUILD = '202611181520';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -752,7 +752,46 @@ const COSMETICS = {
     { id: 'mono', name: 'Mono', cost: 400, cls: 'mt-mono' },
     { id: 'neon', name: 'Neon', cost: 700, cls: 'mt-neon' },
     { id: 'blueprint', name: 'Blueprint', cost: 700, cls: 'mt-blue' },
-    { id: 'vapor', name: 'Vaporwave', cost: 900, cls: 'mt-vapor' } ] },
+    { id: 'vapor', name: 'Vaporwave', cost: 900, cls: 'mt-vapor' },
+    { id: 'satellite', name: 'Satellite', cost: 800, cls: 'mt-src', tiles: 'sat' },
+    { id: 'satnight', name: 'Night Satellite', cost: 900, cls: 'mt-satnight', tiles: 'sat' },
+    { id: 'topo', name: 'Topographic', cost: 600, cls: 'mt-src', tiles: 'topo' },
+    { id: 'terrain', name: 'Terrain', cost: 500, cls: 'mt-src', tiles: 'esri-topo' },
+    { id: 'humanitarian', name: 'Humanitarian', cost: 400, cls: 'mt-src', tiles: 'hot' },
+    { id: 'trails', name: 'Trails & Bikes', cost: 500, cls: 'mt-src', tiles: 'cyclosm' },
+    { id: 'graphite', name: 'Graphite', cost: 500, cls: 'mt-graphite' },
+    { id: 'paper', name: 'Paper', cost: 300, cls: 'mt-paper' },
+    { id: 'abyss', name: 'Abyss', cost: 600, cls: 'mt-abyss' },
+    { id: 'noir', name: 'Noir', cost: 500, cls: 'mt-noir' },
+    { id: 'forestnight', name: 'Forest Night', cost: 500, cls: 'mt-forest' },
+    { id: 'terminal', name: 'Terminal', cost: 800, cls: 'mt-terminal' },
+    { id: 'ember', name: 'Ember', cost: 700, cls: 'mt-ember' },
+    { id: 'arctic', name: 'Arctic', cost: 500, cls: 'mt-arctic' },
+    { id: 'toxic', name: 'Toxic', cost: 800, cls: 'mt-toxic' },
+    { id: 'sunset', name: 'Sunset', cost: 600, cls: 'mt-sunset' },
+    { id: 'inkwell', name: 'Inkwell', cost: 600, cls: 'mt-ink' } ] },
+  theme: { label: 'App theme', def: 'forest', items: [
+    { id: 'forest', name: 'Forest', cost: 0, v: ['#0f1a14', '#13241b', '#183024', '#234230', '#2a4a39', '#9fb8aa', '#e9f1ec'] },
+    { id: 'midnight', name: 'Midnight', cost: 300, v: ['#0b1020', '#10172b', '#151f38', '#1d2a4a', '#2a3a62', '#9aa7c4', '#e8ecf7'] },
+    { id: 'oled', name: 'OLED Black', cost: 400, v: ['#000000', '#070707', '#111111', '#1b1b1b', '#2b2b2b', '#9d9d9d', '#f2f2f2'] },
+    { id: 'charcoal', name: 'Charcoal', cost: 300, v: ['#141517', '#1a1c1f', '#212429', '#2b2f35', '#3b4048', '#a3a9b3', '#eceef1'] },
+    { id: 'deepsea', name: 'Deep Sea', cost: 400, v: ['#061a1f', '#0a242b', '#0e2f37', '#143c46', '#1f5361', '#8fb8c0', '#e6f5f7'] },
+    { id: 'plum', name: 'Plum', cost: 400, v: ['#170f1f', '#1e1429', '#271a35', '#332245', '#47325f', '#b9a3c9', '#f3ecf8'] },
+    { id: 'emberth', name: 'Ember', cost: 400, v: ['#1a0f0b', '#23140e', '#2e1a12', '#3b2218', '#553424', '#c9a898', '#f8eee9'] },
+    { id: 'arcticth', name: 'Arctic Night', cost: 400, v: ['#0e161c', '#131e26', '#192833', '#213442', '#2f4759', '#a3b8c6', '#ebf2f7'] },
+    { id: 'crimson', name: 'Blood Moon', cost: 600, v: ['#160709', '#1f0a0e', '#2a0e13', '#38131a', '#521d27', '#c49ba2', '#f8e9ec'] },
+    { id: 'synth', name: 'Synthwave', cost: 800, v: ['#120a24', '#190e33', '#221345', '#2e1a5c', '#46287f', '#b8a3e0', '#f4eeff'] } ] },
+  bg: { label: 'Background', def: 'plain', items: [
+    { id: 'plain', name: 'Plain', cost: 0, cls: '' },
+    { id: 'glow', name: 'Soft Glow', cost: 150, cls: 'bg-glow' },
+    { id: 'topo', name: 'Contours', cost: 250, cls: 'bg-topo' },
+    { id: 'grid', name: 'Grid', cost: 200, cls: 'bg-grid' },
+    { id: 'dots', name: 'Dots', cost: 200, cls: 'bg-dots' },
+    { id: 'stripes', name: 'Stripes', cost: 200, cls: 'bg-stripes' },
+    { id: 'stars', name: 'Starfield', cost: 400, cls: 'bg-stars' },
+    { id: 'aurora', name: 'Aurora', cost: 500, cls: 'bg-aurora' },
+    { id: 'hex', name: 'Hex Mesh', cost: 400, cls: 'bg-hex' },
+    { id: 'waves', name: 'Waves', cost: 350, cls: 'bg-waves' } ] },
   drone: { label: 'Drone paint', def: 'silver', items: [
     { id: 'silver', name: 'Silver', cost: 0, c: '#cfd8e3' },
     { id: 'crimson', name: 'Crimson', cost: 300, c: '#ff5a5a' },
@@ -822,7 +861,7 @@ const COSMETICS = {
     { id: 'stars', name: 'Starlight', cost: 1500, cls: 'fr-stars' } ] }
 };
 const STYLE_GROUPS = [['all', 'All'], ['me', '🧍 Player', ['picon', 'dot']], ['drone', '🚁 Drone', ['dicon', 'drone', 'dlight']],
-  ['profile', '🪪 Profile', ['avatar', 'avbg', 'avframe']], ['app', '🎨 App & map', ['accent', 'map']]];
+  ['profile', '🪪 Profile', ['avatar', 'avbg', 'avframe']], ['app', '🎨 App & map', ['theme', 'bg', 'accent', 'map']]];
 let styleGroup = 'all';
 // the profile picture: initial or emoji, in the chosen colour and frame
 function avatarHtml(cls) {
@@ -856,12 +895,41 @@ function applyCosmetics() {
   if (typeof drawParked === 'function' && P.drone && P.drone.parked) drawParked();
   refreshMeIcon();
   if (fly && fly.marker && window.L) try { fly.marker.setIcon(L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneGlyph()}</div>`, iconSize: [52, 52] })); } catch (e) {}
+  applyTheme();
   applyMapTheme();
+}
+const THEME_VARS = ['--bg', '--bg2', '--card', '--card2', '--line', '--mut', '--ink'];
+const BG_CLASSES = () => COSMETICS.bg.items.map(b => b.cls).filter(Boolean);
+function applyTheme() {
+  const t = cosGet('theme', cosEq('theme')), root = document.documentElement.style;
+  THEME_VARS.forEach((k, i) => root.setProperty(k, t.v[i]));
+  const mc = document.querySelector('meta[name=theme-color]'); if (mc) mc.content = t.v[0];
+  const b = cosGet('bg', cosEq('bg'));
+  BG_CLASSES().forEach(c => document.body.classList.remove(c));
+  if (b.cls) document.body.classList.add(b.cls);
+}
+const TILE_SRC = {
+  osm: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }],
+  sat: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }],
+  'esri-topo': ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri and contributors' }],
+  hot: ['https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap contributors, Humanitarian OSM Team' }],
+  cyclosm: ['https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap contributors, CyclOSM' }],
+  topo: ['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, maxNativeZoom: 17, subdomains: 'abc', attribution: '© OpenStreetMap contributors, SRTM | © OpenTopoMap (CC-BY-SA)' }]
+};
+let baseSrc = 'osm';
+function setTileSource(key) {
+  if (!map || !window.L || !TILE_SRC[key]) return;
+  if (baseLayer && baseSrc === key) return;
+  if (baseLayer) { try { map.removeLayer(baseLayer); } catch (e) {} }
+  const [url, opt] = TILE_SRC[key];
+  baseLayer = L.tileLayer(url, Object.assign({}, opt, { maxNativeZoom: opt.maxNativeZoom || opt.maxZoom, maxZoom: 19 })).addTo(map);
+  baseLayer.setZIndex(0); baseSrc = key;
 }
 function applyMapTheme() {
   const el = $('#map'); if (!el) return;
   MAP_THEME_CLASSES.forEach(c => el.classList.remove(c));
   const mt = cosGet('map', cosEq('map'));
+  setTileSource(mt.tiles || 'osm');
   if (mt.cls) { el.classList.add(mt.cls); el.classList.remove('darkmap'); }   // a theme overrides the dark-map toggle
   else el.classList.toggle('darkmap', !!(FX.prefs && FX.prefs.darkmap));
 }
@@ -885,7 +953,9 @@ function buyCos(cat, id) {
 function swatch(cat, it) {
   if (cat === 'picon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw" style="background:#3b9cff;box-shadow:0 0 0 4px #3b9cff33 inset"></i>`;
   if (cat === 'dicon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swdrone">${droneSVG('mini')}</i>`;
-  if (cat === 'map') return `<i class="sw mtsw ${it.cls || 'mtsw-classic'}"></i>`;
+  if (cat === 'map') return `<i class="sw mtsw ${it.tiles ? 'mts-' + it.tiles : it.cls || 'mtsw-classic'}"></i>`;
+  if (cat === 'theme') return `<i class="sw swth" style="background:linear-gradient(135deg,${it.v[0]} 0 45%,${it.v[2]} 45% 75%,${it.v[4]} 75%)"><b style="background:var(--acc)"></b></i>`;
+  if (cat === 'bg') return `<i class="sw swbg ${it.cls}"></i>`;
   if (cat === 'avatar') return `<span class="avx sw-av" style="--avbg:${cosGet('avbg', cosEq('avbg')).g};--avink:${cosGet('avbg', cosEq('avbg')).ink}"><span class="avin">${it.em ? `<span class="avem">${it.em}</span>` : esc((P.name || '?')[0].toUpperCase())}</span></span>`;
   if (cat === 'avbg') return `<span class="avx sw-av" style="--avbg:${it.g};--avink:${it.ink}"><span class="avin">${esc((P.name || '?')[0].toUpperCase())}</span></span>`;
   if (cat === 'avframe') return `<span class="avx sw-av ${it.cls}" style="--avbg:${cosGet('avbg', cosEq('avbg')).g};--avink:${cosGet('avbg', cosEq('avbg')).ink};--tc:${TEAMS[P.team] ? TEAMS[P.team].c : 'var(--acc)'}"><span class="avin">${esc((P.name || '?')[0].toUpperCase())}</span></span>`;
@@ -4150,11 +4220,6 @@ const radiusM = () => radiusMi * 1609.344;
 let baseLayer = null;
 function applyBasemap() {
   if (!map || !window.L) return;
-  if (!baseLayer) {
-    baseLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
-    baseLayer.setZIndex(0);
-  }
   applyMapTheme();
 }
 function initMap() {

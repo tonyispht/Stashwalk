@@ -3,7 +3,7 @@
 // cache anything that comes from the shared world database (that must always be live).
 //
 // VERSION must match window.ASSET_V in index.html - bump both together on every deploy.
-const VERSION = '202611181450';
+const VERSION = '202611181520';
 const SHELL   = 'stashwalk-shell-' + VERSION;   // app code, replaced on every deploy
 const PLACES  = 'stashwalk-places-v1';          // park/campground tiles, never change
 const TILES   = 'stashwalk-maptiles-v1';        // map images, capped below
@@ -31,7 +31,7 @@ const SHELL_FILES = [
   'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
 ];
 
-const MAP_HOSTS = /(^|\.)(tile\.openstreetmap\.org|basemaps\.cartocdn\.com|tile\.opentopomap\.org)$/;
+const MAP_HOSTS = /(^|\.)(tile\.openstreetmap\.org|basemaps\.cartocdn\.com|tile\.opentopomap\.org|tile\.openstreetmap\.fr|tile-cyclosm\.openstreetmap\.fr|server\.arcgisonline\.com)$/;
 const CDN_HOSTS = /(^|\.)(unpkg\.com|cdnjs\.cloudflare\.com)$/;
 const ROAD_HOST = 'tiles.openfreemap.org';
 
