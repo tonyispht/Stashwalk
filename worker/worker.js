@@ -316,6 +316,52 @@ export default {
         results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
         return json({ value: out }, 200, cors);
       }
+      // ---- drones other players can see: drone/<user> = { lat, lon, state, em, col, team, t } ----
+      // Display only. Flying drones report every couple of seconds; a parked one stays put until
+      // its owner calls it home. Not reachable through /kv.
+      if (url.pathname === '/drone/set' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const lat = +b.lat, lon = +b.lon, state = b.state === 'park' ? 'park' : 'fly';
+        if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad position' }, 400, cors);
+        const em = String(b.em || '').slice(0, 8), col = /^#[0-9a-f]{3,8}$/i.test(String(b.col || '')) ? String(b.col) : '';
+        const prev = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('drone/' + me).first();
+        let team = null, tt = 0; if (prev) { try { const p = JSON.parse(prev.val); team = p.team || null; tt = p.tt || 0; } catch (e) {} }
+        const now = Date.now();
+        if (!tt || now - tt > 600000) {            // refresh the faction now and then, not on every fix
+          const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+          team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} } tt = now;
+        }
+        const rec = { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6, state, em, col, team: TEAMS.has(team) ? team : null, tt, t: now };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('drone/' + me, JSON.stringify(rec)).run();
+        return json({ ok: true }, 200, cors);
+      }
+      if (url.pathname === '/drone/clear' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('drone/' + me).run();
+        return json({ ok: true }, 200, cors);
+      }
+      if (url.pathname === '/drones' && req.method === 'GET') {
+        const bb = String(url.searchParams.get('b') || '').split(',').map(Number);
+        if (bb.length !== 4 || bb.some(x => !isFinite(x))) return json({ error: 'bad box' }, 400, cors);
+        const [s0, w0, n0, e0] = bb;
+        if (n0 - s0 > 3 || Math.abs(e0 - w0) > 4) return json({ value: [] }, 200, cors);   // zoomed way out: skip
+        const self = String(req.headers.get('X-User') || '').toLowerCase(), now = Date.now(), out = [];
+        const { results } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'drone/%' LIMIT 5000").all();
+        for (const r of results) {
+          const k = r.path.slice(6); if (k === self) continue;
+          let d; try { d = JSON.parse(r.val); } catch (e) { continue; }
+          if (d.lat < s0 || d.lat > n0 || d.lon < w0 || d.lon > e0) continue;
+          // a flying drone that stopped reporting (app closed) just hangs where it was
+          const state = d.state === 'fly' && now - d.t < 45000 ? 'fly' : 'park';
+          let h = 0; for (const ch of k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;       // stable id, no names
+          out.push({ k: h.toString(36), lat: d.lat, lon: d.lon, state, em: d.em || '', col: d.col || '', team: d.team || null });
+          if (out.length >= 150) break;
+        }
+        return json({ value: out }, 200, cors);
+      }
       // ---- player activity for the admin feed ----------------------------------------------
       // The game reports what players do; location is rounded to ~100 m before it is stored.
       if (url.pathname === '/act' && req.method === 'POST') {

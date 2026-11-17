@@ -205,6 +205,18 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
+    droneSet(lat, lon, state, em, col) {
+      if (!W || !auth) return;
+      try { fetch(W + '/drone/set', { method: 'POST', headers: whead(), body: JSON.stringify({ lat, lon, state, em, col }), keepalive: true }).catch(() => {}); } catch (e) {}
+    },
+    droneClear() {
+      if (!W || !auth) return;
+      try { fetch(W + '/drone/clear', { method: 'POST', headers: whead(), body: '{}', keepalive: true }).catch(() => {}); } catch (e) {}
+    },
+    async drones(s, w, n, e) {
+      if (!W) return [];
+      try { const r = await fetch(W + '/drones?b=' + [s, w, n, e].map(x => x.toFixed(4)).join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || []; } catch (er) { return []; }
+    },
     act(k, x, lat, lon) {                              // fire-and-forget activity report for the admin feed
       if (!W || !auth) return;
       try { fetch(W + '/act', { method: 'POST', headers: whead(), body: JSON.stringify({ k, x, lat, lon }), keepalive: true }).catch(() => {}); } catch (e) {}

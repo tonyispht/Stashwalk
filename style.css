@@ -1180,3 +1180,20 @@ body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
 .admacts{display:grid;gap:8px;margin-top:12px}
 .admrow{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border-radius:12px;border:1px dashed #c7a3ff66;background:#22183f55;font-size:12.5px}
 .admrow span{color:#c7a3ff;font-weight:700;margin-right:auto}
+
+/* ---- parked & other players' drones ---- */
+.droneicon.parked .dronewrap::before,.droneicon.parked .dronewrap::after,
+.droneicon.other .dronewrap::before,.droneicon.other .dronewrap::after{display:none}
+.droneicon.parked.mine{cursor:pointer}
+.droneicon.parked .dronesvg .rotor{animation-duration:.9s}
+.droneicon .still .rotor{animation:none}
+.droneicon.parked.mine .dronewrap{filter:drop-shadow(0 0 6px #7ff0ffaa)}
+.pklbl{position:absolute;left:50%;top:50px;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:#0f1a14e8;border:1px solid #7ff0ff88;color:#bff6ff;pointer-events:none}
+.droneicon.other{pointer-events:none!important}
+.droneicon.other .dronewrap{width:44px;height:44px;opacity:.92;filter:drop-shadow(0 2px 4px #0009)}
+.droneicon.other .dronewrap svg{width:44px;height:44px}
+.droneicon.other .droneglyph{font-size:26px}
+.droneicon.other.parked .dronewrap{opacity:.75}
+.droneicon .dteam{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2.5px solid var(--tc);box-shadow:0 0 6px var(--tc);pointer-events:none}
+#droneBtn.isparked{border-color:#7ff0ff;box-shadow:0 0 0 2px #7ff0ff44;position:relative}
+#droneBtn.isparked::after{content:'📌';position:absolute;right:-5px;top:-6px;font-size:11px}

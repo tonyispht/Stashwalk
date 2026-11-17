@@ -773,8 +773,12 @@ function launchDrone() {
   if (!pos || !map || !window.L) return toast('Turn on GPS first', 'bad');
   if (needNet('Flying the drone')) return;
   const d = droneState();
+  // a parked drone takes off from where it was left - if it's still within range of you
+  const pk = d.parked;
+  if (pk && dist(pos, pk) > droneRangeM(d.lvl)) return parkedSheet(true);
   stopLocate(true);
-  const ll = { lat: pos.lat, lon: pos.lon };
+  const ll = pk ? { lat: pk.lat, lon: pk.lon } : { lat: pos.lat, lon: pos.lon };
+  d.parked = null; drawParked(); save();
   const icon = L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneGlyph()}</div>`, iconSize: [52, 52] });
   fly = {
     ll, raf: 0, last: performance.now(), near: null, lastProbe: 0,
@@ -791,12 +795,14 @@ function launchDrone() {
   document.body.classList.add('flying');
   // the map grows to fill the screen; once it has, put the drone back in view
   requestAnimationFrame(() => { try { map.invalidateSize({ animate: false }); map.setView([fly.ll.lat, fly.ll.lon], map.getZoom(), { animate: false }); } catch (e) {} });
-  renderDroneHud(true); act('drone');
+  renderDroneHud(true); act('drone', pk ? 'resumed from where it was parked' : '');
   FX.unlock(); FX.sfx('drone'); FX.vibe(40);
+  droneSync(true);
   fly.raf = requestAnimationFrame(flyStep);
 }
 function endFlight(why) {
   if (!fly) return;
+  const at = { lat: fly.ll.lat, lon: fly.ll.lon };
   RC.lastDraw = null;
   cancelAnimationFrame(fly.raf);
   try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); fly.layer.remove(); } catch (e) {}
@@ -807,8 +813,17 @@ function endFlight(why) {
   document.body.style.removeProperty('--sonar');
   FX.geiger(Infinity, 1);
   const hud = $('#droneHud'); if (hud) { hud.hidden = true; hud.innerHTML = ''; }
-  if (why !== 'open') { FX.sfx('dock'); if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: true }); }
-  if (why === 'range') toast('🛸 Signal lost – the drone flew home');
+  const d = droneState();
+  if (why === 'park') {
+    d.parked = { lat: at.lat, lon: at.lon, at: Date.now() }; d.live = null; save(); drawParked();
+    FX.sfx('place'); toast('📌 Drone parked – it waits here until you fly it again or call it home', 'gold');
+    act('drone', 'parked it'); droneSync(true, 'park');
+    if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: true });
+  } else {
+    d.parked = null; d.live = null; save(); drawParked(); droneSync(true, 'home');
+    if (why !== 'open') { FX.sfx('dock'); if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: true }); }
+    if (why === 'range') toast('🚁 Signal lost – the drone flew home');
+  }
   markNear();
 }
 function flyStep(now) {
@@ -845,7 +860,7 @@ function flyStep(now) {
   }
   fly.tether.setLatLngs([[pos.lat, pos.lon], [fly.ll.lat, fly.ll.lon]]);
   if (!fly.ringAt || fly.ringAt.lat !== pos.lat || fly.ringAt.lon !== pos.lon) { fly.ring.setLatLng([pos.lat, pos.lon]); fly.ringAt = { lat: pos.lat, lon: pos.lon }; }
-  if (now - fly.lastProbe > 160) { fly.lastProbe = now; probeFromDrone(); rcEnsureAround(fly.ll); rcDraw(); }
+  if (now - fly.lastProbe > 160) { fly.lastProbe = now; probeFromDrone(); rcEnsureAround(fly.ll); rcDraw(); droneSync(); }
   rcCollect(fly.ll, true);
   fly.raf = requestAnimationFrame(flyStep);
 }
@@ -900,12 +915,14 @@ function renderDroneHud(build) {
   if (build || !hud.firstChild) {
     hud.hidden = false;
     hud.innerHTML = `<div class="dhead"><i class="dhic">${droneSVG('mini')}</i><b>Drone · Lv ${d.lvl}</b>
+        <button class="dhide" id="dronePark" title="Leave the drone here">📌 Park</button>
         <button class="dhide" id="droneHide" title="Hide a chest where the drone is">🫳 Hide</button>
         <button class="locx" id="droneHome" title="Bring it home">✕</button></div>
       <div class="drange"><span class="bar"><i id="dRange"></i></span><small id="dRangeTxt"></small></div>
       <div class="locbar"><i id="dFill"></i></div>
       <div class="locfoot"><span id="dWord">Searching…</span><span id="dName"></span></div>`;
     $('#droneHome', hud).onclick = () => endFlight('home');
+    $('#dronePark', hud).onclick = () => endFlight('park');
     $('#droneHide', hud).onclick = () => { if (fly) hideDialog({ lat: fly.ll.lat, lon: fly.ll.lon }, true); };
   }
   const rf = Math.min(1, out / R);
@@ -962,9 +979,105 @@ function wireDrone() {
   });
   addEventListener('keyup', e => { keys[e.key] = false; });
 }
+// ---- parked drone + sharing drone positions with nearby players ----
+let parkedMarker = null;
+function droneIconHtml(em, col, cls) {
+  return `<div class="dronewrap ${cls || ''}" style="--dronecol:${col || '#f2b84b'}">${em ? `<span class="droneglyph">${em}</span>` : droneSVG()}</div>`;
+}
+function drawParked() {
+  if (!map || !window.L) return;
+  const pk = P && P.drone && P.drone.parked;
+  if (!pk) { if (parkedMarker) { parkedMarker.remove(); parkedMarker = null; } renderDroneBtn(); return; }
+  const icon = L.divIcon({ className: 'droneicon parked mine', html: `${droneGlyphWrap()}<b class="pklbl">📌 your drone</b>`, iconSize: [52, 52] });
+  if (!parkedMarker) parkedMarker = L.marker([pk.lat, pk.lon], { icon, zIndexOffset: 1800, keyboard: false }).addTo(map).on('click', () => parkedSheet(false));
+  else { parkedMarker.setLatLng([pk.lat, pk.lon]); parkedMarker.setIcon(icon); }
+  renderDroneBtn();
+}
+const droneGlyphWrap = () => `<div class="dronewrap">${droneGlyph()}</div>`;
+function parkedSheet(tooFar) {
+  const d = droneState(), pk = d.parked; if (!pk) return;
+  const away = pos ? dist(pos, pk) : null, R = droneRangeM(d.lvl), inRange = away != null && away <= R;
+  modal(`<div style="text-align:center">${droneSVG('big')}<h3>📌 Your parked drone</h3>
+    <p class="sub">${away != null ? fmtDist(away) + ' from you' : 'Location unknown'} · parked ${ago(pk.at || Date.now())}.<br>
+    ${inRange ? 'It’s in range – fly it from where it is, or call it home.' : `It’s out of range (your drone reaches ${fmtFt(R)}). Walk closer to fly it, or call it home.`}</p>
+    <div class="trade"><button class="btn ghost" id="pkHome">🏠 Call it home</button>${inRange ? '<button class="btn" id="pkFly">🚁 Fly from here</button>' : '<button class="btn" id="pkShow">📍 Show on map</button>'}</div></div>`, m => {
+    $('#pkHome', m).onclick = () => { d.parked = null; d.live = null; save(); drawParked(); droneSync(true, 'home'); closeModal(); FX.sfx('dock'); toast('🏠 Your drone is home', 'gold'); };
+    const f = $('#pkFly', m); if (f) f.onclick = () => { closeModal(); launchDrone(); };
+    const sh = $('#pkShow', m); if (sh) sh.onclick = () => { closeModal(); show('explore'); try { map.setView([pk.lat, pk.lon], Math.max(map.getZoom(), 16)); } catch (e) {} };
+  });
+}
+// tell the server where our drone is: throttled while flying, once when parked, cleared when home
+let dsLast = 0, dsAt = null;
+function droneSync(force, state) {
+  if (!DB.remote || !DB.droneSet) return;
+  const now = Date.now();
+  if (state === 'home') { dsAt = null; return DB.droneClear(); }
+  const pk = P.drone && P.drone.parked, at = fly ? fly.ll : pk;
+  if (!at) return;
+  const moved = !dsAt || dist(dsAt, at) > 3;
+  if (!force && !(moved && now - dsLast > 1500) && now - dsLast < 15000) return;
+  dsLast = now; dsAt = { lat: at.lat, lon: at.lon };
+  if (fly) { P.drone.live = { lat: at.lat, lon: at.lon, at: now }; }
+  const ic = cosGet('dicon', cosEq('dicon')), col = (cosGet('drone', cosEq('drone')) || {}).c;
+  DB.droneSet(at.lat, at.lon, state || (fly ? 'fly' : 'park'), ic.em || '', col || '');
+}
+// if the app closed mid-flight, the drone stays where it last was
+function recoverDrone() {
+  const d = P && P.drone; if (!d || !d.lvl) return;
+  if (!d.parked && d.live) { d.parked = { lat: d.live.lat, lon: d.live.lon, at: d.live.at || Date.now() }; d.live = null; save(); }
+  drawParked(); if (d.parked) droneSync(true, 'park');
+}
+// other players' drones: display only, never tappable
+const OTHERS = new Map();   // user -> { marker, from, to, t0, rec }
+let othersTimer = null, othersBusy = false;
+async function pollDrones() {
+  clearTimeout(othersTimer);
+  const busyNext = () => { othersTimer = setTimeout(pollDrones, [...OTHERS.values()].some(o => o.rec.state === 'fly') ? 2500 : 9000); };
+  if (!DB.remote || !map || !window.L || document.hidden || view !== 'explore' || othersBusy) return busyNext();
+  othersBusy = true;
+  try {
+    const b = map.getBounds().pad(0.3);
+    const list = await DB.drones(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+    const seen = new Set();
+    list.forEach(r => {
+      seen.add(r.k);
+      let o = OTHERS.get(r.k);
+      const html = `${droneIconHtml(r.em, r.col, r.state === 'fly' ? '' : 'still')}${r.team && TEAMS[r.team] ? `<i class="dteam" style="--tc:${TEAMS[r.team].c}"></i>` : ''}`;
+      const cls = 'droneicon other' + (r.state === 'fly' ? ' flying' : ' parked');
+      if (!o) {
+        const mk = L.marker([r.lat, r.lon], { icon: L.divIcon({ className: cls, html, iconSize: [44, 44] }), interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
+        OTHERS.set(r.k, o = { marker: mk, from: { lat: r.lat, lon: r.lon }, to: { lat: r.lat, lon: r.lon }, t0: performance.now(), rec: r, key: cls + html });
+      } else {
+        const cur = o.marker.getLatLng();
+        o.from = { lat: cur.lat, lon: cur.lng }; o.to = { lat: r.lat, lon: r.lon }; o.t0 = performance.now(); o.rec = r;
+        if (o.key !== cls + html) { o.marker.setIcon(L.divIcon({ className: cls, html, iconSize: [44, 44] })); o.key = cls + html; }
+      }
+    });
+    OTHERS.forEach((o, k) => { if (!seen.has(k)) { o.marker.remove(); OTHERS.delete(k); } });
+    if (OTHERS.size) animOthers();
+  } catch (e) {}
+  othersBusy = false; busyNext();
+}
+let othersRaf = 0;
+function animOthers() {
+  cancelAnimationFrame(othersRaf);
+  const step = now => {
+    let moving = false;
+    OTHERS.forEach(o => {
+      const k = Math.min(1, (now - o.t0) / 2200);       // glide to each new fix over about one poll
+      if (k < 1) moving = true;
+      const e = k * (2 - k);
+      o.marker.setLatLng([o.from.lat + (o.to.lat - o.from.lat) * e, o.from.lon + (o.to.lon - o.from.lon) * e]);
+    });
+    if (moving) othersRaf = requestAnimationFrame(step);
+  };
+  othersRaf = requestAnimationFrame(step);
+}
 function renderDroneBtn() {
   const b = $('#droneBtn'); if (!b || !P) return;
   b.hidden = !hasDrone();
+  b.classList.toggle('isparked', !!(P.drone && P.drone.parked));
+  b.title = P.drone && P.drone.parked ? 'Your drone is parked – tap to fly it or call it home' : 'Launch drone';
 }
 // the drone card at the top of the shop
 function droneCard() {
@@ -1975,6 +2088,7 @@ async function boot(key, p) {
   $('#auth').hidden = true; $('#app').hidden = false;
   $('#dev').hidden = !DEV;
   initMap(); applyCosmetics(); renderHeader(); renderAll(); checkAch(); show('explore');
+  setTimeout(recoverDrone, 1500);
   startGPS(true);
   if (P.daily.last !== dayKey()) { show('daily'); setTimeout(() => toast('🎁 Your daily reward is ready!', 'gold'), 300); }
   setTimeout(coachOnce, 1500);
@@ -2233,6 +2347,8 @@ const GUIDE = () => {
     <ul><li>Tap the drone button on the map to launch it, steer with the stick (or arrow keys / WASD).</li>
     <li>Hover within ${ft(C.DRONE_REACH_FT)} of a found chest and tap <b>📦 Open</b>. The drone hovers while you trade, then keeps flying.</li>
     <li>It can also discover hidden chests, scoop up road coins and hide chests (🫳 Hide).</li>
+    <li>Tap <b>📌 Park</b> to leave it hovering where it is – even if you close the app. Tap the drone button later to fly on from there (if it's in range) or call it home.</li>
+    <li>Other players near you see your drone on their map, flying or parked – they can't touch it, and you can't touch theirs.</li>
     <li>Upgrades raise its range from ${ft(D[0] ? D[0].ft : 300)} up to ${(dmax / 5280).toFixed(0)} miles. Tap <b>🏠 Return home</b> or ✕ to land.</li></ul>`],
   ['🫳', 'Hiding your own chests', `<ul><li>Tap <b>🫳 Hide</b> above the chest list to hide a chest where you stand, with one of your items inside. Up to ${C.HIDE_PER_DAY} a day (+${CO.hide} 🪙).</li>
     <li>They must be at least ${Math.round((C.MIN_CHEST_GAP_M || 20) * 3.28)} ft from other chests. Pick public, safe places.</li>
@@ -2569,7 +2685,7 @@ function setSub(group, sub) {
   const sv = $('#v-' + group); if (sv) sv.scrollTop = 0;
 }
 function show(v) {
-  if (v !== 'explore' && fly) endFlight('home');
+  if (v !== 'explore' && fly) endFlight('park');
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
   if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
@@ -3149,6 +3265,7 @@ function initMap() {
   // re-cluster the chest markers whenever the view changes
   map.on('zoomend', () => drawChestMarkers());
   map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon);
+  map.on('moveend', () => { if (!othersBusy) { clearTimeout(othersTimer); othersTimer = setTimeout(pollDrones, 400); } });
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
   [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
   addEventListener('resize', fix); addEventListener('orientationchange', () => setTimeout(fix, 300));
@@ -4159,6 +4276,8 @@ function wire() {
   })();
   $('#updNow').onclick = e => { e.target.disabled = true; e.target.textContent = 'Updating…'; applyUpdate(); };
   $('#droneBtn').onclick = launchDrone;
+  setTimeout(pollDrones, 2500);
+  setInterval(() => { if (!fly && P && P.drone && P.drone.parked) droneSync(); }, 60000);
   wireDrone();
   // walking only pays out every tenth of a mile, so write what is in hand when the app is put away
   document.addEventListener('visibilitychange', () => { if (document.hidden && P && KEY) { save(); submitLB(); } });
@@ -4203,7 +4322,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
