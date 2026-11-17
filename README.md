@@ -373,6 +373,23 @@ usual 20 m gap from other chests applies. Chests can be hidden anywhere, on foot
 reporting (three reports removes a chest) is the safety valve. `DRONE_HIDE_NEAR_M` can optionally
 require remote hides to be within that many metres of a known park or public place (0 = off).
 
+## Wild chests (auto-generated)
+Parks and campgrounds are sparse in most neighbourhoods, so the game also generates extra chests
+along the **real road and path network** near the player. They are deterministic — seeded by map
+tile with `rng(hashStr('stashwalk-wild|'+key))`, so every player sees the same ones with **no
+server** (same trick as the shop and road coins), and they persist (seeded by tile, not by day).
+
+- Source: the same OpenFreeMap vector tiles the road coins use (`RC.tiles`); `wildPlace()` walks
+  the road/path lines and drops a chest every `roadEvery`/`pathEvery` metres, thinned to one per
+  `gapM` square for medium density (~one every couple of blocks). Tuned in `config.js → WILD_CHESTS`.
+- Kinds: `trail` (🥾 Trail Cache) on footpaths/trails, `street` (🚩 Street Cache) on quiet streets.
+  Names are deterministic (`wildName()` → e.g. "Mossy Roadside Cache").
+- IDs are coordinate-based (`wildId()`, `w…`) so they stay stable; they behave exactly like park
+  chests — discover by walking within `DISCOVER_FT`, hunt with the locator, open and trade.
+- Loading: `wildEnsureAround()` loads the tiles immediately around the player (works even if road
+  coins are off) and folds the new chests into the live list via `mergeWild()`. `WILD` is capped
+  at 24 tiles to bound memory on long walks. No Worker change — purely client-side.
+
 ## Admin
 The account named in `ADMIN_USER` (config.js, "TonyIspht") gets a 🛡️ Admin card at the top of
 the Me tab. Who is really an admin is decided by the Worker (`ADMIN_USERS` variable, defaulting

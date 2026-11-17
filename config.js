@@ -92,5 +92,17 @@ window.GEO_CONFIG = {
     magnetFt: 80,          // they fly to you inside this distance
     droneMagnetFt: 100,    // and to the drone inside this
     dronePerDay: 60        // most the drone can pick up in a day (0 = no limit). Walking has no limit.
+  },
+
+  // Extra chests generated along the real road & path network near the player, so there is
+  // always something to find even where there are no parks. Deterministic: every player sees
+  // the same ones, no server needed. Uses the same map tiles as the road coins.
+  WILD_CHESTS: {
+    on: true,
+    roadEvery: 230,        // metres between chest chances on quiet streets
+    pathEvery: 150,        // ...and on trails and footpaths (denser - nicer to walk)
+    chance: 0.55,          // how often a chance becomes a chest
+    gapM: 170,             // never two wild chests closer than about this (medium density)
+    maxPerTile: 80         // safety cap per map tile
   }
 };

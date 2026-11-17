@@ -72,7 +72,8 @@ const badge = r => `<span class="badge" style="background:${RAR[r].c}">${RAR[r].
 const KIND = {
   camp: ['Campsite', '⛺', 1.6], picnic: ['Picnic Spot', '🧺', 1.2], view: ['Viewpoint', '🔭', 1.8], peak: ['Summit', '⛰️', 2],
   play: ['Playground', '🛝', 1], fire: ['Fire Ring', '🔥', 1.3], shelter: ['Trail Shelter', '🛖', 1.3], reserve: ['Nature Reserve', '🌲', 1.4],
-  park: ['Park', '🌳', 1], landmark: ['Landmark', '🏛️', 2], player: ['Hidden Cache', '📦', 1]
+  park: ['Park', '🌳', 1], landmark: ['Landmark', '🏛️', 2], player: ['Hidden Cache', '📦', 1],
+  trail: ['Trail Cache', '🥾', 1.2], street: ['Street Cache', '🚩', 1]
 };
 const kindInfo = k => KIND[k] || KIND.park;
 function rollRarity(r, boost) {
@@ -960,6 +961,7 @@ async function rcLoad(key) {
       buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
     const lines = rcDecode(buf, RZ, x, y);
     RC.tiles.set(key, { lines, day: -1, coins: [] });
+    if (WCF.on && !WILD.has(key)) wildAddTile(key);   // build this tile's wild chests right away
     while (RC.tiles.size > 16) RC.tiles.delete(RC.tiles.keys().next().value);
   } catch (e) { /* no roads for this tile right now; try again later */ }
   RC.loading.delete(key);
@@ -968,6 +970,78 @@ async function rcLoad(key) {
   if (fly) rcCollect(fly.ll, true); else if (pos && pos.acc <= 40) rcCollect(pos, false);
 }
 // the tile you are on, plus any neighbour you are close to the edge of
+// ---------- wild chests: extra chests generated along the road/path network ----------
+// They reuse the road-coin vector tiles (RC.tiles) and the same deterministic seeding, so every
+// player sees the same chests with no server. Permanent (seeded by tile only, not by day).
+const WCF = Object.assign({ on: true, roadEvery: 230, pathEvery: 150, chance: 0.55, gapM: 170, maxPerTile: 80 }, C.WILD_CHESTS || {});
+const WILD = new Map();                              // tile key -> array of chest metas
+const WILD_ADJ = ['Hidden', 'Shady', 'Old', 'Quiet', 'Mossy', 'Dusty', 'Little', 'Lost', 'Secret', 'Sunny', 'Windy', 'Cozy'];
+const WILD_PATH = ['Trail Cache', 'Footpath Stash', 'Creekside Cache', 'Woodland Stash', 'Greenway Cache'];
+const WILD_ROAD = ['Corner Cache', 'Curbside Stash', 'Roadside Cache', 'Block Stash', 'Sidewalk Cache'];
+const wildId = (lat, lon) => 'w' + Math.round(lat * 1e4).toString(36).replace('-', 'm') + '_' + Math.round(lon * 1e4).toString(36).replace('-', 'm');
+function wildName(id, path) {
+  const h = hashStr('wn|' + id), nouns = path ? WILD_PATH : WILD_ROAD;
+  return WILD_ADJ[h % WILD_ADJ.length] + ' ' + nouns[(h >>> 8) % nouns.length];
+}
+function wildPlace(key, lines) {
+  if (!WCF.on || !lines || !lines.length) return [];
+  const R = rng(hashStr('stashwalk-wild|' + key)), out = [];
+  for (const ln of lines) {
+    const every = ln.path ? WCF.pathEvery : WCF.roadEvery;
+    let s = R() * every;
+    for (let i = 1; i < ln.pts.length; i++) {
+      const a = ln.pts[i - 1], b = ln.pts[i], seg = dist(a, b);
+      while (s < seg) {
+        const roll = R(), t = s / seg;
+        if (roll < WCF.chance && (a.inside || b.inside)) {
+          const lat = a.lat + (b.lat - a.lat) * t, lon = a.lon + (b.lon - a.lon) * t;
+          if (rcInTile(key, lat, lon)) { const id = wildId(lat, lon); out.push({ id, name: wildName(id, ln.path), lat, lon, kind: ln.path ? 'trail' : 'street', src: 'wild' }); }
+        }
+        s += every;
+      }
+      s -= seg;
+    }
+  }
+  // thin to roughly one per gapM square, so density stays sane downtown
+  const cell = (WCF.gapM || 170), seen = new Set(), kept = [];
+  for (const c of out) {
+    const k2 = Math.floor(c.lat * 111320 / cell) + ':' + Math.floor(c.lon * 111320 * Math.cos(c.lat * Math.PI / 180) / cell);
+    if (seen.has(k2)) continue; seen.add(k2); kept.push(c);
+    if (kept.length >= (WCF.maxPerTile || 80)) break;
+  }
+  return kept;
+}
+function wildAddTile(key) {
+  if (WILD.has(key)) return;
+  const t = RC.tiles.get(key); if (!t) return;
+  WILD.set(key, wildPlace(key, t.lines));
+  while (WILD.size > 24) WILD.delete(WILD.keys().next().value);   // keep memory bounded on long walks
+  mergeWild();
+}
+function wildWithin(lat, lon, rM) {
+  const dLat = rM / 111320, dLon = rM / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180))), out = [];
+  WILD.forEach(arr => arr.forEach(c => { if (BLOCKED.has(c.id)) return; if (Math.abs(c.lat - lat) > dLat || Math.abs(c.lon - lon) > dLon) return; out.push(c); }));
+  return out;
+}
+// fold any newly-computed wild chests near the player into the live chest list
+function mergeWild() {
+  if (!pos || !P) return;
+  const have = new Set(chests.map(c => c.id)); let added = false;
+  wildWithin(pos.lat, pos.lon, radiusM()).forEach(c => { if (!have.has(c.id)) { chests.push(c); added = true; } });
+  if (added) { discoverAround(pos, DISCOVER_M()); refreshChestViews(); if (view === 'explore') renderNearby(true); }
+}
+// load the vector tiles around the player (even if road coins are off) and build their chests
+function wildEnsureAround(at) {
+  if (!WCF.on || !at) return;
+  const n = 2 ** RZ, fx = (at.lon + 180) / 360 * n;
+  const fy = (1 - Math.log(Math.tan(at.lat * Math.PI / 180) + 1 / Math.cos(at.lat * Math.PI / 180)) / Math.PI) / 2 * n;
+  const x = Math.floor(fx), y = Math.floor(fy), mx = fx - x, my = fy - y, edge = 0.3;
+  const want = [[x, y]];
+  const ex = mx < edge ? -1 : mx > 1 - edge ? 1 : 0, ey = my < edge ? -1 : my > 1 - edge ? 1 : 0;
+  if (ex) want.push([x + ex, y]); if (ey) want.push([x, y + ey]); if (ex && ey) want.push([x + ex, y + ey]);
+  want.forEach(([a, b]) => { const key = a + '/' + b; if (WILD.has(key)) return; if (RC.tiles.get(key)) wildAddTile(key); else rcLoad(key).then(() => wildAddTile(key)); });
+}
+
 function rcEnsureAround(at) {
   if (!RCF.on || !at) return;
   const n = 2 ** RZ, fx = (at.lon + 180) / 360 * n;
@@ -2253,7 +2327,7 @@ function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
   if (first && KEY && !OFFLINE) DB.ping({ lat, lon }).catch(() => {});   // so the admin map is right straight away
   trackWalk(lat, lon, pos.acc, manual);
-  if (!fly) { rcEnsureAround(pos); rcDraw(); if (!manual && pos.acc <= 40) rcCollect(pos, false); }
+  if (!fly) { rcEnsureAround(pos); wildEnsureAround(pos); rcDraw(); if (!manual && pos.acc <= 40) rcCollect(pos, false); }
   const accFt = pos.acc * FT;
   gpsMsg(`${manual ? 'DEV position' : 'GPS'} ±${Math.round(accFt)} ft${manual ? '' : coarseHint(accFt)}`,
          accFt >= C.COARSE_FT ? 'bad' : 'ok');
@@ -2450,6 +2524,9 @@ async function loadNearby() {
   try { await loadTiles(pos.lat, pos.lon, lastR); placesWithin(pos.lat, pos.lon, lastR).forEach(p => { if (!BLOCKED.has(p.id)) found.set(p.id, p); }); }
   catch (e) { osmErr = 'place list failed to load'; tileIndexErr = e.message || 'error'; lastLoad = null; }
   chests = [...found.values()]; discoverAround(pos, DISCOVER_M()); refreshChestViews();
+  wildEnsureAround(pos);                            // extra chests along nearby roads & paths
+  wildWithin(pos.lat, pos.lon, lastR).forEach(c => { if (!BLOCKED.has(c.id)) found.set(c.id, c); });
+  chests = [...found.values()];
   try {                                            // chests other players hid, from the shared database
     const res = await DB.getMany('cells', cellsAround(pos.lat, pos.lon, lastR));
     res.forEach(o => o && Object.keys(o).forEach(id => { if (!BLOCKED.has(id)) found.set(id, Object.assign({ id, src: 'player' }, o[id])); }));
