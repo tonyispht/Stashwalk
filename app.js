@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181430';
+const APP_BUILD = '202611181450';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -534,29 +534,42 @@ const MI = 1609.344, WALK_STEP = MI / 10;
 // fixes. Once tripped it stays on until you have been slow for 20 seconds, so stopping at a
 // red light does not open a window to grab things from the road.
 const FAST_MPS = (C.MAX_COLLECT_MPH || 15) * 0.44704, FAST_HOLD_MS = 20000;
-const SPD = { fast: false, slowSince: 0, last: null, mps: 0 };
+// To trip, two fast readings in a row at least 4 s apart are needed (one GPS jump never counts),
+// and a distance-based reading must beat the GPS uncertainty. It clears by itself 20 s after the
+// last fast reading - a phone standing still sends few updates, so silence counts as slow.
+const SPD = { fast: false, last: null, mps: 0, hits: 0, firstHit: 0, lastFast: 0 };
 function trackSpeed(lat, lon, acc, gpsSpeed, manual) {
-  if (manual || DEV) { SPD.fast = false; SPD.last = null; return; }
+  if (manual || DEV) { setFast(false); SPD.last = null; return; }
   const now = Date.now();
+  if (!(acc > 0) || acc > 25) return;                                   // too fuzzy to judge speed
   let v = null;
-  if (gpsSpeed != null && gpsSpeed >= 0 && acc <= 50) v = gpsSpeed;
-  else if (SPD.last && acc <= 50) {
+  if (SPD.last) {
     const dt = (now - SPD.last.t) / 1000;
-    if (dt >= 3) { v = dist(SPD.last, { lat, lon }) / dt; SPD.last = { lat, lon, t: now }; }
-  } else SPD.last = { lat, lon, t: now };
-  if (!SPD.last) SPD.last = { lat, lon, t: now };
+    if (dt >= 2) {
+      const d = dist(SPD.last, { lat, lon });
+      const moved = d > (acc + SPD.last.acc) * 1.2;                    // beyond the wobble of both fixes
+      const vd = moved ? d / dt : 0;
+      // the phone's own speed is trusted only when the positions agree you went somewhere
+      v = gpsSpeed != null && gpsSpeed >= 0 ? Math.min(gpsSpeed, moved ? Math.max(vd, gpsSpeed) : 0) : vd;
+      SPD.last = { lat, lon, t: now, acc };
+    }
+  } else SPD.last = { lat, lon, t: now, acc };
   if (v == null) return;
   SPD.mps = v;
-  const was = SPD.fast;
-  if (v > FAST_MPS) { SPD.fast = true; SPD.slowSince = 0; }
-  else if (SPD.fast) { if (!SPD.slowSince) SPD.slowSince = now; else if (now - SPD.slowSince >= FAST_HOLD_MS) SPD.fast = false; }
-  if (SPD.fast !== was) {
-    document.body.classList.toggle('toofast', SPD.fast);
-    if (SPD.fast) toast('🚗 Moving faster than 15 mph – collecting is paused until you slow down');
-    else toast('🚶 Collecting is back on');
-    renderSpeedPill();
-  }
+  if (v > FAST_MPS) {
+    if (!SPD.hits) SPD.firstHit = now;
+    SPD.hits++; SPD.lastFast = now;
+    if (SPD.hits >= 2 && now - SPD.firstHit >= 4000) setFast(true);
+  } else if (!SPD.fast) SPD.hits = 0;
 }
+function setFast(on) {
+  if (SPD.fast === on) return;
+  SPD.fast = on; if (!on) SPD.hits = 0;
+  document.body.classList.toggle('toofast', on);
+  toast(on ? '🚗 Moving faster than 15 mph – collecting is paused until you slow down' : '🚶 Collecting is back on');
+  renderSpeedPill();
+}
+setInterval(() => { if (SPD.fast && Date.now() - SPD.lastFast >= FAST_HOLD_MS) setFast(false); }, 2000);
 const tooFast = () => SPD.fast;
 function renderSpeedPill() {
   let el = $('#fastPill');
