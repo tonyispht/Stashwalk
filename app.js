@@ -2140,21 +2140,26 @@ async function drawCells(force) {
 // backing out of a hard pattern doesn't reset it.
 const GLYPH_CD = 30 * 60000;
 const glyphLeft = () => Math.max(0, (P.glyphAt || 0) + GLYPH_CD - Date.now());
-function glyphGame(id) {
-  if (glyphLeft() > 0) return toast(`✨ Glyph recharging – ready in ${Math.ceil(glyphLeft() / 60000)} min`);
+// A solve counts as fast at under ~0.9 s per glyph point; only fast solves can drop an item.
+const GLYPH_FAST_MS = 900, GLYPH_ITEM_CHANCE = 0.5;
+// `after` runs once the hack is over, win or lose: it carries out the trade the player had
+// lined up in the chest before starting the hack.
+function glyphGame(id, after) {
+  if (glyphLeft() > 0) { toast(`✨ Glyph recharging – ready in ${Math.ceil(glyphLeft() / 60000)} min`); return; }
   P.glyphAt = Date.now(); P.stats.glyphs = (P.stats.glyphs || 0) + 1; save();
   const N = 9, len = 4 + Math.floor(Math.random() * 2), seq = [];
   while (seq.length < len) { const n = Math.floor(Math.random() * N); if (!seq.includes(n)) seq.push(n); }
   const dots = Array.from({ length: N }, (_, i) => `<button class="gdot" data-g="${i}"></button>`).join('');
   modal(`<div style="text-align:center"><h3>✨ Glyph hack</h3><p class="sub" id="gMsg">Watch the glyph…</p>
-    <div class="glyph" id="gGrid">${dots}</div>
-    <p class="fine" id="gHint">Repeat the pattern in order for a bonus.</p></div>`, m => {
+    <div class="glyph" id="gGrid">${dots}</div><div id="gPrize"></div>
+    <p class="fine" id="gHint">Repeat the pattern for bonus coins. Solve it fast for a chance at an item.${after ? '<br>Your trade goes through when the hack ends.' : ''}</p></div>`, m => {
+    $('#modal').onclick = null;                    // no tapping out mid-hack: the trade must still run
     const grid = $('#gGrid', m), msg = $('#gMsg', m), els = $$('.gdot', grid);
-    let accepting = false, idx = 0;
+    let accepting = false, idx = 0, t0 = 0, over = false;
+    const finish = delay => { if (over) return; over = true; setTimeout(() => { closeModal(); if (after) after(); }, delay); };
     const flash = i => { els[i].classList.add('lit'); setTimeout(() => els[i].classList.remove('lit'), 320); };
-    // play the sequence, then accept input
     seq.forEach((n, i) => setTimeout(() => flash(n), 500 + i * 470));
-    setTimeout(() => { accepting = true; msg.textContent = 'Your turn — tap the glyph'; }, 500 + seq.length * 470 + 250);
+    setTimeout(() => { accepting = true; t0 = performance.now(); msg.textContent = 'Your turn — tap the glyph'; }, 500 + seq.length * 470 + 250);
     grid.onclick = e => {
       const btn = e.target.closest('.gdot'); if (!btn || !accepting) return;
       const n = +btn.dataset.g; flash(n);
@@ -2162,16 +2167,20 @@ function glyphGame(id) {
         idx++;
         if (idx >= seq.length) {
           accepting = false;
-          const coins = 20 + len * 6, item = Math.random() < 0.28 ? rollItem(Math.random, 1.4) : null, fresh = item && !P.dex[item.id];
+          const secs = (performance.now() - t0) / 1000, fast = secs * 1000 <= len * GLYPH_FAST_MS;
+          const coins = 20 + len * 6 + (fast ? 10 : 0);
+          const item = fast && Math.random() < GLYPH_ITEM_CHANCE ? rollItem(Math.random, 1.4) : null, fresh = item && !P.dex[item.id];
           earn(coins, '✨ Glyph bonus'); if (item) addItem(item.id);
-          checkAch(); save();
-          msg.innerHTML = `✨ <b>Nice!</b> +${coins} 🪙${item ? ' + an item' : ''}`;
-          FX.sfx('reveal', 2); FX.confetti(['#ffd98a', '#b88bff', '#fff'], 36);
-          setTimeout(() => { closeModal(); if (item) showMade(item, 'Glyph bonus', fresh); }, item ? 900 : 1100);
+          P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; checkAch(); save();
+          msg.innerHTML = `✨ <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
+          if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
+          FX.sfx('reveal', item ? 3 : 2); FX.confetti(['#ffd98a', '#b88bff', '#fff'], item ? 60 : 36);
+          if (item && !after) { over = true; setTimeout(() => { closeModal(); showMade(item, 'Glyph bonus', fresh); }, 1400); }
+          else finish(item ? 1900 : 1200);
         }
       } else {
         accepting = false; msg.innerHTML = '❌ Glyph broke — no bonus this time';
-        els.forEach(x => x.classList.add('bad')); setTimeout(closeModal, 1100);
+        els.forEach(x => x.classList.add('bad')); finish(1200);
       }
     };
   });
@@ -3385,7 +3394,12 @@ function showChest(meta, chest, canGlyph) {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
-    const gy = $('#glyphBtn', m); if (gy && !gy.disabled) gy.onclick = () => glyphGame(meta.id);
+    const gy = $('#glyphBtn', m);
+    if (gy && !gy.disabled) gy.onclick = () => {
+      // hack first, then the lined-up trade (if any) goes through whatever the glyph result
+      const trade = !done && selGet && selGive ? [selGet, chest.items[selGet].id, selGive] : null;
+      glyphGame(meta.id, trade ? () => doTrade(meta, trade[0], trade[1], trade[2]) : null);
+    };
     // Lid lifts, light spills out, then the items rise one after another. The whole
     // sequence lands in well under a second so it never feels like waiting.
     const ios = document.body.classList.contains('ios');
@@ -3397,7 +3411,8 @@ function showChest(meta, chest, canGlyph) {
 
     if (done) return;
     const swap = $('#swapBtn', m);
-    const upd = () => { swap.disabled = !(selGet && selGive); swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} → ${BY_ID[chest.items[selGet].id].n}` : 'Choose items'; };
+    const upd = () => { swap.disabled = !(selGet && selGive); swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} → ${BY_ID[chest.items[selGet].id].n}` : 'Choose items';
+      if (gy && !gy.disabled) gy.textContent = selGet && selGive ? '\u{2728} Glyph hack + trade' : '\u{2728} Glyph hack – bonus'; };
     $('#chestGrid', m).onclick = e => { const t = e.target.closest('.tile'); if (!t) return; selGet = t.dataset.slot; $$('#chestGrid .tile', m).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     $('#giveGrid', m).onclick = e => { const t = e.target.closest('.tile'); if (!t) return; selGive = t.dataset.id; $$('#giveGrid .tile', m).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     swap.onclick = () => doTrade(meta, selGet, chest.items[selGet].id, selGive);

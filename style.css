@@ -1064,3 +1064,5 @@ body.modal-open .cm2 .pin,.ios .cm2.near .pin{animation:none}
 #droneBtn[hidden]{display:none}
 .dhead .dhic{display:grid;place-items:center;width:24px;height:24px}
 .dhead .dhic .dronesvg.mini{width:24px;height:24px}
+.gprize{display:flex;align-items:center;gap:12px;justify-content:center;margin:10px auto 0;padding:8px 12px;border-radius:12px;background:#ffffff0a;max-width:280px;text-align:left;animation:lyIn .25s ease-out}
+.gprize .tile{width:58px;flex:none}
