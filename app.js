@@ -1220,7 +1220,7 @@ function rcCoinsNear(at, rM) {
 function rcDraw(force) {
   if (!RCF.on || !map || !window.L || !P || !pos) return;
   if (!RC.layer) {
-    RC.layer = L.layerGroup().addTo(map);
+    RC.layer = L.layerGroup(); if (LAYERS.coins) RC.layer.addTo(map);
     try { map.attributionControl.addAttribution('Road data <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a>'); } catch (e) {}
     map.on('zoomend', () => rcDraw(true));
   }
@@ -2024,11 +2024,11 @@ function standRows(d) {
       <div class="standtop"><span class="standrank">${i + 1}</span><span>${T.icon} <b>${T.name}</b>${t === mine ? ' <small>you</small>' : ''}</span>
       <span class="standnum"><b>${fmtC(r.cells)}</b> field${r.cells === 1 ? '' : 's'}</span></div>
       <div class="standbar"><i style="width:${Math.round(r.cells / maxC * 100)}%"></i></div>
-      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}</small></div>`; }).join('');
+      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}${(d.held && d.held[t] || []).length ? ' · ' + d.held[t].slice(0, 6).map(fieldName).map(esc).join(', ') + (d.held[t].length > 6 ? ' +' + (d.held[t].length - 6) : '') : ''}</small></div>`; }).join('');
 }
 function paintFacBar(d) {
   const b = $('#facBar'); if (!b) return;
-  if (!d || !DB.remote) { b.hidden = true; return; }
+  if (!d || !DB.remote || !LAYERS.bar) { b.hidden = true; return; }
   const v = d.value, tot = TEAM_IDS.reduce((n, t) => n + v[t].cells, 0);
   b.hidden = false;
   b.innerHTML = `<span class="fbseg">${TEAM_IDS.map(t => `<i style="flex:${tot ? Math.max(v[t].cells, tot * 0.04) : 1};background:${TEAMS[t].c}"></i>`).join('')}</span>
@@ -2036,34 +2036,90 @@ function paintFacBar(d) {
 }
 async function fillStandings(force) {
   const d = await loadStandings(force);
+  if (d && d.held) await loadStates();
   paintFacBar(d);
   const el = $('#standBody'); if (!el) return;
   if (!d) { el.innerHTML = '<p class="fine">Standings unavailable right now.</p>'; return; }
-  el.innerHTML = d.cellsTotal ? standRows(d) + `<p class="fine" style="margin:8px 0 0">A field goes to the faction with the most first-opens in that ~2 km cell. Ties hold for nobody.</p>`
-    : '<p class="fine">No fields claimed yet. Open a new chest to claim the first one for your faction.</p>';
+  el.innerHTML = d.cellsTotal ? standRows(d) + `<p class="fine" style="margin:8px 0 0">Each US state is a field. It goes to the faction with the most first-opens there; ties hold for nobody.</p>`
+    : '<p class="fine">No states claimed yet. Open a new chest to claim your state for your faction.</p>';
 }
 function openStandings() { show('me'); setTimeout(() => { const c = $('#factionCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); fillStandings(true); }, 320); }
 
-// ---------------- control fields / cell scoring ----------------
-const CELL_S = 0.02;                          // ~2 km scoring cells
-const cellKeyScore = (lat, lon) => Math.floor(lat / CELL_S) + '_' + Math.floor(lon / CELL_S);
+// ---------------- control fields (one per US state) ----------------
+// Each US state is its own field. Outside the US, a coarse ~5° grid stands in. State shapes
+// (states.json, ~50 KB gzipped) load only when a chest is scored or the layer is switched on.
+let STATES = null, statesBusy = null;
+function loadStates() {
+  if (STATES) return Promise.resolve(STATES);
+  if (!statesBusy) statesBusy = fetch('states.json?v=' + (window.ASSET_V || '')).then(r => r.json()).then(j => (STATES = j)).catch(() => { statesBusy = null; return null; });
+  return statesBusy;
+}
+function inRing(x, y, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function stateAt(lat, lon) {
+  if (!STATES) return null;
+  for (const k in STATES) { const st = STATES[k], bb = st.b;
+    if (lon < bb[0] || lon > bb[2] || lat < bb[1] || lat > bb[3]) continue;
+    for (const poly of st.p) if (inRing(lon, lat, poly[0]) && !poly.slice(1).some(h => inRing(lon, lat, h))) return k; }
+  return null;
+}
+const GRID_S = 5;
+const gridKey = (lat, lon) => 'g' + Math.floor(lat / GRID_S) + '_' + Math.floor(lon / GRID_S);
+async function fieldKeyAt(lat, lon) { await loadStates(); return stateAt(lat, lon) || gridKey(lat, lon); }
+const cellKeyScore = (lat, lon) => stateAt(lat, lon) || gridKey(lat, lon);   // sync; states must be loaded
+function fieldName(k) { return STATES && STATES[k] ? STATES[k].n : k[0] === 'g' ? 'Wilds sector ' + k.slice(1).replace('_', '·') : k; }
+
+// ---- map layers (device setting) ----
+const LAYER_DEF = { fields: false, bar: false, coins: true };
+let LAYERS = (() => { try { return Object.assign({}, LAYER_DEF, JSON.parse(localStorage.getItem('sw_layers') || '{}')); } catch (e) { return Object.assign({}, LAYER_DEF); } })();
+function setLayer(k, on) {
+  LAYERS[k] = !!on; try { localStorage.setItem('sw_layers', JSON.stringify(LAYERS)); } catch (e) {}
+  applyLayers();
+}
+function applyLayers() {
+  if (map && RC.layer) { if (LAYERS.coins) { if (!map.hasLayer(RC.layer)) RC.layer.addTo(map); } else map.removeLayer(RC.layer); }
+  if (!LAYERS.fields && cellLayer) { cellLayer.clearLayers(); }
+  if (LAYERS.fields) drawCells(true);
+  paintFacBar(standData);
+  const lb = $('#layersBtn'); if (lb) lb.classList.toggle('on', LAYERS.fields || LAYERS.bar || !LAYERS.coins);
+}
+function layersMenu() {
+  const old = $('#layersPop'); if (old) { old.remove(); return; }
+  const row = (k, ic, t, sub) => `<label class="lyrow"><span class="lyic">${ic}</span><span class="lytx"><b>${t}</b><small>${sub}</small></span>
+    <input type="checkbox" data-ly="${k}" ${LAYERS[k] ? 'checked' : ''}><i class="tgl"></i></label>`;
+  const el = document.createElement('div'); el.className = 'layerspop'; el.id = 'layersPop';
+  el.innerHTML = `<div class="lyhead"><b>Map layers</b><button class="locx" id="lyClose">✕</button></div>
+    ${row('coins', '🪙', 'Road coins', 'Coins along streets & trails')}
+    ${DB.remote ? row('fields', '⚑', 'Faction fields', 'States tinted by the leading faction') + row('bar', '📊', 'Standings bar', 'Field counts at a glance') : ''}`;
+  $('#maprow').appendChild(el);
+  el.addEventListener('change', e => { const k = e.target.dataset.ly; if (k) setLayer(k, e.target.checked); });
+  $('#lyClose', el).onclick = () => el.remove();
+  setTimeout(() => { const off = e => { if (!el.contains(e.target) && e.target.id !== 'layersBtn') { el.remove(); document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); }, 0);
+}
+
 let cellLayer = null, cellDrawAt = 0, cellDrawTimer = null;
 function drawCellsSoon() { clearTimeout(cellDrawTimer); cellDrawTimer = setTimeout(() => drawCells(), 600); }
 async function drawCells(force) {
   if (!map || !window.L || !DB.remote || view !== 'explore') return;
-  if (map.getZoom() < 13) { if (cellLayer) cellLayer.clearLayers(); return; }   // only when zoomed in
+  if (!LAYERS.fields) { if (cellLayer) cellLayer.clearLayers(); return; }
   const now = Date.now(); if (!force && now - cellDrawAt < 3500) return; cellDrawAt = now;
-  const b = map.getBounds(), S = CELL_S, keys = [];
-  for (let a = Math.floor(b.getSouth() / S); a <= Math.floor(b.getNorth() / S); a++)
-    for (let c = Math.floor(b.getWest() / S); c <= Math.floor(b.getEast() / S); c++) { keys.push(a + '_' + c); if (keys.length >= 70) break; }
+  await loadStates(); if (!STATES || !LAYERS.fields) return;
+  const b = map.getBounds(), W = b.getWest(), E = b.getEast(), Sx = b.getSouth(), N = b.getNorth();
+  const keys = Object.keys(STATES).filter(k => { const bb = STATES[k].b; return !(bb[2] < W || bb[0] > E || bb[3] < Sx || bb[1] > N); }).slice(0, 60);
+  const c = map.getCenter(), gk = gridKey(c.lat, c.lng); if (!stateAt(c.lat, c.lng)) keys.push(gk);
   const scores = await DB.cellScores(keys);
+  if (!LAYERS.fields) return;
   if (!cellLayer) cellLayer = L.layerGroup().addTo(map); else cellLayer.clearLayers();
   keys.forEach(k => {
-    const sc = scores[k]; if (!sc) return; let lead = null, max = 0;
-    for (const t in sc) if (sc[t] > max) { max = sc[t]; lead = t; }
-    if (!lead || !TEAMS[lead]) return;
-    const [a, c] = k.split('_').map(Number), t = TEAMS[lead];
-    L.rectangle([[a * S, c * S], [(a + 1) * S, (c + 1) * S]], { color: t.c, weight: 1, opacity: .45, fillColor: t.c, fillOpacity: .13, interactive: false }).addTo(cellLayer);
+    const sc = scores[k] || {}; let lead = null, max = 0, tie = false;
+    for (const t in sc) { if (sc[t] > max) { max = sc[t]; lead = t; tie = false; } else if (sc[t] === max && max) tie = true; }
+    const T = lead && !tie ? TEAMS[lead] : null;
+    const style = T ? { color: T.c, weight: 2, opacity: .6, fillColor: T.c, fillOpacity: .12 } : { color: '#9fb8aa', weight: 1, opacity: .35, fillOpacity: 0, dashArray: '4 6' };
+    if (k[0] === 'g') {
+      const [la, lo] = k.slice(1).split('_').map(Number);
+      L.rectangle([[la * GRID_S, lo * GRID_S], [(la + 1) * GRID_S, (lo + 1) * GRID_S]], Object.assign({ interactive: false }, style)).addTo(cellLayer);
+    } else {
+      L.polygon(STATES[k].p.map(poly => poly.map(r => r.map(([x, y]) => [y, x]))), Object.assign({ interactive: false }, style)).addTo(cellLayer);
+    }
   });
 }
 
@@ -3259,7 +3315,7 @@ async function openChest(id, byDrone) {
     showChest(meta, r.value, firstVisit);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
-    if (firstVisit && DB.remote && P.team) { DB.cellScore(cellKeyScore(meta.lat, meta.lon)).then(() => fillStandings(true)); drawCellsSoon(); }
+    if (firstVisit && DB.remote && P.team) { fieldKeyAt(meta.lat, meta.lon).then(k => DB.cellScore(k)).then(() => fillStandings(true)); drawCellsSoon(); }
     checkAch(); save();
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
     // before we ask, or the server correctly sees no chest yet - so write it, then report, and
@@ -3688,6 +3744,7 @@ function wire() {
   $('#legendBtn').onclick = () => { const l = $('#legend'); if (l) l.hidden = !l.hidden; };
   $('#lbBtn').onclick = openLeaderboard;
   $('#facBar').onclick = openStandings;
+  $('#layersBtn').onclick = layersMenu; setTimeout(applyLayers, 1500);
   setTimeout(() => fillStandings(), 2500); setInterval(() => { if (!document.hidden) fillStandings(); }, 180000);
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();

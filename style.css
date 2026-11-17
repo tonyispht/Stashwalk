@@ -1007,3 +1007,20 @@ body.dot-rainbow .me-dot{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6
 .standnum{margin-left:auto}
 .standbar{height:6px;border-radius:99px;background:#ffffff10;margin:6px 0 3px;overflow:hidden}
 .standbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--tc),var(--tc2));min-width:3px}
+
+/* ---- map layers ---- */
+#layersBtn{display:grid;place-items:center}
+#layersBtn.on{border-color:var(--acc);color:var(--acc2);box-shadow:0 0 0 2px #f2b84b33}
+.layerspop{position:absolute;top:8px;right:60px;z-index:560;width:250px;max-width:calc(100% - 76px);background:#0f1a14f7;border:1px solid #2a4a39;border-radius:14px;padding:10px 12px 6px;box-shadow:0 10px 28px #000a;animation:lyIn .16s ease-out}
+@keyframes lyIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.lyhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.lyrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #ffffff10;cursor:pointer}
+.lyrow:first-of-type{border-top:0}
+.lyic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#ffffff0d;font-size:15px;flex:none}
+.lytx{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.2}
+.lytx small{color:var(--mut,#9fb8aa);font-size:11px}
+.lyrow input{position:absolute;opacity:0;pointer-events:none}
+.lyrow .tgl{flex:none;width:36px;height:21px;border-radius:99px;background:#2a3d33;position:relative;transition:background .15s}
+.lyrow .tgl::after{content:'';position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#cfe0d6;transition:transform .15s}
+.lyrow input:checked + .tgl{background:var(--acc)}
+.lyrow input:checked + .tgl::after{transform:translateX(15px);background:#1a1206}

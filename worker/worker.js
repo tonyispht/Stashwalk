@@ -11,6 +11,7 @@ const FLAGS_TO_REMOVE = 3;   // distinct players who must flag a chest before it
 const SEG = /^[A-Za-z0-9_-]{1,64}$/;
 const TEAMS = new Set(['ember', 'tide', 'grove']);
 const TEAM_COOLDOWN = 7 * 86400000;        // switch teams at most once a week
+const FIELD_RE = /^([A-Z]{2}|g-?\d{1,2}_-?\d{1,3})$/;   // a US state code, or a ~5° grid sector elsewhere
 const ITEM_ID = /^(\d{1,3}_[0-4]|c\d{1,3})$/;   // base items, or crafted relics (c0, c1, ...)
 let ready = false;
 
@@ -297,7 +298,7 @@ export default {
         if (!me) return json({ error: 'not logged in' }, 401, cors);
         const b = await req.json().catch(() => ({}));
         const cell = String(b.cell || '');
-        if (!/^-?\d+_-?\d+$/.test(cell)) return json({ error: 'bad cell' }, 400, cors);
+        if (!FIELD_RE.test(cell)) return json({ error: 'bad cell' }, 400, cors);
         const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
         let team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} }
         if (!TEAMS.has(team)) return json({ ok: true, scored: false, reason: 'no team' }, 200, cors);
@@ -306,7 +307,7 @@ export default {
         return json({ ok: true, scored: true, team }, 200, cors);
       }
       if (url.pathname === '/cells/scores' && req.method === 'GET') {
-        const keys = (url.searchParams.get('cells') || '').split(',').filter(k => /^-?\d+_-?\d+$/.test(k)).slice(0, 80);
+        const keys = (url.searchParams.get('cells') || '').split(',').filter(k => FIELD_RE.test(k)).slice(0, 80);
         if (!keys.length) return json({ value: {} }, 200, cors);
         const sql = 'SELECT path, val FROM kv WHERE ' + keys.map(() => 'path LIKE ?').join(' OR ') + ' LIMIT 4000';
         const { results } = await env.DB.prepare(sql).bind(...keys.map(k => 'cs/' + k + '/%')).all();
@@ -320,14 +321,15 @@ export default {
         const out = {}; TEAMS.forEach(t => { out[t] = { cells: 0, points: 0, members: 0 }; });
         const cs = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'cs/%' LIMIT 50000").all()).results;
         const byCell = {};
-        cs.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (!out[team]) return;
+        cs.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (!out[team] || !FIELD_RE.test(cell)) return;
           const n = +r.val || 0; out[team].points += n; (byCell[cell] = byCell[cell] || {})[team] = n; });
-        Object.values(byCell).forEach(sc => { let best = null, bn = 0, tie = false;
+        const held = {}; TEAMS.forEach(t => { held[t] = []; });
+        Object.entries(byCell).forEach(([cell, sc]) => { let best = null, bn = 0, tie = false;
           for (const t in sc) { if (sc[t] > bn) { best = t; bn = sc[t]; tie = false; } else if (sc[t] === bn) tie = true; }
-          if (best && !tie) out[best].cells++; });
+          if (best && !tie) { out[best].cells++; held[best].push(cell); } });
         const tm = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'team/%' LIMIT 50000").all()).results;
         tm.forEach(r => { try { const t = JSON.parse(r.val).team; if (out[t]) out[t].members++; } catch (e) {} });
-        return json({ value: out, cellsTotal: Object.keys(byCell).length, at: Date.now() }, 200, cors);
+        return json({ value: out, held, cellsTotal: Object.keys(byCell).length, at: Date.now() }, 200, cors);
       }
 
       if (url.pathname === '/admin/stats' && req.method === 'GET') {
