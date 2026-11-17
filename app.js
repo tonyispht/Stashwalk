@@ -487,33 +487,71 @@ function timeToReset() {
 // Buy with coins, equip for free once owned. Everything is applied through CSS variables and a
 // couple of body/map classes, so it recolours the whole app live. The free default is always owned.
 const COSMETICS = {
+  picon: { label: 'Player icon', def: 'dot', items: [
+    { id: 'dot', name: 'Classic Dot', cost: 0, em: '' },
+    { id: 'boot', name: 'Boots', cost: 200, em: '🥾' },
+    { id: 'compass', name: 'Compass', cost: 200, em: '🧭' },
+    { id: 'star', name: 'Star', cost: 250, em: '⭐' },
+    { id: 'paw', name: 'Paw', cost: 250, em: '🐾' },
+    { id: 'pin', name: 'Pin', cost: 150, em: '📍' },
+    { id: 'rocket', name: 'Rocket', cost: 400, em: '🚀' },
+    { id: 'fox', name: 'Fox', cost: 450, em: '🦊' },
+    { id: 'ghost', name: 'Ghost', cost: 400, em: '👻' },
+    { id: 'alien', name: 'Alien', cost: 500, em: '👽' },
+    { id: 'crown', name: 'Crown', cost: 1200, em: '👑' },
+    { id: 'dragon', name: 'Dragon', cost: 1500, em: '🐉' } ] },
+  dicon: { label: 'Drone model', def: 'classic', items: [
+    { id: 'classic', name: 'Quadcopter', cost: 0, em: '' },
+    { id: 'ufo', name: 'UFO', cost: 350, em: '🛸' },
+    { id: 'heli', name: 'Helicopter', cost: 350, em: '🚁' },
+    { id: 'balloon', name: 'Hot-air Balloon', cost: 250, em: '🎈' },
+    { id: 'kite', name: 'Kite', cost: 250, em: '🪁' },
+    { id: 'eagle', name: 'Eagle', cost: 550, em: '🦅' },
+    { id: 'owl', name: 'Owl', cost: 550, em: '🦉' },
+    { id: 'satellite', name: 'Satellite', cost: 700, em: '🛰️' },
+    { id: 'rocketd', name: 'Rocket', cost: 900, em: '🚀' } ] },
   accent: { label: 'App accent', def: 'amber', items: [
     { id: 'amber', name: 'Amber', cost: 0, a: '#f2b84b', a2: '#ffd98a' },
     { id: 'emerald', name: 'Emerald', cost: 300, a: '#43d98a', a2: '#b6f5d4' },
     { id: 'rose', name: 'Rose', cost: 300, a: '#ff7aa8', a2: '#ffc2d6' },
     { id: 'violet', name: 'Violet', cost: 450, a: '#a98bff', a2: '#d8c9ff' },
     { id: 'cyan', name: 'Cyan', cost: 450, a: '#4fd6e6', a2: '#b7f0f7' },
+    { id: 'teal', name: 'Teal', cost: 450, a: '#2fd0b6', a2: '#b4f3e9' },
+    { id: 'crimson', name: 'Crimson', cost: 500, a: '#ff6b6b', a2: '#ffc9c9' },
     { id: 'gold', name: 'Royal Gold', cost: 1500, a: '#ffd34d', a2: '#fff0b0' } ] },
-  dot: { label: 'Your map dot', def: 'blue', items: [
+  dot: { label: 'Dot colour', def: 'blue', items: [
     { id: 'blue', name: 'Classic Blue', cost: 0, c: '#3b9cff' },
     { id: 'lime', name: 'Lime', cost: 150, c: '#9be34a' },
     { id: 'pink', name: 'Hot Pink', cost: 150, c: '#ff5fa2' },
     { id: 'orange', name: 'Ember', cost: 150, c: '#ff9f45' },
-    { id: 'white', name: 'Ghost', cost: 300, c: '#eef6ff' },
+    { id: 'white', name: 'Ghost White', cost: 300, c: '#eef6ff' },
     { id: 'rainbow', name: 'Rainbow', cost: 1000, c: 'rainbow' } ] },
   map: { label: 'Map style', def: 'classic', items: [
     { id: 'classic', name: 'Classic', cost: 0, cls: '' },
     { id: 'midnight', name: 'Midnight', cost: 300, cls: 'mt-midnight' },
     { id: 'sepia', name: 'Sepia', cost: 300, cls: 'mt-sepia' },
+    { id: 'mono', name: 'Mono', cost: 400, cls: 'mt-mono' },
     { id: 'neon', name: 'Neon', cost: 700, cls: 'mt-neon' },
-    { id: 'blueprint', name: 'Blueprint', cost: 700, cls: 'mt-blue' } ] },
+    { id: 'blueprint', name: 'Blueprint', cost: 700, cls: 'mt-blue' },
+    { id: 'vapor', name: 'Vaporwave', cost: 900, cls: 'mt-vapor' } ] },
   drone: { label: 'Drone paint', def: 'silver', items: [
     { id: 'silver', name: 'Silver', cost: 0, c: '#cfd8e3' },
     { id: 'crimson', name: 'Crimson', cost: 300, c: '#ff5a5a' },
     { id: 'emerald', name: 'Emerald', cost: 300, c: '#49e39a' },
+    { id: 'carbon', name: 'Carbon', cost: 400, c: '#4a5568' },
+    { id: 'hotpink', name: 'Hot Pink', cost: 400, c: '#ff5fa2' },
     { id: 'gold', name: 'Gold', cost: 600, c: '#ffd24d' },
     { id: 'violet', name: 'Violet', cost: 600, c: '#b88bff' } ] }
 };
+// the player map marker's inner HTML for the equipped icon
+function meIconHtml() {
+  const ic = cosGet('picon', cosEq('picon'));
+  return ic.em ? `<div class="me-emoji">${ic.em}</div>` : '<div class="me-dot"></div>';
+}
+const meIconObj = () => { const emoji = !!cosGet('picon', cosEq('picon')).em; return L.divIcon({ className: 'me-icon', html: meIconHtml(), iconSize: emoji ? [30, 30] : [16, 16] }); };
+function refreshMeIcon() { if (meMarker && window.L) try { meMarker.setIcon(meIconObj()); } catch (e) {} }
+// the drone's inner glyph: the detailed quad SVG, or an emoji model
+function droneGlyph() { const ic = cosGet('dicon', cosEq('dicon')); return ic.em ? `<span class="droneglyph">${ic.em}</span>` : droneSVG(); }
 const MAP_THEME_CLASSES = COSMETICS.map.items.map(m => m.cls).filter(Boolean);
 const cosGet = (cat, id) => COSMETICS[cat].items.find(x => x.id === id) || COSMETICS[cat].items.find(x => x.id === COSMETICS[cat].def);
 const cosOwned = (cat, id) => cosGet(cat, id).cost === 0 || !!(P.cos.owned[cat + ':' + id]);
@@ -525,6 +563,8 @@ function applyCosmetics() {
   const dot = cosGet('dot', cosEq('dot')); root.setProperty('--medot', dot.c === 'rainbow' ? '#3b9cff' : dot.c);
   document.body.classList.toggle('dot-rainbow', dot.c === 'rainbow');
   root.setProperty('--dronecol', cosGet('drone', cosEq('drone')).c);
+  refreshMeIcon();
+  if (fly && fly.marker && window.L) try { fly.marker.setIcon(L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneGlyph()}</div>`, iconSize: [52, 52] })); } catch (e) {}
   applyMapTheme();
 }
 function applyMapTheme() {
@@ -552,6 +592,8 @@ function buyCos(cat, id) {
     }; });
 }
 function swatch(cat, it) {
+  if (cat === 'picon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw" style="background:#3b9cff;box-shadow:0 0 0 4px #3b9cff33 inset"></i>`;
+  if (cat === 'dicon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swem" style="font-size:20px">🚁</i>`;
   if (cat === 'map') return `<i class="sw mtsw ${it.cls || 'mtsw-classic'}"></i>`;
   if (it.c === 'rainbow') return `<i class="sw" style="background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d)"></i>`;
   if (cat === 'accent') return `<i class="sw" style="background:linear-gradient(135deg,${it.a},${it.a2})"></i>`;
@@ -713,7 +755,7 @@ function launchDrone() {
   const d = droneState();
   stopLocate(true);
   const ll = { lat: pos.lat, lon: pos.lon };
-  const icon = L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneSVG()}</div>`, iconSize: [52, 52] });
+  const icon = L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneGlyph()}</div>`, iconSize: [52, 52] });
   fly = {
     ll, raf: 0, last: performance.now(), near: null, lastProbe: 0,
     marker: L.marker([ll.lat, ll.lon], { icon, zIndexOffset: 2000, interactive: false, keyboard: false }).addTo(map),
@@ -1905,6 +1947,16 @@ async function renderLB() {
     el.innerHTML = h;
   } catch (e) { el.innerHTML = `<p class="fine" style="color:var(--bad)">${esc(e.message)}</p>`; }
 }
+// Quick access from the map: jump to the Me tab and scroll to the leaderboard.
+function openLeaderboard() { show('me'); setTimeout(() => { const c = $('#lbCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 320); }
+// Player's all-time coins rank, shown in the profile card.
+async function fillMeRank() {
+  const el = $('#meRankLine'); if (!el) return;
+  if (!DB.remote) { el.hidden = true; return; }
+  if (!lbOn()) { el.innerHTML = '🏆 Hidden from leaderboards'; return; }
+  try { const d = await DB.lbFetch('coins', 'all', WK()); el.innerHTML = d.you ? `🏆 Global rank <b style="color:var(--acc2)">#${d.you.rank}</b> of ${fmtC(d.total)} · ${fmtC(d.you.v)} 🪙 earned` : '🏆 Play a little to join the rankings'; }
+  catch (e) { el.hidden = true; }
+}
 function wireLB() {
   const card = $('#lbCard'); if (!card) return;
   const r = $('#lbRefresh', card); if (r) r.onclick = () => { submitLB(true).then(renderLB); r.disabled = true; setTimeout(() => { if ($('#lbRefresh')) $('#lbRefresh').disabled = false; }, 1500); };
@@ -2280,7 +2332,8 @@ function renderMe() {
   const link = location.origin + location.pathname.replace(/index\.html$/, '') + '?ref=' + encodeURIComponent(P.name);
   let h = adminCardShell() + `<div class="card"><b>${esc(P.name)}</b><br><small class="fine">Equipped title</small>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-    <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p></div>
+    <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p>
+    <p class="fine" id="meRankLine" style="margin:6px 0 0">🏆 Loading rank…</p></div>
     <div class="card"><b>Invite friends</b>
     <p class="fine">Share this link or let them scan the code. They start with a bonus item, and you get a Rare
     once they open their first chest - plus an Epic at 5 friends and a Legendary at 10.</p>
@@ -2333,7 +2386,7 @@ function renderMe() {
     <button class="btn sm ghost" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>`;
   $('#meBox').innerHTML = h;
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
-  wireLB();
+  wireLB(); fillMeRank();
   $('#titleSel').onchange = e => { P.title = e.target.value; save(); renderHeader(); };
   $('#refBtn').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; const was = inviteCount; await refreshInvites(); if (inviteCount === was) toast(`${inviteCount} friend${inviteCount === 1 ? '' : 's'} joined so far`); renderMe(); };
   $('#copyBtn').onclick = () => { const i = $('#inviteLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } toast('Invite link copied'); };
@@ -2602,7 +2655,7 @@ function setPos(lat, lon, acc, manual) {
          accFt >= C.COARSE_FT ? 'bad' : 'ok');
   if (window.L && map) {
     if (!meMarker) {
-      meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'me-icon', html: '<div class="me-dot"></div>', iconSize: [16, 16] }), zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);
+      meMarker = L.marker([lat, lon], { icon: meIconObj(), zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);
       accCircle = L.circle([lat, lon], { radius: pos.acc, weight: 1, color: '#3b9cff', fillOpacity: .08, interactive: false }).addTo(map);
     }
     else { meMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(pos.acc); }
@@ -3465,6 +3518,7 @@ function wire() {
   $('#admBarStop').onclick = () => adminPlaceMode(false);
   $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
   $('#legendBtn').onclick = () => { const l = $('#legend'); if (l) l.hidden = !l.hidden; };
+  $('#lbBtn').onclick = openLeaderboard;
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';

@@ -962,3 +962,12 @@ body.dot-rainbow .me-dot{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6
 .lblist b{color:var(--acc2);font-variant-numeric:tabular-nums}
 .lblist .meRow{background:#2a2108;border:1px solid var(--acc)}
 .lblist .meRow .nm{color:var(--acc2);font-weight:700}
+
+/* player-icon & drone-icon cosmetics */
+.me-emoji{font-size:26px;line-height:1;text-align:center;filter:drop-shadow(0 1px 3px #000a);transform:translate(-5px,-7px)}
+.droneglyph{display:grid;place-items:center;width:52px;height:52px;font-size:34px;filter:drop-shadow(0 2px 5px #0008)}
+.sw.swem{display:grid;place-items:center;font-size:24px;background:#0f1d15}
+/* extra map themes */
+#map.mt-mono .leaflet-tile-pane{filter:grayscale(1) contrast(.95) brightness(.95)}
+#map.mt-vapor .leaflet-tile-pane{filter:hue-rotate(275deg) saturate(1.8) contrast(1.05) brightness(1.02)}
+#map.mt-vapor .leaflet-control-attribution{background:#2a0a3ccc;color:#ffb3f0}
