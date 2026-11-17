@@ -40,6 +40,7 @@ function modal(html, mount) {
   if (mount) mount(m.firstChild);
 }
 function closeModal() {
+  if (typeof gmap !== 'undefined' && gmap) { try { gmap.remove(); } catch (e) {} gmap = null; }
   const m = $('#modal'); m.classList.remove('open'); m.innerHTML = '';
   document.body.classList.remove('modal-open');
   if (view === 'explore') renderNearby(true);         // catch up on anything skipped while it was open
@@ -94,8 +95,14 @@ function wildItems(id, day, boost, slots) {
 // a guaranteed Epic+ item plus richer loot and a coin bonus. Deterministic, so everyone agrees.
 const isRare = c => !!c && c.kind !== 'player' && hashStr('rare|' + c.id) % 22 === 0;
 const RARE_BONUS = (C.COINS && C.COINS.rareChest) || 120;
+// ---- chest levels: a chest grows as more different explorers open it ----
+const LVL_AT = [0, 3, 6, 10, 16, 25, 40, 60];          // unique visitors needed for levels 1..8
+const chestLevel = v => { let l = 1; for (let i = 1; i < LVL_AT.length; i++) if ((v || 0) >= LVL_AT[i]) l = i + 1; return l; };
+const lvlBoost = l => 1 + 0.15 * ((l || 1) - 1);      // loot rarity multiplier
+const LVLC = ['#9fb8aa', '#9fb8aa', '#6fd38d', '#49c2e0', '#5d8cff', '#a77bff', '#ff7bd5', '#ffb347', '#ffd84a'];
+const LVL = new Map();                                 // chest id -> unique visitors (shared, from the server)
 function chestItems(meta, day, slots) {
-  const boost = kindInfo(meta.kind)[2], rare = isRare(meta);
+  const boost = kindInfo(meta.kind)[2] * lvlBoost(meta.lvl), rare = isRare(meta);
   const items = wildItems(meta.id, day, rare ? boost * 3 : boost, slots);
   if (rare && slots.indexOf('a') >= 0) {   // force the first slot to a guaranteed Epic (or Legendary)
     const r = rng(hashStr('rareslot|' + meta.id + '|' + day));
@@ -114,7 +121,7 @@ function refreshChest(cur, meta, day) {
   const wildSlots = Object.keys(items).filter(s => items[s].w);
   // Make sure the chest is never left empty, even if its stored record was damaged or partial.
   SLOT_IDS.slice(0, C.CHEST_SLOTS).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
-  const fresh = chestItems({ id: meta.id, kind: cur.kind || meta.kind }, day, wildSlots);
+  const fresh = chestItems({ id: meta.id, kind: cur.kind || meta.kind, lvl: chestLevel(cur.visits) }, day, wildSlots);
   cur.items = Object.assign(items, fresh); cur.day = day; return cur;
 }
 
@@ -2024,7 +2031,7 @@ async function loadStandings(force) {
 }
 function standingsCard() {
   if (!DB.remote) return '';
-  return `<div class="card" id="factionCard"><div class="ahead"><b>⚑ Faction standings</b><button class="btn sm ghost" id="standRefresh">↻</button></div>
+  return `<div class="card" id="factionCard"><div class="ahead"><b>⚑ Faction standings</b><span><button class="btn sm ghost" id="gmOpen">🌎 Map</button> <button class="btn sm ghost" id="standRefresh">↻</button></span></div>
     <div id="standBody"><p class="fine">Loading…</p></div></div>`;
 }
 function standRows(d) {
@@ -2080,6 +2087,98 @@ async function fieldKeyAt(lat, lon) { await loadStates(); return stateAt(lat, lo
 const cellKeyScore = (lat, lon) => stateAt(lat, lon) || gridKey(lat, lon);   // sync; states must be loaded
 function fieldName(k) { return STATES && STATES[k] ? STATES[k].n : k[0] === 'g' ? 'Wilds sector ' + k.slice(1).replace('_', '·') : k; }
 
+// ---- beacons & fireworks: short-lived effects at a chest that every player can see ----
+const FX_TYPES = {
+  beacon: { icon: '🔆', name: 'Beacon', cost: 80, mins: 60, sub: 'A pillar of light in your faction colour for 1 hour' },
+  fireworks: { icon: '🎆', name: 'Fireworks', cost: 50, mins: 30, sub: 'A fireworks show over the chest for 30 minutes' }
+};
+let fxLayer = null, fxList = [], fxAt = 0;
+async function loadFx(force) {
+  if (!DB.remote || !map || !window.L) return;
+  if (!force && Date.now() - fxAt < 60000) return;
+  fxAt = Date.now(); fxList = await DB.fxActive(); drawFx();
+}
+function drawFx() {
+  if (!map || !window.L) return;
+  if (!fxLayer) fxLayer = L.layerGroup().addTo(map);
+  fxLayer.clearLayers();
+  const now = Date.now();
+  fxList.filter(f => f.until > now).forEach(f => {
+    const T = f.team && TEAMS[f.team], col = T ? T.c : '#f2b84b', col2 = T ? T.c2 : '#ffd98a';
+    const html = f.type === 'beacon'
+      ? `<div class="fxb" style="--fc:${col};--fc2:${col2}"><i class="beam"></i><i class="halo"></i><i class="core"></i></div>`
+      : `<div class="fxf" style="--fc:${col};--fc2:${col2}">${[0, 1, 2].map(k => `<i class="burst b${k}">${Array.from({ length: 10 }, (_, j) => `<b style="--a:${j * 36}deg"></b>`).join('')}</i>`).join('')}</div>`;
+    const ic = L.divIcon({ className: 'fxmark', html, iconSize: f.type === 'beacon' ? [40, 140] : [120, 120], iconAnchor: f.type === 'beacon' ? [20, 132] : [60, 90] });
+    L.marker([f.lat, f.lon], { icon: ic, interactive: true, keyboard: false, zIndexOffset: -500 }).addTo(fxLayer)
+      .on('click', () => toast(`${FX_TYPES[f.type].icon} ${FX_TYPES[f.type].name} by ${f.by}${T ? ' ' + T.icon : ''} · ${Math.max(1, Math.round((f.until - Date.now()) / 60000))} min left`));
+  });
+}
+function fxDialog(meta) {
+  if (!DB.remote) return toast('Effects need the shared world', 'bad');
+  const live = fxList.find(f => f.chest === meta.id && f.until > Date.now());
+  modal(`<h3>🎆 Celebrate at ${esc(meta.name)}</h3>
+    <p class="sub">Everyone nearby sees it on their map.${live ? ` <b>${FX_TYPES[live.type].icon} ${esc(live.by)}'s ${FX_TYPES[live.type].name.toLowerCase()} is running here now.</b>` : ''}</p>
+    <div class="fxopts">${Object.entries(FX_TYPES).map(([k, t]) => `<button class="fxopt" data-fx="${k}" ${P.coins < t.cost ? 'disabled' : ''}>
+      <span class="fxic">${t.icon}</span><span class="fxtx"><b>${t.name}</b><small>${t.sub}</small></span><span class="fxcost">${t.cost} 🪙</span></button>`).join('')}</div>
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>`, m => {
+    $('#cancelBtn', m).onclick = closeModal;
+    $$('.fxopt', m).forEach(b => b.onclick = async () => {
+      const k = b.dataset.fx, t = FX_TYPES[k];
+      if (P.coins < t.cost) return toast('Not enough coins', 'bad');
+      b.disabled = true;
+      try { await DB.fxSet(meta.id, k, meta.lat, meta.lon); }
+      catch (e) {
+        b.disabled = false;
+        const d = e.data || {};
+        return toast(d.error === 'busy' ? `${d.by}'s effect is still running here` : d.error === 'slow down' ? 'One effect a minute – try again shortly' : 'Could not set it off: ' + e.message, 'bad');
+      }
+      spend(t.cost); P.stats.fx = (P.stats.fx || 0) + 1; save(); renderAll();
+      closeModal(); FX.sfx('reveal', 2); FX.confetti([TEAMS[P.team] ? TEAMS[P.team].c : '#f2b84b', '#fff', '#ffd98a'], 50);
+      toast(`${t.icon} ${t.name} set off at ${meta.name} for ${t.mins} min`, 'gold');
+      loadFx(true);
+    });
+  });
+}
+
+// ---- global control map: the whole country, every state tinted by who holds it ----
+let gmap = null;
+async function openControlMap() {
+  if (!window.L) return toast('Map unavailable offline', 'bad');
+  if (gmap) { try { gmap.remove(); } catch (e) {} gmap = null; }
+  modal(`<div class="gmhead"><h3>🌎 Global control</h3><button class="locx" id="gmClose">✕</button></div>
+    <div id="gmap" class="gmap"><p class="fine" style="padding:20px">Loading the map…</p></div>
+    <div class="gmlegend">${TEAM_IDS.map(t => `<span><i style="background:${TEAMS[t].c}"></i>${TEAMS[t].icon} ${TEAMS[t].name}</span>`).join('')}<span><i class="hatch"></i>Contested</span></div>
+    <div id="gmStand"><p class="fine">Loading standings…</p></div>`, async m => {
+    $('#gmClose', m).onclick = closeModal;
+    const [_, d] = await Promise.all([loadStates(), loadStandings(true)]);
+    const box = $('#gmap', m); if (!box || !STATES) { if (box) box.innerHTML = '<p class="fine" style="padding:20px">Could not load the map.</p>'; return; }
+    box.innerHTML = '';
+    gmap = L.map(box, { zoomControl: true, attributionControl: true, worldCopyJump: true, minZoom: 2, maxZoom: 9 });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(gmap);
+    gmap.fitBounds([[24.5, -125], [49.5, -66.5]]);
+    const keys = Object.keys(STATES).concat(d && d.held ? TEAM_IDS.flatMap(t => d.held[t].filter(k => k[0] === 'g')) : []).slice(0, 80);
+    const scores = await DB.cellScores(keys);
+    if (!gmap) return;
+    keys.forEach(k => {
+      const sc = scores[k] || {}; let lead = null, max = 0, tie = false;
+      for (const t in sc) { if (sc[t] > max) { max = sc[t]; lead = t; tie = false; } else if (sc[t] === max && max) tie = true; }
+      const T = lead && !tie ? TEAMS[lead] : null;
+      const style = T ? { color: T.c, weight: 1.5, opacity: .85, fillColor: T.c, fillOpacity: .55 }
+        : tie ? { color: '#ffffff', weight: 1.2, opacity: .7, fillColor: '#ffffff', fillOpacity: .14, dashArray: '3 4' }
+        : { color: '#9fb8aa', weight: .8, opacity: .45, fillOpacity: 0 };
+      const pts = TEAM_IDS.filter(t => sc[t]).map(t => `${TEAMS[t].icon} ${sc[t]}`).join(' · ') || 'No points yet';
+      const tip = `<b>${esc(fieldName(k))}</b><br>${T ? T.icon + ' ' + T.name + ' holds it' : tie ? 'Contested' : 'Unclaimed'}<br><small>${pts}</small>`;
+      const shape = k[0] === 'g'
+        ? (() => { const [la, lo] = k.slice(1).split('_').map(Number); return L.rectangle([[la * GRID_S, lo * GRID_S], [(la + 1) * GRID_S, (lo + 1) * GRID_S]], style); })()
+        : L.polygon(STATES[k].p.map(poly => poly.map(r => r.map(([x, y]) => [y, x]))), style);
+      shape.bindPopup(tip).addTo(gmap);
+    });
+    if (pos) L.circleMarker([pos.lat, pos.lon], { radius: 5, color: '#fff', weight: 2, fillColor: '#3b9cff', fillOpacity: 1 }).bindTooltip('You').addTo(gmap);
+    const st = $('#gmStand', m); if (st) st.innerHTML = d && d.cellsTotal ? standRows(d) : '<p class="fine">No states claimed yet — open a new chest to put your state on the board.</p>';
+    setTimeout(() => { try { gmap && gmap.invalidateSize(); } catch (e) {} }, 60);
+  });
+}
+
 // ---- map layers (device setting) ----
 const LAYER_DEF = { fields: false, bar: false, coins: true };
 let LAYERS = (() => { try { return Object.assign({}, LAYER_DEF, JSON.parse(localStorage.getItem('sw_layers') || '{}')); } catch (e) { return Object.assign({}, LAYER_DEF); } })();
@@ -2101,10 +2200,12 @@ function layersMenu() {
   const el = document.createElement('div'); el.className = 'layerspop'; el.id = 'layersPop';
   el.innerHTML = `<div class="lyhead"><b>Map layers</b><button class="locx" id="lyClose">✕</button></div>
     ${row('coins', '🪙', 'Road coins', 'Coins along streets & trails')}
-    ${DB.remote ? row('fields', '⚑', 'Faction fields', 'States tinted by the leading faction') + row('bar', '📊', 'Standings bar', 'Field counts at a glance') : ''}`;
+    ${DB.remote ? row('fields', '⚑', 'Faction fields', 'States tinted by the leading faction') + row('bar', '📊', 'Standings bar', 'Field counts at a glance')
+      + '<button class="btn sm ghost lygm" id="lyGm">🌎 Global control map</button>' : ''}`;
   $('#maprow').appendChild(el);
   el.addEventListener('change', e => { const k = e.target.dataset.ly; if (k) setLayer(k, e.target.checked); });
   $('#lyClose', el).onclick = () => el.remove();
+  const g = $('#lyGm', el); if (g) g.onclick = () => { el.remove(); openControlMap(); };
   setTimeout(() => { const off = e => { if (!el.contains(e.target) && e.target.id !== 'layersBtn') { el.remove(); document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); }, 0);
 }
 
@@ -2150,13 +2251,19 @@ function glyphMark(id) {
 const GLYPH_FAST_MS = 900, GLYPH_ITEM_CHANCE = 0.5;
 // `after` runs once the hack is over, win or lose: it carries out the trade the player had
 // lined up in the chest before starting the hack.
-function glyphGame(id, after) {
+// Higher-level chests: longer, quicker glyphs that pay more and drop better items.
+function glyphSpec(lvl) {
+  lvl = Math.max(1, Math.min(8, lvl || 1));
+  return { lvl, len: Math.min(8, 4 + Math.floor((lvl - 1) / 2) + (Math.random() < 0.5 ? 1 : 0)), step: lvl >= 6 ? 400 : lvl >= 4 ? 440 : 470,
+    mult: 1 + 0.2 * (lvl - 1), fastBonus: 10 + 5 * (lvl - 1), itemChance: Math.min(0.85, GLYPH_ITEM_CHANCE + 0.05 * (lvl - 1)), itemBoost: 1.4 + 0.25 * (lvl - 1) };
+}
+function glyphGame(id, after, chestLvl) {
   if (glyphLeft(id) > 0) { toast(`✨ This chest's glyph is recharging – ready in ${Math.ceil(glyphLeft(id) / 60000)} min`); return; }
   glyphMark(id); P.stats.glyphs = (P.stats.glyphs || 0) + 1; save();
-  const N = 9, len = 4 + Math.floor(Math.random() * 2), seq = [];
+  const G = glyphSpec(chestLvl), N = 9, len = G.len, seq = [];
   while (seq.length < len) { const n = Math.floor(Math.random() * N); if (!seq.includes(n)) seq.push(n); }
   const dots = Array.from({ length: N }, (_, i) => `<button class="gdot" data-g="${i}"></button>`).join('');
-  modal(`<div style="text-align:center"><h3>✨ Glyph hack</h3><p class="sub" id="gMsg">Watch the glyph…</p>
+  modal(`<div style="text-align:center"><h3>✨ Glyph hack${G.lvl > 1 ? ` <span class="glv" style="--lc:${LVLC[G.lvl]}">Lv ${G.lvl}</span>` : ''}</h3><p class="sub" id="gMsg">Watch the glyph… <small class="fine">(${len} points)</small></p>
     <div class="glyph" id="gGrid">${dots}</div><div id="gPrize"></div>
     <p class="fine" id="gHint">Repeat the pattern for bonus coins. Solve it fast for a chance at an item.${after ? '<br>Your trade goes through when the hack ends.' : ''}</p></div>`, m => {
     $('#modal').onclick = null;                    // no tapping out mid-hack: the trade must still run
@@ -2164,8 +2271,8 @@ function glyphGame(id, after) {
     let accepting = false, idx = 0, t0 = 0, over = false;
     const finish = delay => { if (over) return; over = true; setTimeout(() => { closeModal(); if (after) after(); }, delay); };
     const flash = i => { els[i].classList.add('lit'); setTimeout(() => els[i].classList.remove('lit'), 320); };
-    seq.forEach((n, i) => setTimeout(() => flash(n), 500 + i * 470));
-    setTimeout(() => { accepting = true; t0 = performance.now(); msg.textContent = 'Your turn — tap the glyph'; }, 500 + seq.length * 470 + 250);
+    seq.forEach((n, i) => setTimeout(() => flash(n), 500 + i * G.step));
+    setTimeout(() => { accepting = true; t0 = performance.now(); msg.textContent = 'Your turn — tap the glyph'; }, 500 + seq.length * G.step + 250);
     grid.onclick = e => {
       const btn = e.target.closest('.gdot'); if (!btn || !accepting) return;
       const n = +btn.dataset.g; flash(n);
@@ -2174,8 +2281,8 @@ function glyphGame(id, after) {
         if (idx >= seq.length) {
           accepting = false;
           const secs = (performance.now() - t0) / 1000, fast = secs * 1000 <= len * GLYPH_FAST_MS;
-          const coins = 20 + len * 6 + (fast ? 10 : 0);
-          const item = fast && Math.random() < GLYPH_ITEM_CHANCE ? rollItem(Math.random, 1.4) : null, fresh = item && !P.dex[item.id];
+          const coins = Math.round((20 + len * 6) * G.mult) + (fast ? G.fastBonus : 0);
+          const item = fast && Math.random() < G.itemChance ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
           earn(coins, '✨ Glyph bonus'); if (item) addItem(item.id);
           P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; checkAch(); save();
           msg.innerHTML = `✨ <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
@@ -2634,6 +2741,7 @@ function renderMe() {
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
   wireLB(); fillMeRank();
   if ($('#standRefresh')) $('#standRefresh').onclick = () => fillStandings(true);
+  if ($('#gmOpen')) $('#gmOpen').onclick = openControlMap;
   fillStandings();
   const tj = $('#teamJoin'); if (tj) tj.onclick = () => chooseTeamDialog(true);
   const ts = $('#teamSwitch'); if (ts) ts.onclick = () => chooseTeamDialog(false);
@@ -3133,16 +3241,30 @@ const CHEST_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 10.
   <rect x="3.6" y="10.6" width="16.8" height="8.9" rx="1.6" fill="var(--wood)"/><path d="M3.6 10.6h16.8" stroke="#0006" stroke-width="1.1"/>
   <path d="M7.3 5.6v13.9M16.7 5.6v13.9" stroke="var(--band)" stroke-width="1.9"/>
   <rect x="10.3" y="9" width="3.4" height="4.4" rx=".9" fill="var(--band)"/><circle cx="12" cy="11.3" r=".65" fill="#2a1606"/></svg>`;
+let lvlAsked = new Map(), lvlTimer = null;
+function fetchLevelsSoon() { clearTimeout(lvlTimer); lvlTimer = setTimeout(fetchLevels, 700); }
+async function fetchLevels() {
+  if (!DB.remote || !pos) return;
+  const now = Date.now();
+  const want = inRadius().filter(isFound).slice(0, 200).map(c => c.id).filter(id => !(now - (lvlAsked.get(id) || 0) < 600000));
+  if (!want.length) return;
+  want.forEach(id => lvlAsked.set(id, now));
+  const got = await DB.chestLevels(want);
+  let changed = false;
+  for (const id of want) { const v = got[id] || 0; if ((LVL.get(id) || 0) !== v) { LVL.set(id, v); changed = true; } }
+  if (changed) drawChestMarkers();
+}
 function chestPin(c, extra) {
-  const rare = isRare(c), seen = !!(P && P.stats.visited[c.id]);
+  const rare = isRare(c), seen = !!(P && P.stats.visited[c.id]), lv = chestLevel(LVL.get(c.id));
   const cls = 'cm cm2' + (c.kind === 'player' ? ' pl' : '') + (rare ? ' rare' : '') + (seen ? ' seen' : ' fresh') + (extra || '');
   return L.divIcon({ className: cls, iconSize: [36, 44], iconAnchor: [18, 42],
-    html: `<div class="pin">${CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}` });
+    html: `<div class="pin">${CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}` });
 }
 function drawChestMarkers() {
   if (!map || !window.L || !pos) return;
   markers.forEach(m => m.remove()); markers = [];
   const found = inRadius().filter(isFound).slice(0, 200);
+  fetchLevelsSoon();
   const openOne = c => {
     const d = dist(pos, c);
     if (d <= unlockM(c)) return openChest(c.id);
@@ -3351,8 +3473,18 @@ async function openChest(id, byDrone) {
   const cine = chestCinematic(meta.name);
   try {
     const day = utcDay();
-    const r = await DB.tx('chests/' + id, cur => !cur ? makeChest(meta, day) : ((cur.day || 0) < day ? refreshChest(cur, meta, day) : undefined));
     const firstVisit = !P.stats.visited[id];
+    const r = await DB.tx('chests/' + id, cur => {
+      if (!cur) { const c = makeChest(meta, day); c.visits = firstVisit ? 1 : 0; return c; }
+      let changed = false;
+      if ((cur.day || 0) < day) { refreshChest(cur, meta, day); changed = true; }
+      if (firstVisit) { cur.visits = (cur.visits || 0) + 1; changed = true; }   // each explorer counts once
+      return changed ? cur : undefined;
+    });
+    if (r.value) { const was = LVL.get(id) || 0; LVL.set(id, r.value.visits || 0); lvlAsked.set(id, Date.now());
+      if (chestLevel(was) !== chestLevel(r.value.visits)) drawChestMarkers();
+      // your visit was the one that pushed it over a threshold
+      if (firstVisit && LVL_AT.indexOf(r.value.visits) > 0) setTimeout(() => { toast(`⬆️ You levelled ${meta.name} up to level ${chestLevel(r.value.visits)}!`, 'gold'); earn(10 * chestLevel(r.value.visits), 'Chest level-up'); }, 2600); }
     P.stats.visited[id] = 1; save();
     if (locTarget === id) stopLocate(true);
     await cine.done;
@@ -3375,6 +3507,12 @@ async function openChest(id, byDrone) {
     }
   } catch (e) { cine.kill(); toast('Could not open chest: ' + e.message, 'bad'); }
 }
+function lvlChip(chest) {
+  const v = chest.visits || 0, l = chestLevel(v), next = LVL_AT[l];   // LVL_AT[l] = visitors needed for level l+1
+  const from = LVL_AT[l - 1], pct = next ? Math.round((v - from) / (next - from) * 100) : 100;
+  return `<div class="lvlchip" style="--lc:${LVLC[l]}"><b>Lv ${l}</b><span>${v} explorer${v === 1 ? '' : 's'}</span>
+    <span class="lvbar"><i style="width:${pct}%"></i></span><small>${next ? `Lv ${l + 1} at ${next}` : 'Max level'}</small></div>`;
+}
 function showChest(meta, chest, canGlyph) {
   const wait = tradeWait(meta.id), done = wait > 0;
   const gLeft = glyphLeft(meta.id);
@@ -3385,6 +3523,7 @@ function showChest(meta, chest, canGlyph) {
   modal(`<div class="chestopen still lit" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
     <h3 style="text-align:center">${isRare(meta) ? '✨ ' : ''}${esc(meta.name)}</h3>
     <p class="chestby">${isRare(meta) ? '✨ Rare cache – guaranteed Epic or better' : chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at }))}</p>
+    ${lvlChip(chest)}
     <p class="sub">${done ? `You traded here recently – you can look, and swap again in ${fmtWait(wait)}.` : `Pick one item to take, then one of yours to leave behind. One trade per chest every ${fmtWait(TRADE_MS())}.`}</p>
     <div class="lbl">Inside the chest</div>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
@@ -3394,17 +3533,19 @@ function showChest(meta, chest, canGlyph) {
     <div class="chestfoot">
       ${gLeft ? `<button class="btn sm ghost" id="glyphBtn" disabled title="Each chest can be glyph hacked once every 30 minutes">\u{2728} Glyph ready in ${Math.ceil(gLeft / 60000)} min</button>`
         : `<button class="btn sm" id="glyphBtn">\u{2728} Glyph hack – bonus</button>`}
+      ${DB.remote ? `<button class="btn sm ghost" id="fxBtn">\u{1F386} Celebrate</button>` : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
       <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
     </div>`, m => {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
+    const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta);
     const gy = $('#glyphBtn', m);
     if (gy && !gy.disabled) gy.onclick = () => {
       // hack first, then the lined-up trade (if any) goes through whatever the glyph result
       const trade = !done && selGet && selGive ? [selGet, chest.items[selGet].id, selGive] : null;
-      glyphGame(meta.id, trade ? () => doTrade(meta, trade[0], trade[1], trade[2]) : null);
+      glyphGame(meta.id, trade ? () => doTrade(meta, trade[0], trade[1], trade[2]) : null, chestLevel(chest.visits));
     };
     // Lid lifts, light spills out, then the items rise one after another. The whole
     // sequence lands in well under a second so it never feels like waiting.
@@ -3797,6 +3938,7 @@ function wire() {
   $('#facBar').onclick = openStandings;
   $('#layersBtn').onclick = layersMenu; setTimeout(applyLayers, 1500);
   setTimeout(() => fillStandings(), 2500); setInterval(() => { if (!document.hidden) fillStandings(); }, 180000);
+  setTimeout(() => loadFx(true), 3000); setInterval(() => { if (!document.hidden) { loadFx(); drawFx(); } }, 90000);
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';

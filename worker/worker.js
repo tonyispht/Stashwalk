@@ -316,6 +316,49 @@ export default {
         results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
         return json({ value: out }, 200, cors);
       }
+      // ---- beacons & fireworks: short-lived effects anyone can see at a chest ----------------
+      // fx/<chest> = { type, by, team, lat, lon, at, until }. Not reachable through /kv.
+      if (url.pathname === '/fx/set' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''), type = String(b.type || ''), lat = +b.lat, lon = +b.lon;
+        const DUR = { beacon: 3600000, fireworks: 1800000 };
+        if (!/^[a-z0-9_]{3,40}$/i.test(chest) || !DUR[type] || !isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)
+          return json({ error: 'bad effect' }, 400, cors);
+        const now = Date.now();
+        const cur = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('fx/' + chest).first();
+        if (cur) { try { const c = JSON.parse(cur.val); if (c.until > now && c.user !== me) return json({ error: 'busy', until: c.until, by: c.by }, 409, cors); } catch (e) {} }
+        const lastRow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('fxlast/' + me).first();
+        if (lastRow && now - (+lastRow.val || 0) < 60000) return json({ error: 'slow down' }, 429, cors);
+        const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+        let team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} }
+        const rec = { type, user: me, by: await nameOfUser(env, me), team: TEAMS.has(team) ? team : null, lat, lon, at: now, until: now + DUR[type] };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('fx/' + chest, JSON.stringify(rec)).run();
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('fxlast/' + me, String(now)).run();
+        return json({ ok: true, until: rec.until }, 200, cors);
+      }
+      if (url.pathname === '/fx/active' && req.method === 'GET') {
+        const now = Date.now(), out = [], dead = [];
+        const { results } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'fx/%' LIMIT 2000").all();
+        results.forEach(r => { try { const c = JSON.parse(r.val); if (c.until > now) out.push({ chest: r.path.slice(3), type: c.type, by: c.by, team: c.team, lat: c.lat, lon: c.lon, until: c.until }); else dead.push(r.path); } catch (e) { dead.push(r.path); } });
+        if (dead.length) for (let i = 0; i < dead.length; i += 90) { const part = dead.slice(i, i + 90);
+          await env.DB.prepare('DELETE FROM kv WHERE path IN (' + part.map(() => '?').join(',') + ')').bind(...part).run(); }
+        return json({ value: out, now }, 200, cors);
+      }
+      // Unique-visitor counts for a batch of chests (drives chest levels on the map).
+      if (url.pathname === '/chests/levels' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).filter(i => /^[a-z0-9_]{3,40}$/i.test(i)).slice(0, 300);
+        const out = {};
+        for (let i = 0; i < ids.length; i += 90) {               // D1 caps bound parameters per query
+          const part = ids.slice(i, i + 90);
+          const { results } = await env.DB.prepare('SELECT path, val FROM kv WHERE path IN (' + part.map(() => '?').join(',') + ')')
+            .bind(...part.map(x => 'chests/' + x)).all();
+          results.forEach(r => { try { const v = JSON.parse(r.val).visits; if (v) out[r.path.slice(7)] = v; } catch (e) {} });
+        }
+        return json({ value: out }, 200, cors);
+      }
       // Global faction standings: cells led (ties count for nobody), total points, members.
       if (url.pathname === '/teams/standings' && req.method === 'GET') {
         const out = {}; TEAMS.forEach(t => { out[t] = { cells: 0, points: 0, members: 0 }; });

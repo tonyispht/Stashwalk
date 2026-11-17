@@ -190,6 +190,21 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
+    async fxSet(chest, type, lat, lon) {
+      if (!W || !auth) throw new Error('Effects need the shared world');
+      const r = await fetch(W + '/fx/set', { method: 'POST', headers: whead(), body: JSON.stringify({ chest, type, lat, lon }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(j.error || 'fx ' + r.status); e.data = j; throw e; }
+      return j;
+    },
+    async fxActive() {
+      if (!W) return [];
+      try { const r = await fetch(W + '/fx/active'); const j = await r.json().catch(() => null); return j && j.value || []; } catch (e) { return []; }
+    },
+    async chestLevels(ids) {
+      if (!W || !ids.length) return {};
+      try { const r = await fetch(W + '/chests/levels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
+    },
     async teamStandings() {
       if (!W) return null;
       try { const r = await fetch(W + '/teams/standings'); if (!r.ok) return null; const j = await r.json().catch(() => null); return j && j.value ? j : null; } catch (e) { return null; }

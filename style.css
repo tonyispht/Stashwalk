@@ -1066,3 +1066,65 @@ body.modal-open .cm2 .pin,.ios .cm2.near .pin{animation:none}
 .dhead .dhic .dronesvg.mini{width:24px;height:24px}
 .gprize{display:flex;align-items:center;gap:12px;justify-content:center;margin:10px auto 0;padding:8px 12px;border-radius:12px;background:#ffffff0a;max-width:280px;text-align:left;animation:lyIn .25s ease-out}
 .gprize .tile{width:58px;flex:none}
+
+/* ---- chest levels ---- */
+.cm2 .lvb{position:absolute;left:-3px;bottom:7px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#0f1a14;border:1.5px solid var(--lc);
+  color:var(--lc);font-size:9px;font-weight:800;line-height:12px;text-align:center;box-shadow:0 0 6px color-mix(in srgb,var(--lc) 60%,transparent)}
+.lvlchip{display:flex;align-items:center;gap:8px;margin:2px auto 8px;padding:6px 10px;border-radius:12px;background:#ffffff08;border:1px solid color-mix(in srgb,var(--lc) 45%,transparent);max-width:340px;font-size:12px}
+.lvlchip b{color:var(--lc);font-size:13px;white-space:nowrap}
+.lvlchip span:not(.lvbar){white-space:nowrap;color:var(--ink)}
+.lvlchip .lvbar{flex:1;min-width:40px;height:5px;border-radius:99px;background:#ffffff14;overflow:hidden}
+.lvlchip .lvbar i{display:block;height:100%;background:var(--lc);border-radius:99px}
+.lvlchip small{color:var(--mut,#9fb8aa);white-space:nowrap;font-size:10.5px}
+.glv{display:inline-block;vertical-align:middle;font:800 11px/1 system-ui,sans-serif;padding:3px 7px;border-radius:99px;border:1.5px solid var(--lc);color:var(--lc);margin-left:4px}
+
+/* ---- global control map ---- */
+.gmhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.gmhead h3{margin:0}
+.gmap{height:min(52vh,420px);border-radius:14px;overflow:hidden;border:1px solid #2a4a39;background:#0b1410}
+.gmap .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.5)}
+.gmap .leaflet-popup-content{font-size:13px;line-height:1.4;color:#10201a}
+.gmlegend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;margin:10px 2px}
+.gmlegend span{display:flex;align-items:center;gap:5px}
+.gmlegend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.gmlegend i.hatch{background:repeating-linear-gradient(45deg,#ffffff55 0 2px,transparent 2px 5px);border:1px dashed #fff8}
+.lygm{width:100%;margin:6px 0 4px}
+#factionCard .ahead span{display:flex;gap:4px}
+.chestfoot{flex-wrap:wrap}
+.chestfoot .btn{flex:1 1 auto}
+
+/* ---- beacons & fireworks ---- */
+.fxmark{background:none!important;border:0!important;pointer-events:auto}
+.fxb{position:relative;width:40px;height:140px}
+.fxb .beam{position:absolute;left:50%;bottom:8px;width:14px;height:130px;margin-left:-7px;border-radius:7px 7px 2px 2px;
+  background:linear-gradient(to top,var(--fc) 0%,color-mix(in srgb,var(--fc2) 70%,transparent) 45%,transparent 100%);filter:blur(1.5px);opacity:.85;animation:fxBeam 2.4s ease-in-out infinite}
+.fxb .halo{position:absolute;left:50%;bottom:0;width:40px;height:16px;margin-left:-20px;border-radius:50%;background:radial-gradient(var(--fc2),transparent 70%);opacity:.8;animation:fxHalo 2.4s ease-in-out infinite}
+.fxb .core{position:absolute;left:50%;bottom:4px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;box-shadow:0 0 10px var(--fc2),0 0 22px var(--fc)}
+@keyframes fxBeam{0%,100%{opacity:.6;transform:scaleX(.85)}50%{opacity:1;transform:scaleX(1.15)}}
+@keyframes fxHalo{0%,100%{transform:scale(.9);opacity:.6}50%{transform:scale(1.2);opacity:1}}
+.fxf{position:relative;width:120px;height:120px;pointer-events:none}
+.fxf .burst{position:absolute;width:0;height:0;left:60px;top:60px;animation:fxBurst 2.6s ease-out infinite}
+.fxf .b1{left:30px;top:44px;animation-delay:.85s}
+.fxf .b2{left:88px;top:38px;animation-delay:1.7s}
+.fxf .burst b{position:absolute;left:-2px;top:-2px;width:4px;height:4px;border-radius:50%;background:var(--fc2);box-shadow:0 0 6px var(--fc);transform:rotate(var(--a)) translateY(0)}
+.fxf .b1 b{background:#fff}
+.fxf .burst{opacity:0}
+@keyframes fxBurst{0%{opacity:0}8%{opacity:1}70%{opacity:1}100%{opacity:0}}
+.fxf .burst b{animation:fxSpark 2.6s ease-out infinite;animation-delay:inherit}
+@keyframes fxSpark{0%{transform:rotate(var(--a)) translateY(0) scale(1)}60%{transform:rotate(var(--a)) translateY(-30px) scale(1)}100%{transform:rotate(var(--a)) translateY(-36px) scale(.3)}}
+body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.fxb *,.fxf *{animation:none!important}.fxf .burst{opacity:1}}
+.fxopts{display:grid;gap:8px;margin:12px 0}
+.fxopt{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;border:1px solid #2a4a39;background:#13241b;color:var(--ink);text-align:left;cursor:pointer;font:inherit}
+.fxopt:disabled{opacity:.5;cursor:not-allowed}
+.fxopt .fxic{font-size:26px}
+.fxopt .fxtx{flex:1;display:flex;flex-direction:column;line-height:1.25}
+.fxopt .fxtx small{color:var(--mut,#9fb8aa);font-size:11.5px}
+.fxopt .fxcost{font-weight:700;color:var(--acc2);white-space:nowrap}
+/* stronger beacon */
+.fxb .beam{width:22px;margin-left:-11px;filter:blur(.6px);opacity:1;
+  background:linear-gradient(to top,var(--fc) 0%,color-mix(in srgb,var(--fc) 80%,transparent) 30%,color-mix(in srgb,var(--fc2) 50%,transparent) 65%,transparent 100%);
+  box-shadow:0 0 18px color-mix(in srgb,var(--fc) 70%,transparent)}
+.fxb .beam::after{content:"";position:absolute;left:50%;bottom:0;width:5px;height:100%;margin-left:-2.5px;border-radius:3px;background:linear-gradient(to top,#fff,#ffffffaa 50%,transparent)}
+.fxb .halo{width:54px;height:20px;margin-left:-27px}
+.fxf .burst b{width:3px;height:9px;left:-1.5px;top:-4.5px;border-radius:2px}
