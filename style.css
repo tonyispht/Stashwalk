@@ -1658,3 +1658,4 @@ body.linkpick .boostbar{display:none}
 .sw.tr-rainbow{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d)}
 .sw.tr-bubbles{background:radial-gradient(circle at 35% 40%,transparent 4px,#bff6ff 5px,transparent 6px),radial-gradient(circle at 65% 65%,transparent 3px,#bff6ff 4px,transparent 5px),var(--card)}
 .sw.tr-ghost{background:radial-gradient(circle,#e8f0ffaa,var(--card) 70%)}
+.dmph.capped{color:#7ff0ff}

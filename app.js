@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181620';
+const APP_BUILD = '202611181640';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -1261,6 +1261,15 @@ function endFlight(why) {
   }
   markNear();
 }
+// Zoomed in, a fast drone crosses the screen in a blink, so its top speed is capped to what you can
+// steer: about 140 screen pixels a second. Zoomed out, it flies at its full level speed.
+const DRONE_SCREEN_PXS = 140;
+function droneSpeedNow() {
+  const top = droneTop(droneState().lvl);
+  if (!map || !fly) return top;
+  const mpp = 156543.03 * Math.cos(fly.ll.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+  return Math.min(top, Math.max(15 * 0.44704, DRONE_SCREEN_PXS * mpp));
+}
 function flyStep(now) {
   if (!fly) return;
   const dt = Math.min(0.05, (now - fly.last) / 1000); fly.last = now;
@@ -1274,7 +1283,7 @@ function flyStep(now) {
   // speed is the stick and nothing else: a light push creeps, a full push races, and the
   // drone never slows, steers or opens anything on its own
   // a thumb rarely reaches the rim of the stick, so 85% of the way out already counts as full
-  const sp = droneTop(droneState().lvl) * Math.pow(Math.min(1, Math.hypot(ix, iy) / 0.85), 1.3);
+  const sp = droneSpeedNow() * Math.pow(Math.min(1, Math.hypot(ix, iy) / 0.85), 1.3);
   if (sp > 0.01) {
     const a = Math.atan2(iy, ix), mx = Math.cos(a) * sp * dt, my = -Math.sin(a) * sp * dt;   // screen up = north
     let lat = fly.ll.lat + my / 111320, lon = fly.ll.lon + mx / (111320 * Math.cos(fly.ll.lat * Math.PI / 180));
@@ -1362,6 +1371,8 @@ function renderDroneHud(build) {
     $('#dronePark', hud).onclick = () => endFlight('park');
     $('#droneHide', hud).onclick = () => { if (fly) hideDialog({ lat: fly.ll.lat, lon: fly.ll.lon }, true); };
   }
+  const sm = $('.dmph', hud); if (sm) { const now = Math.round(droneSpeedNow() / 0.44704), top = droneMph(d.lvl);
+    sm.textContent = now < top ? `${now} mph · zoom out for ${top}` : `${top} mph`; sm.classList.toggle('capped', now < top); }
   const rf = Math.min(1, out / R);
   const ri = $('#dRange', hud); if (ri) { ri.style.width = Math.round(rf * 100) + '%'; ri.style.background = rf > .9 ? 'var(--bad)' : '#7ff0ff'; }
   const rt = $('#dRangeTxt', hud); if (rt) rt.textContent = `${fmtFt(out)} / ${fmtFt(R)}${rf > .97 ? ' · edge of range' : ''}`;
@@ -4527,7 +4538,7 @@ function initMap() {
   applyBasemap(); try { lifeInit(); } catch (e) {}
   map.on('click', e => { if (admPlacing) return adminMapClick(e); if (DEV) setPos(e.latlng.lat, e.latlng.lng, 2, true); });
   // re-cluster the chest markers whenever the view changes
-  map.on('zoomend', () => drawChestMarkers());
+  map.on('zoomend', () => drawChestMarkers()); map.on('zoomend', () => { if (fly) renderDroneHud(); });
   map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon); map.on('zoomend', rememberZoom); map.on('moveend', loadLinksSoon);
   map.on('moveend', () => { if (!othersBusy) { clearTimeout(othersTimer); othersTimer = setTimeout(pollDrones, 400); } });
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
