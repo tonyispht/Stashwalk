@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181640';
+const APP_BUILD = '202611181650';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -4425,7 +4425,7 @@ function lifeInit() {
   lifeSky(); setInterval(lifeSky, 60000);
   document.addEventListener('visibilitychange', lifeKick);
   lifeKick();
-  setInterval(lifePulse, 40000); setTimeout(lifePulse, 4000);
+  setInterval(lifePulse, 4000); setTimeout(lifePulse, 1500);
 }
 function lifeSky() {
   if (!LIFE.sky) return;
@@ -4509,11 +4509,13 @@ const PULSE_ICON = { open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣',
 const PULSE_TEXT = { open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
 async function lifePulse() {
   if (!map || !DB.remote || !DB.pulse || document.hidden || view !== 'explore' || !juicy()) return;
-  if (Date.now() - LIFE.pulseT < 30000) return; LIFE.pulseT = Date.now();
+  if (Date.now() - LIFE.pulseT < 3500 || LIFE.pulseBusy) return; LIFE.pulseT = Date.now(); LIFE.pulseBusy = true;
   const b = map.getBounds().pad(.2);
-  const list = await DB.pulse(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+  let list = []; try { list = await DB.pulse(b.getSouth(), b.getWest(), b.getNorth(), b.getEast()); } finally { LIFE.pulseBusy = false; }
+  // the first look after opening the map only replays the last 10 minutes
+  if (!LIFE.pulsed) { LIFE.pulsed = true; list = list.filter(e => Date.now() - e.t < 600000); }
   const fresh = list.filter(e => !LIFE.seen.has(e.id)).slice(0, 6);
-  fresh.forEach((e, i) => { LIFE.seen.add(e.id); setTimeout(() => showPulse(e), i * 1400 + Math.random() * 900); });
+  fresh.forEach((e, i) => { LIFE.seen.add(e.id); setTimeout(() => showPulse(e), i * 600); });
   if (LIFE.seen.size > 500) LIFE.seen = new Set([...LIFE.seen].slice(-200));
 }
 function showPulse(e) {
@@ -4522,8 +4524,8 @@ function showPulse(e) {
   const m = L.marker([e.lat, e.lon], { icon: L.divIcon({ className: 'lifepulse k-' + e.k, html: `<i></i><i></i><b>${ic}</b>`, iconSize: [90, 90] }), interactive: false, keyboard: false, zIndexOffset: -200 }).addTo(map);
   setTimeout(() => { try { map.removeLayer(m); } catch (er) {} }, 4200);
   if (pos && map.getBounds().contains([e.lat, e.lon])) {
-    const d = dist(pos, e), mins = Math.max(2, Math.round((Date.now() - e.t) / 60000));
-    worldTick(`${ic} Someone ${PULSE_TEXT[e.k] || 'was busy'} ${fmtDist(d)} away · ${mins} min ago`);
+    const d = dist(pos, e), secs = Math.max(0, (Date.now() - e.t) / 1000), when = secs < 60 ? 'just now' : Math.round(secs / 60) + ' min ago';
+    worldTick(`${ic} Someone ${PULSE_TEXT[e.k] || 'was busy'} ${fmtDist(d)} away · ${when}`);
   }
 }
 function worldTick(text) {

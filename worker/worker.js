@@ -574,7 +574,7 @@ export default {
         return json({ value: out }, 200, cors);
       }
       // ---- world pulse: anonymous recent activity near you, so the map feels alive -----------
-      // No names, ~100 m rounding (done at /act), and nothing newer than 90 s so it can't be used to follow anyone.
+      // No names, and positions are rounded to ~100 m (done at /act).
       if (url.pathname === '/pulse' && req.method === 'GET') {
         const bb = String(url.searchParams.get('b') || '').split(',').map(Number);
         if (bb.length !== 4 || bb.some(x => !isFinite(x))) return json({ error: 'bad box' }, 400, cors);
@@ -586,7 +586,7 @@ export default {
         const me = String(req.headers.get('X-User') || '').toLowerCase(), out = [];
         for (const ev of list) {
           const age = now - ev.t; if (age > 1800000) break;
-          if (age < 90000 || !PUB.has(ev.k) || ev.lat == null) continue;
+          if (!PUB.has(ev.k) || ev.lat == null) continue;
           if (me && String(ev.u || '').toLowerCase() === me) continue;
           if (ev.lat < s0 || ev.lat > n0 || ev.lon < w0 || ev.lon > e0) continue;
           let h = 0; for (const ch of String(ev.t) + ev.k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
