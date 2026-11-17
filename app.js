@@ -239,7 +239,7 @@ function newPlayer(name, ref) {
            stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0, walkedM: 0, walkPaid: 0, coinsEarned: 0, coinsSpent: 0, bought: 0 },
            daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
            coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} }, found: {},
-           cos: { owned: {}, eq: {} }, chal: {}, lb: {}, team: '', glyphDone: {} };
+           cos: { owned: {}, eq: {} }, chal: {}, lb: {}, team: '', glyphDone: {}, keys: {} };
 }
 // One trade per chest per TRADE_COOLDOWN_MIN. P.exch[chestId] is when you last traded there.
 const TRADE_MS = () => (C.TRADE_COOLDOWN_MIN || 60) * 60000;
@@ -265,6 +265,7 @@ function normalize(p) {
   p.cos = p.cos && typeof p.cos === 'object' ? p.cos : { owned: {}, eq: {} };
   p.cos.owned = p.cos.owned || {}; p.cos.eq = p.cos.eq || {};
   p.team = p.team || ''; p.glyphDone = p.glyphDone && typeof p.glyphDone === 'object' ? p.glyphDone : {};
+  p.keys = p.keys && typeof p.keys === 'object' ? p.keys : {};
   p.chal = p.chal && typeof p.chal === 'object' ? p.chal : {};
   p.lb = p.lb && typeof p.lb === 'object' ? p.lb : {};
   return p;
@@ -1652,11 +1653,12 @@ function act(k, x, at) {
 const EV = { signup: ['🆕', 'created an account'], online: ['🟢', 'came online'], newchest: ['📦', 'found a new chest'], open: ['📂', 'opened'],
   trade: ['🔁', 'traded'], gift: ['🎁', 'left a gift'], hide: ['🫳', 'hid a chest'], glyph: ['✨', 'glyph hacked'], glyphfail: ['❌', 'broke a glyph'],
   levelup: ['⬆️', 'levelled up a chest'], fx: ['🎆', 'set off'], team: ['⚑', 'joined'], ach: ['🏅', 'earned'], merge: ['🧪', 'merged into'],
-  craft: ['⚒️', 'crafted'], daily: ['📅', 'claimed the daily reward'], drone: ['🚁', 'launched the drone'] };
-const EV_NOTIFY = new Set(['signup', 'online', 'hide', 'levelup', 'fx', 'team']);   // the rest stay in the feed, no pop-ups
+  craft: ['⚒️', 'crafted'], daily: ['📅', 'claimed the daily reward'], drone: ['🚁', 'launched the drone'],
+  link: ['🔗', 'linked'], field: ['🔺', 'made a field'], break: ['💥', 'broke enemy links at'] };
+const EV_NOTIFY = new Set(['signup', 'online', 'hide', 'levelup', 'fx', 'team', 'field', 'break']);   // the rest stay in the feed, no pop-ups
 function evText(e) {
   const d = EV[e.k] || ['•', e.k];
-  return `${d[0]} ${e.u} ${d[1]}${e.x ? (d[1].endsWith(' at') || ['open', 'fx', 'team', 'ach', 'merge', 'craft', 'glyph'].includes(e.k) ? ' ' : ': ') + e.x : ''}`;
+  return `${d[0]} ${e.u} ${d[1]}${e.x ? (d[1].endsWith(' at') || ['open', 'fx', 'team', 'ach', 'merge', 'craft', 'glyph', 'link', 'break'].includes(e.k) ? ' ' : ': ') + e.x : ''}`;
 }
 async function adminPoll() {
   if (!isAdmin() || OFFLINE) return;
@@ -1698,7 +1700,7 @@ const ADM_RAD = [0.5, 1, 5, 25, 100, 500, Infinity];
 let admRad = (() => { try { const raw = localStorage.getItem('sw_admrad'), v = raw == null ? -1 : +raw; return v >= 0 && v < ADM_RAD.length ? v : ADM_RAD.length - 1; } catch (e) { return ADM_RAD.length - 1; } })();
 let admKind = 'all';
 const ADM_KINDS = { all: ['All', null], chests: ['📦 Chests', ['newchest', 'open', 'levelup', 'hide', 'gift']], trades: ['🔁 Trades', ['trade', 'gift']],
-  glyph: ['✨ Glyph', ['glyph', 'glyphfail']], social: ['⚑ Social', ['team', 'fx', 'ach']], items: ['🧪 Items', ['merge', 'craft', 'daily']], people: ['🟢 People', ['signup', 'online', 'drone']] };
+  glyph: ['✨ Glyph', ['glyph', 'glyphfail']], social: ['⚑ Social', ['team', 'fx', 'ach', 'link', 'field', 'break']], items: ['🧪 Items', ['merge', 'craft', 'daily']], people: ['🟢 People', ['signup', 'online', 'drone']] };
 const radLabel = i => ADM_RAD[i] === Infinity ? 'Everywhere' : 'Within ' + (ADM_RAD[i] < 1 ? ADM_RAD[i] + ' mi' : ADM_RAD[i] + ' mi');
 function admActivity(d) {
   const R = ADM_RAD[admRad], kinds = ADM_KINDS[admKind][1], me = pos;
@@ -2383,7 +2385,7 @@ function standRows(d) {
       <div class="standtop"><span class="standrank">${i + 1}</span><span>${T.icon} <b>${T.name}</b>${t === mine ? ' <small>you</small>' : ''}</span>
       <span class="standnum"><b>${fmtC(r.cells)}</b> field${r.cells === 1 ? '' : 's'}</span></div>
       <div class="standbar"><i style="width:${Math.round(r.cells / maxC * 100)}%"></i></div>
-      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}${(d.held && d.held[t] || []).length ? ' · ' + d.held[t].slice(0, 6).map(fieldName).map(esc).join(', ') + (d.held[t].length > 6 ? ' +' + (d.held[t].length - 6) : '') : ''}</small></div>`; }).join('');
+      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}${r.links ? ` · 🔗 ${fmtC(r.links)}` : ''}${r.fields ? ` · 🔺 ${fmtC(r.fields)} (${r.km2 < 10 ? r.km2.toFixed(2) : fmtC(r.km2)} km²)` : ''}${(d.held && d.held[t] || []).length ? ' · ' + d.held[t].slice(0, 6).map(fieldName).map(esc).join(', ') + (d.held[t].length > 6 ? ' +' + (d.held[t].length - 6) : '') : ''}</small></div>`; }).join('');
 }
 function paintFacBar(d) {
   const b = $('#facBar'); if (!b) return;
@@ -2495,6 +2497,11 @@ const GUIDE = () => {
     <ul><li>Every <b>US state</b> is a field. Each first-time chest you open scores a point for your faction in that state (outside the US, large map sectors count instead).</li>
     <li>The faction with the most points holds the state; ties hold for nobody.</li>
     <li>See standings on the <b>Me</b> tab, or open the <b>🌎 Global control map</b> to see the whole country.</li></ul>`],
+  ['🔗', 'Keys, links & fields', `<ul><li>Opening a chest gives you its <b>🔑 key</b> (one per chest). See them in Items → 🔑 Keys.</li>
+    <li>At a chest, tap <b>🔗 Link</b> and pick a key to link the two chests for your faction. The key is used up. Links reach 1 km per level of the chest you're at (8 km at level 8).</li>
+    <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
+    <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
+    <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
   ['🎆', 'Beacons & fireworks', `<p>Tap <b>🎆 Celebrate</b> in a chest to light it up for everyone's map: a <b>🔆 Beacon</b> in your faction colour (1 hour, 80 🪙) or <b>🎆 Fireworks</b> (30 min, 50 🪙). One effect per chest at a time.</p>`],
   ['🗺️', 'Map buttons & layers', `<ul><li>📍 centre on you · 🔄 refresh chests · 🏆 leaderboards · <b>layers</b> · ❔ this key.</li>
     <li><b>Layers</b> toggles road coins, faction fields and the standings bar, and opens the global control map.</li>
@@ -2609,8 +2616,99 @@ async function openControlMap() {
   });
 }
 
+// ---- keys, links & fields (Ingress-style) ----
+// Opening a chest gives you its key (one per chest). At a chest, spend the key of another chest to
+// link the two for your faction; links can't cross, and range grows with the origin chest's level.
+// Three linked chests make a field. A won Hard glyph breaks other factions' links at that chest.
+const MAX_KEYS = 150, LINK_PER_LVL = 1000;
+function gainKey(meta) {
+  if (!DB.remote || !meta || P.keys[meta.id]) return;
+  P.keys[meta.id] = { n: meta.name, lat: meta.lat, lon: meta.lon, at: Date.now() };
+  const ids = Object.keys(P.keys);
+  if (ids.length > MAX_KEYS) ids.sort((a, b) => P.keys[a].at - P.keys[b].at).slice(0, ids.length - MAX_KEYS).forEach(k => delete P.keys[k]);
+  save(); setTimeout(() => toast(`🔑 You got the key to ${meta.name}`), 1800);
+}
+function renderKeys() {
+  const box = $('#keysBox'); if (!box) return;
+  const ks = Object.entries(P.keys).map(([id, k]) => Object.assign({ id, d: pos ? dist(pos, k) : null }, k)).sort((a, b) => (a.d ?? 1e12) - (b.d ?? 1e12));
+  box.innerHTML = `<div class="card"><b>🔑 Chest keys <small class="fine">${ks.length}/${MAX_KEYS}</small></b>
+    <p class="fine" style="margin:6px 0 0">${P.team ? `Open a chest to get its key. At another chest, tap <b>🔗 Link</b> and spend a key to link the two for ${TEAMS[P.team].icon} ${TEAMS[P.team].name}. Link three chests in a triangle to make a field.` : 'Join a faction to use keys for links and fields.'}</p></div>
+    <div class="keylist">${ks.map(k => `<div class="keyrow"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${k.d != null ? fmtDist(k.d) + ' away' : ''}</small></span>
+      <button class="btn sm ghost" data-kgo="${esc(k.id)}" title="Show on map">📍</button><button class="btn sm ghost danger" data-kdrop="${esc(k.id)}" title="Drop key">✕</button></div>`).join('')
+      || '<div class="empty">No keys yet – open a chest to get its key.</div>'}</div>`;
+  box.onclick = e => {
+    const g = e.target.closest('[data-kgo]'); if (g) { const k = P.keys[g.dataset.kgo]; if (k) { show('explore'); setTimeout(() => { try { map.setView([k.lat, k.lon], Math.max(map.getZoom(), 16)); } catch (er) {} }, 150); } return; }
+    const d = e.target.closest('[data-kdrop]'); if (d) { delete P.keys[d.dataset.kdrop]; save(); renderKeys(); }
+  };
+}
+function linkDialog(meta, chest) {
+  if (!P.team) return chooseTeamDialog(false);
+  const lvl = chestLevel(chestXP(chest)), R = lvl * LINK_PER_LVL;
+  const ks = Object.entries(P.keys).filter(([id]) => id !== meta.id).map(([id, k]) => Object.assign({ id, d: dist(meta, k) }, k)).sort((a, b) => a.d - b.d);
+  const inR = ks.filter(k => k.d <= R), out = ks.filter(k => k.d > R);
+  const T = TEAMS[P.team];
+  modal(`<h3>🔗 Link from ${esc(meta.name)}</h3>
+    <p class="sub">Lv ${lvl} chest – links reach <b>${fmtDist(R)}</b>. Pick a key; it's used up. Links can't cross other links. Close a triangle of three chests to make a ${T.icon} field.</p>
+    <div class="keylist">${inR.map(k => `<button class="keyrow pick" data-lk="${esc(k.id)}"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span><span class="kgo">Link →</span></button>`).join('')
+      || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}
+      ${out.length ? `<p class="fine" style="margin:8px 2px 4px">Out of range (${out.length})</p>` + out.slice(0, 8).map(k => `<div class="keyrow off"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span></div>`).join('') : ''}</div>
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>`, m => {
+    $('#cancelBtn', m).onclick = closeModal;
+    $$('[data-lk]', m).forEach(b => b.onclick = async () => {
+      const k = P.keys[b.dataset.lk]; if (!k) return;
+      $$('[data-lk]', m).forEach(x => x.disabled = true);
+      try {
+        const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: b.dataset.lk, lat: k.lat, lon: k.lon, name: k.n });
+        delete P.keys[b.dataset.lk];
+        P.stats.links = (P.stats.links || 0) + 1; earn(15, '🔗 Link');
+        act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
+        let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
+        if (fc) earn(fc, '🔺 Field');
+        save(); checkAch(); closeModal(); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
+        FX.confetti([T.c, T.c2, '#fff'], r.fields && r.fields.length ? 80 : 30);
+        toast(r.fields && r.fields.length ? `🔺 Field created for ${T.name}! +${15 + fc} 🪙` : `🔗 Linked to ${k.n}! +15 🪙`, 'gold');
+        loadLinks(true); fillStandings(true);
+      } catch (e) {
+        $$('[data-lk]', m).forEach(x => x.disabled = false);
+        const d = e.data || {};
+        toast(d.error === 'crosses a link' ? `That link would cross a ${TEAMS[d.team] ? TEAMS[d.team].name + ' ' : ''}link` : d.error === 'too far' ? `Too far – this chest's links reach ${fmtDist(d.max)}` : d.error === 'already linked' ? 'Those chests are already linked' : 'Could not link: ' + e.message, 'bad');
+      }
+    });
+  });
+}
+let linkLayer = null, linkTimer = null, linkData = { links: [], fields: [] };
+function loadLinksSoon() { clearTimeout(linkTimer); linkTimer = setTimeout(() => loadLinks(), 700); }
+async function loadLinks(force) {
+  if (!DB.remote || !map || !window.L || !LAYERS.links) return;
+  const b = map.getBounds().pad(0.4);
+  linkData = await DB.links(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+  drawLinks();
+}
+function drawLinks() {
+  if (!map || !window.L) return;
+  if (!linkLayer) linkLayer = L.layerGroup().addTo(map);
+  linkLayer.clearLayers();
+  if (!LAYERS.links) return;
+  (linkData.fields || []).forEach(f => { const T = TEAMS[f.team]; if (!T) return;
+    L.polygon(f.pts.map(p => [p.lat, p.lon]), { stroke: false, fillColor: T.c, fillOpacity: .2, interactive: false }).addTo(linkLayer); });
+  (linkData.links || []).forEach(l => { const T = TEAMS[l.team]; if (!T) return;
+    L.polyline([[l.alat, l.alon], [l.blat, l.blon]], { color: T.c, weight: 7, opacity: .18, interactive: false, lineCap: 'round' }).addTo(linkLayer);
+    L.polyline([[l.alat, l.alon], [l.blat, l.blon]], { color: T.c2, weight: 2, opacity: .95, interactive: false }).addTo(linkLayer); });
+}
+async function breakLinksAt(id) {
+  if (!DB.remote || !P.team) return;
+  const r = await DB.linksBreak(id);
+  if (!r || !(r.links || r.fields)) return;
+  const c = 20 * r.links + 30 * r.fields; earn(c, '💥 Broke enemy links');
+  P.stats.broke = (P.stats.broke || 0) + r.links; save();
+  const gm = chests.find(c2 => c2.id === id);
+  act('break', `${gm ? gm.name : 'a chest'} · ${r.links} link${r.links === 1 ? '' : 's'}${r.fields ? ', ' + r.fields + ' field' + (r.fields === 1 ? '' : 's') : ''}`, gm);
+  setTimeout(() => toast(`💥 Your hack broke ${r.links} enemy link${r.links === 1 ? '' : 's'}${r.fields ? ` and ${r.fields} field${r.fields === 1 ? '' : 's'}` : ''}! +${c} 🪙`, 'gold'), 1600);
+  loadLinks(true); fillStandings(true);
+}
+
 // ---- map layers (device setting) ----
-const LAYER_DEF = { fields: false, bar: false, coins: true };
+const LAYER_DEF = { fields: false, bar: false, coins: true, links: true };
 let LAYERS = (() => { try { return Object.assign({}, LAYER_DEF, JSON.parse(localStorage.getItem('sw_layers') || '{}')); } catch (e) { return Object.assign({}, LAYER_DEF); } })();
 function setLayer(k, on) {
   LAYERS[k] = !!on; try { localStorage.setItem('sw_layers', JSON.stringify(LAYERS)); } catch (e) {}
@@ -2620,6 +2718,7 @@ function applyLayers() {
   if (map && RC.layer) { if (LAYERS.coins) { if (!map.hasLayer(RC.layer)) RC.layer.addTo(map); } else map.removeLayer(RC.layer); }
   if (!LAYERS.fields && cellLayer) { cellLayer.clearLayers(); }
   if (LAYERS.fields) drawCells(true);
+  if (LAYERS.links) loadLinks(true); else if (linkLayer) linkLayer.clearLayers();
   paintFacBar(standData);
   const lb = $('#layersBtn'); if (lb) lb.classList.toggle('on', LAYERS.fields || LAYERS.bar || !LAYERS.coins);
 }
@@ -2630,6 +2729,7 @@ function layersMenu() {
   const el = document.createElement('div'); el.className = 'layerspop'; el.id = 'layersPop';
   el.innerHTML = `<div class="lyhead"><b>Map layers</b><button class="locx" id="lyClose">✕</button></div>
     ${row('coins', '🪙', 'Road coins', 'Coins along streets & trails')}
+    ${DB.remote ? row('links', '🔗', 'Links & fields', 'Faction links between chests and their fields') : ''}
     ${DB.remote ? row('fields', '⚑', 'Faction fields', 'States tinted by the leading faction') + row('bar', '📊', 'Standings bar', 'Field counts at a glance')
       + '<button class="btn sm ghost lygm" id="lyGm">🌎 Global control map</button>' : ''}`;
   $('#maprow').appendChild(el);
@@ -2737,6 +2837,7 @@ function runGlyph(id, after, lvl, hard) {
           earn(coins, hard ? '🔥 Hard glyph bonus' : '✨ Glyph bonus'); if (item) addItem(item.id);
           P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; if (hard) P.stats.glyphHardWins = (P.stats.glyphHardWins || 0) + 1; checkAch(); save();
           glyphLevelPoint(id, G.points);
+          if (hard) breakLinksAt(id);
           const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${hard ? '🔥 hard ' : ''}${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
           msg.innerHTML = `${hard ? '🔥' : '✨'} <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
           if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
@@ -2810,7 +2911,7 @@ let itemsSub = 'pack', shopSub = 'shop';
 function syncSubViews() {
   $$('#itemsSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === itemsSub));
   $$('#shopSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === shopSub));
-  const sp = $('#sub-pack'), sd = $('#sub-dex'); if (sp && sd) { sp.hidden = itemsSub !== 'pack'; sd.hidden = itemsSub !== 'dex'; }
+  const sp = $('#sub-pack'), sd = $('#sub-dex'), sk = $('#sub-keys'); if (sp && sd) { sp.hidden = itemsSub !== 'pack'; sd.hidden = itemsSub !== 'dex'; if (sk) sk.hidden = itemsSub !== 'keys'; }
   const ss = $('#sub-shop'), sy = $('#sub-style'), sc = $('#sub-craft');
   if (ss && sc) { ss.hidden = shopSub !== 'shop'; if (sy) sy.hidden = shopSub !== 'style'; sc.hidden = shopSub !== 'craft'; }
 }
@@ -2818,7 +2919,7 @@ const renderShopSub = () => (shopSub === 'shop' ? renderShop() : shopSub === 'st
 function setSub(group, sub) {
   if (group === 'items') itemsSub = sub; else shopSub = sub;
   syncSubViews(); FX.sfx('tap'); FX.vibe(8);
-  if (group === 'items') (itemsSub === 'pack' ? renderPack() : renderDex());
+  if (group === 'items') (itemsSub === 'pack' ? renderPack() : itemsSub === 'keys' ? renderKeys() : renderDex());
   else renderShopSub();
   const sv = $('#v-' + group); if (sv) sv.scrollTop = 0;
 }
@@ -3404,7 +3505,7 @@ function initMap() {
   map.on('click', e => { if (admPlacing) return adminMapClick(e); if (DEV) setPos(e.latlng.lat, e.latlng.lng, 2, true); });
   // re-cluster the chest markers whenever the view changes
   map.on('zoomend', () => drawChestMarkers());
-  map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon); map.on('zoomend', rememberZoom);
+  map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon); map.on('zoomend', rememberZoom); map.on('moveend', loadLinksSoon);
   map.on('moveend', () => { if (!othersBusy) { clearTimeout(othersTimer); othersTimer = setTimeout(pollDrones, 400); } });
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
   [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
@@ -3961,6 +4062,7 @@ async function openChest(id, byDrone) {
     if (locTarget === id) stopLocate(true);
     await cine.done;
     showChest(meta, r.value, firstVisit);
+    gainKey(meta);
     act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(chestXP(r.value)) + ')' + (byDrone ? ' by drone' : ''), meta);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
@@ -4024,6 +4126,7 @@ function showChest(meta, chest, canGlyph) {
     <div class="chestfoot">
       ${gLeft ? `<button class="btn sm ghost" id="glyphBtn" disabled title="Each chest can be glyph hacked once every 30 minutes">\u{2728} Glyph ready in ${Math.ceil(gLeft / 60000)} min</button>`
         : `<button class="btn sm" id="glyphBtn">\u{2728} Glyph hack – bonus</button>`}
+      ${DB.remote ? `<button class="btn sm ghost" id="linkBtn">\u{1F517} Link</button>` : ''}
       ${DB.remote ? `<button class="btn sm ghost" id="fxBtn">\u{1F386} Celebrate</button>` : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
       <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
@@ -4032,6 +4135,7 @@ function showChest(meta, chest, canGlyph) {
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
     const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta);
+    const lb = $('#linkBtn', m); if (lb) lb.onclick = () => linkDialog(meta, chest);
     const ar = $('#admRen', m); if (ar) ar.onclick = () => adminRenameDialog(chests.find(c => c.id === meta.id) || meta);
     const am = $('#admRm', m); if (am) am.onclick = () => adminRemoveChest(meta.id);
     const gy = $('#glyphBtn', m);
@@ -4433,7 +4537,7 @@ function wire() {
   $('#facBar').onclick = openStandings;
   $('#layersBtn').onclick = layersMenu; setTimeout(applyLayers, 1500);
   setTimeout(() => fillStandings(), 2500); setInterval(() => { if (!document.hidden) fillStandings(); }, 180000);
-  setTimeout(() => loadFx(true), 3000); setInterval(() => { if (!document.hidden) { loadFx(); drawFx(); } }, 90000);
+  setTimeout(() => loadFx(true), 3000); setTimeout(() => loadLinks(true), 3200); setInterval(() => { if (!document.hidden && view === 'explore') loadLinks(); }, 90000); setInterval(() => { if (!document.hidden) { loadFx(); drawFx(); } }, 90000);
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';
@@ -4462,7 +4566,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { get map() { return map; }, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { get map() { return map; }, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

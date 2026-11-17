@@ -316,6 +316,97 @@ export default {
         results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
         return json({ value: out }, 200, cors);
       }
+      // ---- keys, links & fields (Ingress-style) -------------------------------------------
+      // link/<a>~<b> = { a, b, alat, alon, blat, blon, an, bn, team, by, at }   (a < b)
+      // field/<a>~<b>~<c> = { pts:[{id,lat,lon}x3], team, by, at, km2 }
+      if (url.pathname === '/links/make' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+        let team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} }
+        if (!TEAMS.has(team)) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const pt = o => o && /^[a-z0-9_]{3,40}$/i.test(String(o.id)) && isFinite(+o.lat) && isFinite(+o.lon) && Math.abs(+o.lat) <= 90 && Math.abs(+o.lon) <= 180
+          ? { id: String(o.id), lat: +o.lat, lon: +o.lon, n: String(o.name || '').replace(/[<>]/g, '').slice(0, 40) } : null;
+        const A = pt(b.from), B = pt(b.to);
+        if (!A || !B || A.id === B.id) return json({ error: 'bad chests' }, 400, cors);
+        for (const x of [A, B]) { const bl = await env.DB.prepare('SELECT 1 FROM kv WHERE path = ?').bind('block/' + x.id).first(); if (bl) return json({ error: 'that chest was removed' }, 400, cors); }
+        const R = 6371000, rad = Math.PI / 180;
+        const dm = (p, q) => { const dLa = (q.lat - p.lat) * rad, dLo = (q.lon - p.lon) * rad, h = Math.sin(dLa / 2) ** 2 + Math.cos(p.lat * rad) * Math.cos(q.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+        // range comes from the origin chest's level: 1 km per level
+        const crow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('chests/' + A.id).first();
+        let xp = 0; if (crow) { try { const c = JSON.parse(crow.val); xp = (c.visits || 0) + (c.hacks || 0); } catch (e) {} }
+        const LV = [0, 3, 6, 10, 16, 25, 40, 60]; let lvl = 1; for (let i = 1; i < LV.length; i++) if (xp >= LV[i]) lvl = i + 1;
+        const maxM = lvl * 1000, len = dm(A, B);
+        if (len > maxM) return json({ error: 'too far', len: Math.round(len), max: maxM, lvl }, 400, cors);
+        const [P1, P2] = A.id < B.id ? [A, B] : [B, A], lid = P1.id + '~' + P2.id;
+        const { results: all } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'link/%' LIMIT 5000").all();
+        const links = []; for (const r of all) { try { links.push(JSON.parse(r.val)); } catch (e) {} }
+        if (links.some(l => l.a === P1.id && l.b === P2.id)) return json({ error: 'already linked' }, 409, cors);
+        // no crossing any existing link (sharing an end chest is fine)
+        const X = p => [p.lon * Math.cos(p.lat * rad), p.lat];
+        const cross = (p1, p2, p3, p4) => { const d = (a, b2, c) => (b2[0] - a[0]) * (c[1] - a[1]) - (b2[1] - a[1]) * (c[0] - a[0]);
+          const a1 = X(p1), a2 = X(p2), b1 = X(p3), b2 = X(p4);
+          const d1 = d(b1, b2, a1), d2 = d(b1, b2, a2), d3 = d(a1, a2, b1), d4 = d(a1, a2, b2);
+          return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && d1 && d2 && d3 && d4; };
+        for (const l of links) {
+          if (l.a === P1.id || l.a === P2.id || l.b === P1.id || l.b === P2.id) continue;
+          if (cross(P1, P2, { lat: l.alat, lon: l.alon }, { lat: l.blat, lon: l.blon })) return json({ error: 'crosses a link', team: l.team }, 409, cors);
+        }
+        const name = await nameOfUser(env, me), now = Date.now();
+        const L = { a: P1.id, b: P2.id, alat: P1.lat, alon: P1.lon, blat: P2.lat, blon: P2.lon, an: P1.n, bn: P2.n, team, by: name, at: now };
+        const put = 'INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1';
+        await env.DB.prepare(put).bind('link/' + lid, JSON.stringify(L)).run();
+        // every triangle this link closes with two more links of the same faction becomes a field
+        const mine = links.filter(l => l.team === team).concat([L]);
+        const nb = id => { const m = new Map(); mine.forEach(l => { if (l.a === id) m.set(l.b, { id: l.b, lat: l.blat, lon: l.blon }); else if (l.b === id) m.set(l.a, { id: l.a, lat: l.alat, lon: l.alon }); }); return m; };
+        const n1 = nb(P1.id), n2 = nb(P2.id), fields = [];
+        for (const [cid, C] of n1) {
+          if (!n2.has(cid)) continue;
+          const pts = [P1, P2, C].map(p => ({ id: p.id, lat: p.lat, lon: p.lon })).sort((x, y) => x.id < y.id ? -1 : 1);
+          const fid = pts.map(p => p.id).join('~');
+          const ex = await env.DB.prepare('SELECT 1 FROM kv WHERE path = ?').bind('field/' + fid).first(); if (ex) continue;
+          const xy = pts.map(p => [p.lon * Math.cos(pts[0].lat * rad) * 111.32, p.lat * 110.57]);
+          const km2 = Math.abs((xy[1][0] - xy[0][0]) * (xy[2][1] - xy[0][1]) - (xy[2][0] - xy[0][0]) * (xy[1][1] - xy[0][1])) / 2;
+          const F = { pts, team, by: name, at: now, km2: Math.round(km2 * 1000) / 1000 };
+          await env.DB.prepare(put).bind('field/' + fid, JSON.stringify(F)).run();
+          fields.push(Object.assign({ id: fid }, F));
+        }
+        return json({ ok: true, link: Object.assign({ id: lid }, L), fields, len: Math.round(len), max: maxM }, 200, cors);
+      }
+      if (url.pathname === '/links' && req.method === 'GET') {
+        const bb = String(url.searchParams.get('b') || '').split(',').map(Number);
+        if (bb.length !== 4 || bb.some(x => !isFinite(x))) return json({ error: 'bad box' }, 400, cors);
+        const [s0, w0, n0, e0] = bb;
+        const hit = (la1, lo1, la2, lo2) => !(Math.max(la1, la2) < s0 || Math.min(la1, la2) > n0 || Math.max(lo1, lo2) < w0 || Math.min(lo1, lo2) > e0);
+        const { results: lr } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'link/%' LIMIT 5000").all();
+        const { results: fr } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'field/%' LIMIT 5000").all();
+        const links = [], fields = [];
+        lr.forEach(r => { try { const l = JSON.parse(r.val); if (hit(l.alat, l.alon, l.blat, l.blon)) links.push(Object.assign({ id: r.path.slice(5) }, l)); } catch (e) {} });
+        fr.forEach(r => { try { const f = JSON.parse(r.val), la = f.pts.map(p => p.lat), lo = f.pts.map(p => p.lon);
+          if (hit(Math.min(...la), Math.min(...lo), Math.max(...la), Math.max(...lo))) fields.push(Object.assign({ id: r.path.slice(6) }, f)); } catch (e) {} });
+        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600) }, 200, cors);
+      }
+      // a won Hard glyph hack at a chest breaks the other factions' links (and their fields) there
+      if (url.pathname === '/links/break' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+        let team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} }
+        if (!TEAMS.has(team)) return json({ ok: true, links: 0, fields: 0 }, 200, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''); if (!/^[a-z0-9_]{3,40}$/i.test(chest)) return json({ error: 'bad chest' }, 400, cors);
+        const { results: lr } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? OR path LIKE ?').bind('link/' + chest + '~%', 'link/%~' + chest).all();
+        const { results: fr } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? OR path LIKE ? OR path LIKE ?').bind('field/' + chest + '~%', 'field/%~' + chest + '~%', 'field/%~' + chest).all();
+        const gone = [];
+        // LIKE treats '_' as a wildcard, so re-check the exact chest before deleting anything
+        lr.forEach(r => { try { const l = JSON.parse(r.val); if (l.team !== team && (l.a === chest || l.b === chest)) gone.push(r.path); } catch (e) {} });
+        const nl = gone.length;
+        fr.forEach(r => { try { const f = JSON.parse(r.val); if (f.team !== team && f.pts.some(p => p.id === chest)) gone.push(r.path); } catch (e) {} });
+        for (let i = 0; i < gone.length; i += 90) { const part = gone.slice(i, i + 90);
+          await env.DB.prepare('DELETE FROM kv WHERE path IN (' + part.map(() => '?').join(',') + ')').bind(...part).run(); }
+        return json({ ok: true, links: nl, fields: gone.length - nl }, 200, cors);
+      }
       // ---- drones other players can see: drone/<user> = { lat, lon, state, em, col, team, t } ----
       // Display only. Flying drones report every couple of seconds; a parked one stays put until
       // its owner calls it home. Not reachable through /kv.
@@ -369,7 +460,7 @@ export default {
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
         if (!me) return json({ error: 'not logged in' }, 401, cors);
         const b = await req.json().catch(() => ({}));
-        const KINDS = new Set(['newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone']);
+        const KINDS = new Set(['newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break']);
         const k = String(b.k || '');
         if (!KINDS.has(k)) return json({ error: 'bad kind' }, 400, cors);
         const ev = { k, u: String(await nameOfUser(env, me)).slice(0, 16), t: Date.now() };
@@ -435,6 +526,12 @@ export default {
           if (best && !tie) { out[best].cells++; held[best].push(cell); } });
         const tm = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'team/%' LIMIT 50000").all()).results;
         tm.forEach(r => { try { const t = JSON.parse(r.val).team; if (out[t]) out[t].members++; } catch (e) {} });
+        TEAMS.forEach(t => { out[t].links = 0; out[t].fields = 0; out[t].km2 = 0; });
+        const lk = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'link/%' LIMIT 5000").all()).results;
+        lk.forEach(r => { try { const t = JSON.parse(r.val).team; if (out[t]) out[t].links++; } catch (e) {} });
+        const fl = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'field/%' LIMIT 5000").all()).results;
+        fl.forEach(r => { try { const f = JSON.parse(r.val); if (out[f.team]) { out[f.team].fields++; out[f.team].km2 += f.km2 || 0; } } catch (e) {} });
+        TEAMS.forEach(t => { out[t].km2 = Math.round(out[t].km2 * 100) / 100; });
         return json({ value: out, held, cellsTotal: Object.keys(byCell).length, at: Date.now() }, 200, cors);
       }
 

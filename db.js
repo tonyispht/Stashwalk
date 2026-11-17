@@ -205,6 +205,20 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
+    async linkMake(from, to) {
+      const r = await fetch(W + '/links/make', { method: 'POST', headers: whead(), body: JSON.stringify({ from, to }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(j.error || 'link ' + r.status); e.data = j; throw e; }
+      return j;
+    },
+    async links(s, w, n, e) {
+      if (!W) return { links: [], fields: [] };
+      try { const r = await fetch(W + '/links?b=' + [s, w, n, e].map(x => x.toFixed(4)).join(',')); const j = await r.json().catch(() => null); return j && j.links ? j : { links: [], fields: [] }; } catch (er) { return { links: [], fields: [] }; }
+    },
+    async linksBreak(chest) {
+      if (!W || !auth) return null;
+      try { const r = await fetch(W + '/links/break', { method: 'POST', headers: whead(), body: JSON.stringify({ chest }) }); return r.ok ? r.json() : null; } catch (e) { return null; }
+    },
     droneSet(lat, lon, state, em, col, dl) {
       if (!W || !auth) return;
       try { fetch(W + '/drone/set', { method: 'POST', headers: whead(), body: JSON.stringify({ lat, lon, state, em, col, dl }), keepalive: true }).catch(() => {}); } catch (e) {}
