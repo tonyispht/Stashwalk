@@ -1163,3 +1163,15 @@ body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
 .admkinds{display:flex;flex-wrap:wrap;gap:5px}
 .admkinds button{font:inherit;font-size:11.5px;padding:4px 9px;border-radius:99px;border:1px solid #2a4a39;background:#13241b;color:var(--ink);cursor:pointer}
 .admkinds button.on{background:var(--acc);color:#1a1206;border-color:var(--acc)}
+
+/* ---- glyph difficulty ---- */
+.gmodes{display:grid;gap:10px;margin:12px 0 6px}
+.gmode{display:grid;gap:2px;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid #2a4a39;background:#13241b;color:var(--ink);font:inherit;cursor:pointer}
+.gmode b{font-size:16px}
+.gmode span{font-size:13px;color:var(--acc2)}
+.gmode small{color:var(--mut,#9fb8aa);font-size:11.5px;line-height:1.35}
+.gmode.hard{border-color:#ff7a3d88;background:linear-gradient(135deg,#2a1710,#1a1410);box-shadow:0 0 0 1px #ff7a3d33,0 4px 18px #ff7a3d22}
+.gmode.hard span{color:#ffb080}
+.gmode:active{transform:scale(.98)}
+.glv.hardtag{--lc:#ff7a3d;border-color:#ff7a3d;color:#ffb080}
+.glyph.hard .gdot.lit{background:#ff7a3d;box-shadow:0 0 18px #ff7a3d}

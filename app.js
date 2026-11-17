@@ -2167,7 +2167,9 @@ const GUIDE = () => {
     <li>The chest window shows 👣 explorers and ✨ glyph hacks so far.</li><li>If your visit or hack pushes a chest up a level, you get a coin bonus.</li></ul>`],
   ['✨', 'Glyph hacking', `<p>Every chest has a <b>✨ Glyph hack</b> button. Watch the pattern light up, then tap it back in the same order.</p>
     <ul><li>Each chest can be hacked once every <b>30 minutes</b>.</li><li>Success pays bonus coins. A <b>fast solve</b> (under ~0.9 s per point) adds more coins and a chance at a free item.</li>
-    <li>Higher-level chests have longer, quicker patterns with bigger rewards and rarer items.</li><li>Every successful hack adds a level point to the chest.</li>
+    <li>Normal patterns are 4–5 points. Higher-level chests play them faster and pay more, with rarer items.</li>
+    <li><b>🔥 Hard mode</b> (optional): 6–8 points for 3× the coins, a guaranteed rarer item on a fast solve (50% even when slow) and 2 chest level points.</li>
+    <li>Every successful hack adds a level point to the chest.</li>
     <li>Pick your trade items first, then hack – the trade goes through when the hack ends, win or lose.</li></ul>`],
   ['🎒', 'Items, merging & the Workshop', `<p>Items come in five rarities: <span class="gtag" style="--c:${RAR[0].c}">Common</span> <span class="gtag" style="--c:${RAR[1].c}">Uncommon</span> <span class="gtag" style="--c:${RAR[2].c}">Rare</span> <span class="gtag" style="--c:${RAR[3].c}">Epic</span> <span class="gtag" style="--c:${RAR[4].c}">Legendary</span></p>
     <ul><li>A tiny <span class="gtag new">NEW</span> tag means you've never had that item. New items add to your <b>Collection</b> (+${CO.newItem} 🪙).</li>
@@ -2377,25 +2379,45 @@ const GLYPH_FAST_MS = 900, GLYPH_ITEM_CHANCE = 0.5;
 // `after` runs once the hack is over, win or lose: it carries out the trade the player had
 // lined up in the chest before starting the hack.
 // Higher-level chests: longer, quicker glyphs that pay more and drop better items.
-function glyphSpec(lvl) {
+// Normal glyphs are always 4-5 points; chest level only makes them play faster and pay more.
+// Hard mode is opt-in: longer patterns (6-8) for much bigger rewards.
+function glyphSpec(lvl, hard) {
   lvl = Math.max(1, Math.min(8, lvl || 1));
-  return { lvl, len: Math.min(8, 4 + Math.floor((lvl - 1) / 2) + (Math.random() < 0.5 ? 1 : 0)), step: lvl >= 6 ? 400 : lvl >= 4 ? 440 : 470,
-    mult: 1 + 0.2 * (lvl - 1), fastBonus: 10 + 5 * (lvl - 1), itemChance: Math.min(0.85, GLYPH_ITEM_CHANCE + 0.05 * (lvl - 1)), itemBoost: 1.4 + 0.25 * (lvl - 1) };
+  const coin = r => Math.random() < 0.5 ? 1 : 0;
+  const len = hard ? Math.min(8, 6 + (lvl >= 4 ? 1 : 0) + coin()) : 4 + coin();
+  return { lvl, hard, len, step: Math.round(470 - (lvl - 1) * 24),          // 470 ms per point at Lv 1 down to ~300 at Lv 8
+    mult: (1 + 0.2 * (lvl - 1)) * (hard ? 3 : 1), fastBonus: (10 + 5 * (lvl - 1)) * (hard ? 3 : 1),
+    itemChance: hard ? 1 : Math.min(0.85, GLYPH_ITEM_CHANCE + 0.05 * (lvl - 1)),   // hard + fast = a guaranteed item
+    slowItem: hard ? 0.5 : 0,                                                     // hard pays an item half the time even when slow
+    itemBoost: (1.4 + 0.25 * (lvl - 1)) * (hard ? 1.8 : 1), points: hard ? 2 : 1 };
 }
 function glyphGame(id, after, chestLvl) {
   if (glyphLeft(id) > 0) { toast(`✨ This chest's glyph is recharging – ready in ${Math.ceil(glyphLeft(id) / 60000)} min`); return; }
-  glyphMark(id); P.stats.glyphs = (P.stats.glyphs || 0) + 1; save();
-  const G = glyphSpec(chestLvl), N = 9, len = G.len, seq = [];
+  const lvl = Math.max(1, Math.min(8, chestLvl || 1)), n = glyphSpec(lvl, false), h = glyphSpec(lvl, true);
+  const est = G => Math.round((20 + (G.hard ? 7 : 4.5) * 6) * G.mult);
+  modal(`<div style="text-align:center"><h3>✨ Glyph hack${lvl > 1 ? ` <span class="glv" style="--lc:${LVLC[lvl]}">Lv ${lvl}</span>` : ''}</h3>
+    <p class="sub">Pick a difficulty.${lvl > 1 ? ' Higher-level chests play the pattern faster.' : ''}</p>
+    <div class="gmodes">
+      <button class="gmode" data-gm="0"><b>Normal</b><span>4–5 points</span><small>~${est(n)} 🪙 · fast solve: ${Math.round(n.itemChance * 100)}% item chance</small></button>
+      <button class="gmode hard" data-gm="1"><b>🔥 Hard</b><span>${h.len >= 7 ? '7–8' : '6–7'} points</span><small>~${est(h)} 🪙 (3×) · fast solve: guaranteed rarer item · +2 chest level points</small></button>
+    </div>${after ? '<p class="fine">Your trade goes through when the hack ends.</p>' : ''}</div>`, m => {
+    $('#modal').onclick = null;                    // must pick: a lined-up trade still has to run afterwards
+    $$('.gmode', m).forEach(btn => btn.onclick = () => runGlyph(id, after, lvl, btn.dataset.gm === '1'));
+  });
+}
+function runGlyph(id, after, lvl, hard) {
+  glyphMark(id); P.stats.glyphs = (P.stats.glyphs || 0) + 1; if (hard) P.stats.glyphHard = (P.stats.glyphHard || 0) + 1; save();
+  const G = glyphSpec(lvl, hard), N = 9, len = G.len, seq = [];
   while (seq.length < len) { const n = Math.floor(Math.random() * N); if (!seq.includes(n)) seq.push(n); }
   const dots = Array.from({ length: N }, (_, i) => `<button class="gdot" data-g="${i}"></button>`).join('');
-  modal(`<div style="text-align:center"><h3>✨ Glyph hack${G.lvl > 1 ? ` <span class="glv" style="--lc:${LVLC[G.lvl]}">Lv ${G.lvl}</span>` : ''}</h3><p class="sub" id="gMsg">Watch the glyph… <small class="fine">(${len} points)</small></p>
-    <div class="glyph" id="gGrid">${dots}</div><div id="gPrize"></div>
-    <p class="fine" id="gHint">Repeat the pattern for bonus coins. Solve it fast for a chance at an item.${after ? '<br>Your trade goes through when the hack ends.' : ''}</p></div>`, m => {
+  modal(`<div style="text-align:center"><h3>✨ Glyph hack${hard ? ' <span class="glv hardtag">🔥 Hard</span>' : ''}${G.lvl > 1 ? ` <span class="glv" style="--lc:${LVLC[G.lvl]}">Lv ${G.lvl}</span>` : ''}</h3><p class="sub" id="gMsg">Watch the glyph… <small class="fine">(${len} points)</small></p>
+    <div class="glyph${hard ? ' hard' : ''}" id="gGrid">${dots}</div><div id="gPrize"></div>
+    <p class="fine" id="gHint">Repeat the pattern for bonus coins. Solve it fast for ${hard ? 'a guaranteed item' : 'a chance at an item'}.${after ? '<br>Your trade goes through when the hack ends.' : ''}</p></div>`, m => {
     $('#modal').onclick = null;                    // no tapping out mid-hack: the trade must still run
     const grid = $('#gGrid', m), msg = $('#gMsg', m), els = $$('.gdot', grid);
     let accepting = false, idx = 0, t0 = 0, over = false;
     const finish = delay => { if (over) return; over = true; setTimeout(() => { closeModal(); if (after) after(); }, delay); };
-    const flash = i => { els[i].classList.add('lit'); setTimeout(() => els[i].classList.remove('lit'), 320); };
+    const flash = i => { els[i].classList.add('lit'); setTimeout(() => els[i].classList.remove('lit'), Math.min(320, G.step - 80)); };
     seq.forEach((n, i) => setTimeout(() => flash(n), 500 + i * G.step));
     setTimeout(() => { accepting = true; t0 = performance.now(); msg.textContent = 'Your turn — tap the glyph'; }, 500 + seq.length * G.step + 250);
     grid.onclick = e => {
@@ -2407,19 +2429,21 @@ function glyphGame(id, after, chestLvl) {
           accepting = false;
           const secs = (performance.now() - t0) / 1000, fast = secs * 1000 <= len * GLYPH_FAST_MS;
           const coins = Math.round((20 + len * 6) * G.mult) + (fast ? G.fastBonus : 0);
-          const item = fast && Math.random() < G.itemChance ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
-          earn(coins, '✨ Glyph bonus'); if (item) addItem(item.id);
-          P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; checkAch(); save(); glyphLevelPoint(id);
-          const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
-          msg.innerHTML = `✨ <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
+          const gotItem = fast ? Math.random() < G.itemChance : Math.random() < G.slowItem;
+          const item = gotItem ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
+          earn(coins, hard ? '🔥 Hard glyph bonus' : '✨ Glyph bonus'); if (item) addItem(item.id);
+          P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; if (hard) P.stats.glyphHardWins = (P.stats.glyphHardWins || 0) + 1; checkAch(); save();
+          glyphLevelPoint(id, G.points);
+          const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${hard ? '🔥 hard ' : ''}${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
+          msg.innerHTML = `${hard ? '🔥' : '✨'} <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
           if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
-          FX.sfx('reveal', item ? 3 : 2); FX.confetti(['#ffd98a', '#b88bff', '#fff'], item ? 60 : 36);
-          if (item && !after) { over = true; setTimeout(() => { closeModal(); showMade(item, 'Glyph bonus', fresh); }, 1400); }
+          FX.sfx('reveal', item ? 3 : 2); FX.confetti(hard ? ['#ff7a3d', '#ffd98a', '#fff'] : ['#ffd98a', '#b88bff', '#fff'], item || hard ? 70 : 36);
+          if (item && !after) { over = true; setTimeout(() => { closeModal(); showMade(item, hard ? 'Hard glyph bonus' : 'Glyph bonus', fresh); }, 1400); }
           else finish(item ? 1900 : 1200);
         }
       } else {
         accepting = false; msg.innerHTML = '❌ Glyph broke — no bonus this time';
-        { const gm = chests.find(c => c.id === id); act('glyphfail', gm ? gm.name : '', gm); }
+        { const gm = chests.find(c => c.id === id); act('glyphfail', (gm ? gm.name : '') + (hard ? ' (hard)' : ''), gm); }
         els.forEach(x => x.classList.add('bad')); finish(1200);
       }
     };
@@ -3642,15 +3666,16 @@ function levelUpReward(meta, xp) {
   toast(`⬆️ You levelled ${meta.name} up to level ${l}!`, 'gold'); act('levelup', meta.name + ' → Lv ' + l, meta); earn(10 * l, 'Chest level-up');
 }
 // A successful glyph hack adds a level point to the chest for everyone.
-async function glyphLevelPoint(id) {
+async function glyphLevelPoint(id, pts) {
   if (!DB.remote) return;
+  let before = 0;
   try {
-    const r = await DB.tx('chests/' + id, cur => { if (!cur) return undefined; cur.hacks = (cur.hacks || 0) + 1; return cur; });
+    const r = await DB.tx('chests/' + id, cur => { if (!cur) return undefined; before = chestXP(cur); cur.hacks = (cur.hacks || 0) + (pts || 1); return cur; });
     if (!r || !r.value) return;
     const was = LVL.get(id) || 0, xp = chestXP(r.value); LVL.set(id, xp); lvlAsked.set(id, Date.now());
     if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
     const meta = chests.find(c => c.id === id);
-    if (meta && LVL_AT.indexOf(xp) > 0) setTimeout(() => levelUpReward(meta, xp), 1500);
+    if (meta && chestLevel(xp) > chestLevel(before)) setTimeout(() => levelUpReward(meta, xp), 1500);   // +2 can jump past a threshold
   } catch (e) {}
 }
 function lvlChip(chest) {
