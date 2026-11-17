@@ -1155,3 +1155,11 @@ body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
 .gdbody p{margin:8px 0}
 .gtag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;border:1px solid var(--c);color:var(--c);white-space:nowrap}
 .gtag.new{--c:#5dff9a;background:#5dff9a;color:#06240f;font-size:9px;border:0;padding:2px 5px}
+
+/* ---- admin activity filters ---- */
+.admfil{display:grid;gap:8px;margin:2px 0 8px}
+.admrad{display:grid;gap:4px;font-size:12.5px}
+.admrad input{width:100%;accent-color:var(--acc)}
+.admkinds{display:flex;flex-wrap:wrap;gap:5px}
+.admkinds button{font:inherit;font-size:11.5px;padding:4px 9px;border-radius:99px;border:1px solid #2a4a39;background:#13241b;color:var(--ink);cursor:pointer}
+.admkinds button.on{background:var(--acc);color:#1a1206;border-color:var(--acc)}

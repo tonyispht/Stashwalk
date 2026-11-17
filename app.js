@@ -191,7 +191,7 @@ function doMerge(id) {
   for (let i = 0; i < C.MERGE_COUNT; i++) removeItem(id);
   const isNew = addItem(to.id);
   P.stats.merges = (P.stats.merges || 0) + 1;
-  earn(CO.merge, 'Merge');
+  earn(CO.merge, 'Merge'); act('merge', to.n);
   save(); checkAch(); renderAll();
   showMade(to, `${C.MERGE_COUNT} × ${it.n} became`, isNew);
 }
@@ -217,7 +217,7 @@ function doCraft(id) {
   st.parts.forEach(p => removeItem(p.pick.id));
   const isNew = addItem(relic.id);
   P.stats.crafted = (P.stats.crafted || 0) + 1;
-  earn(CO.craft, 'Relic crafted');
+  earn(CO.craft, 'Relic crafted'); act('craft', relic.n);
   save(); checkAch(); renderAll();
   showMade(relic, 'You crafted', isNew);
 }
@@ -789,7 +789,7 @@ function launchDrone() {
   document.body.classList.add('flying');
   // the map grows to fill the screen; once it has, put the drone back in view
   requestAnimationFrame(() => { try { map.invalidateSize({ animate: false }); map.setView([fly.ll.lat, fly.ll.lon], map.getZoom(), { animate: false }); } catch (e) {} });
-  renderDroneHud(true);
+  renderDroneHud(true); act('drone');
   FX.unlock(); FX.sfx('drone'); FX.vibe(40);
   fly.raf = requestAnimationFrame(flyStep);
 }
@@ -1390,8 +1390,20 @@ function startPresence() {
 }
 const adminSeen = () => { try { return +localStorage.getItem('sw_admin_seen') || 0; } catch (e) { return 0; } };
 const setAdminSeen = t => { try { localStorage.setItem('sw_admin_seen', String(t)); } catch (e) {} };
+// Player activity reported to the admin feed (rounded location only).
+function act(k, x, at) {
+  if (!DB.remote || !DB.act) return;
+  const l = at && at.lat != null ? at : pos;
+  DB.act(k, x ? String(x).slice(0, 80) : '', l ? l.lat : null, l ? l.lon : null);
+}
+const EV = { signup: ['🆕', 'created an account'], online: ['🟢', 'came online'], newchest: ['📦', 'found a new chest'], open: ['📂', 'opened'],
+  trade: ['🔁', 'traded'], gift: ['🎁', 'left a gift'], hide: ['🫳', 'hid a chest'], glyph: ['✨', 'glyph hacked'], glyphfail: ['❌', 'broke a glyph'],
+  levelup: ['⬆️', 'levelled up a chest'], fx: ['🎆', 'set off'], team: ['⚑', 'joined'], ach: ['🏅', 'earned'], merge: ['🧪', 'merged into'],
+  craft: ['⚒️', 'crafted'], daily: ['📅', 'claimed the daily reward'], drone: ['🚁', 'launched the drone'] };
+const EV_NOTIFY = new Set(['signup', 'online', 'hide', 'levelup', 'fx', 'team']);   // the rest stay in the feed, no pop-ups
 function evText(e) {
-  return e.k === 'signup' ? `🆕 ${e.u} created an account` : e.k === 'online' ? `🟢 ${e.u} came online` : `${e.u} ${e.k}`;
+  const d = EV[e.k] || ['•', e.k];
+  return `${d[0]} ${e.u} ${d[1]}${e.x ? (d[1].endsWith(' at') || ['open', 'fx', 'team', 'ach', 'merge', 'craft', 'glyph'].includes(e.k) ? ' ' : ': ') + e.x : ''}`;
 }
 async function adminPoll() {
   if (!isAdmin() || OFFLINE) return;
@@ -1403,7 +1415,7 @@ async function adminPoll() {
   if (!seen) setAdminSeen(evs.length ? evs[0].t : Date.now());       // first run: start from now, no backlog
   else if (fresh.length) {
     setAdminSeen(fresh[fresh.length - 1].t);
-    fresh.slice(-5).forEach((e, i) => setTimeout(() => adminNotify(e), i * 900));
+    fresh.filter(e => EV_NOTIFY.has(e.k)).slice(-5).forEach((e, i) => setTimeout(() => adminNotify(e), i * 900));
     $('#meDot').hidden = view === 'me';
   }
   if (view === 'me') renderAdmin();
@@ -1428,6 +1440,26 @@ const adminSkeleton = () => `<div class="ahead"><b>🛡️ Admin</b></div>
   <div class="arows">${'<div class="arow skel"></div>'.repeat(8)}</div>`;
 function adminCardShell() { return isAdmin() ? `<div class="card admincard" id="adminCard">${adminSkeleton()}</div>` : ''; }
 let admTab = 'players', admQ = '';
+// activity feed filters: radius around the admin (miles; last stop = everywhere) and kind
+const ADM_RAD = [0.5, 1, 5, 25, 100, 500, Infinity];
+let admRad = (() => { try { const raw = localStorage.getItem('sw_admrad'), v = raw == null ? -1 : +raw; return v >= 0 && v < ADM_RAD.length ? v : ADM_RAD.length - 1; } catch (e) { return ADM_RAD.length - 1; } })();
+let admKind = 'all';
+const ADM_KINDS = { all: ['All', null], chests: ['📦 Chests', ['newchest', 'open', 'levelup', 'hide', 'gift']], trades: ['🔁 Trades', ['trade', 'gift']],
+  glyph: ['✨ Glyph', ['glyph', 'glyphfail']], social: ['⚑ Social', ['team', 'fx', 'ach']], items: ['🧪 Items', ['merge', 'craft', 'daily']], people: ['🟢 People', ['signup', 'online', 'drone']] };
+const radLabel = i => ADM_RAD[i] === Infinity ? 'Everywhere' : 'Within ' + (ADM_RAD[i] < 1 ? ADM_RAD[i] + ' mi' : ADM_RAD[i] + ' mi');
+function admActivity(d) {
+  const R = ADM_RAD[admRad], kinds = ADM_KINDS[admKind][1], me = pos;
+  const list = (d.events || []).map(e => Object.assign({ dm: (me && e.lat != null) ? dist(me, { lat: e.lat, lon: e.lon }) : null }, e))
+    .filter(e => (!kinds || kinds.includes(e.k)) && (R === Infinity || (e.dm != null && e.dm / 1609.34 <= R)));
+  const rows = list.slice(0, 150).map(e => `<div><span>${EV[e.k] ? EV[e.k][0] : '•'} ${uLink(e.u)} ${esc(evText(e).replace(/^\S+\s+\S+\s/, ''))}</span>
+    <small>${e.dm != null ? fmtDist(e.dm) + ' · ' : ''}${ago(e.t)}${e.lat != null ? ` <button class="ulink" data-evgo="${e.lat},${e.lon}" title="Show on map">📍</button>` : ''}</small></div>`).join('');
+  return `<div class="admfil">
+      <label class="admrad"><span>📏 <b id="admRadTxt">${radLabel(admRad)}</b>${!me && R !== Infinity ? ' <small>(turn on GPS)</small>' : ''}</span>
+        <input type="range" id="admRad" min="0" max="${ADM_RAD.length - 1}" step="1" value="${admRad}"></label>
+      <div class="admkinds">${Object.entries(ADM_KINDS).map(([k, [l]]) => `<button class="${admKind === k ? 'on' : ''}" data-akind="${k}">${l}</button>`).join('')}</div>
+      <p class="fine" style="margin:4px 0 0">${list.length} event${list.length === 1 ? '' : 's'}${list.length > 150 ? ' (latest 150 shown)' : ''}${R !== Infinity ? ' with a location in range' : ''}</p></div>
+    <div class="alist">${rows || '<p class="fine">Nothing here yet.</p>'}</div>`;
+}
 const uLink = (name, extra) => `<button class="ulink" data-user="${esc(name)}">${esc(name)}</button>${extra || ''}`;
 function renderAdmin() {
   const el = $('#adminCard'); if (!el) return;
@@ -1449,7 +1481,7 @@ function renderAdmin() {
     else if (admTab === 'chests') body = `<p class="fine">Chests hidden by players, newest first. Tap a name to see it on the map.</p>
       <div class="alist">${(d.hiddenChests || []).map(c => `<div><span><button class="ulink" data-chestgo="${esc(c.id)}">📦 ${esc(c.name)}</button><small> ${c.by ? 'by ' + uLink(c.by) : ''}</small></span>
         <small>${c.at ? ago(c.at) : ''} <button class="btn sm ghost danger" data-rm="${esc(c.id)}" data-cell="${esc(c.cell)}">Remove</button></small></div>`).join('') || '<p class="fine">No hidden chests yet.</p>'}</div>`;
-    else body = `<div class="alist">${(d.events || []).slice(0, 40).map(e => `<div><span>${e.k === 'signup' ? '🆕 ' + uLink(e.u, ' created an account') : e.k === 'online' ? '🟢 ' + uLink(e.u, ' came online') : esc(evText(e))}</span><small>${ago(e.t)}</small></div>`).join('') || '<p class="fine">Nothing yet.</p>'}</div>`;
+    else body = admActivity(d);
     el.innerHTML = `<div class="ahead"><b>🛡️ Admin</b><button class="btn sm ghost" id="admRefresh">↻</button></div>
       <div class="apills">${pill(d.accounts, 'accounts')}${pill(d.online, 'online')}${pill(d.active24h, '24 h')}${pill(d.active7d, '7 days')}</div>
       ${d.totals ? `<div class="arows">${srow('🆕', 'New this week', d.signups7d || 0)}${srow('📦', 'Chests opened', T.opened)}
@@ -1473,11 +1505,16 @@ function renderAdmin() {
     try { const res = await Notification.requestPermission(); toast(res === 'granted' ? '🔔 Notifications on' : 'Notifications not allowed', res === 'granted' ? 'gold' : 'bad'); } catch (e) {}
     renderAdmin();
   };
+  const ar = $('#admRad', el);
+  if (ar) { ar.oninput = () => { const t = $('#admRadTxt', el); if (t) t.textContent = radLabel(+ar.value); };
+    ar.onchange = () => { admRad = +ar.value; try { localStorage.setItem('sw_admrad', admRad); } catch (e) {} renderAdmin(); }; }
   const qi = $('#admQ', el); if (qi) qi.oninput = () => { admQ = qi.value; const pos0 = qi.selectionStart; renderAdmin(); const q2 = $('#admQ'); if (q2) { q2.focus(); try { q2.setSelectionRange(pos0, pos0); } catch (e) {} } };
   const pb = $('#admPlace', el); if (pb) pb.onclick = () => adminPlaceMode(!admPlacing);
   const mb = $('#admMap', el); if (mb) mb.onclick = () => { admShowAll = !admShowAll; drawAdminPlayers(); renderAdmin(); if (admShowAll) { show('explore'); fitAdminPlayers(); } };
   el.onclick = async e => {
     const t = e.target.closest('[data-atab]'); if (t) { admTab = t.dataset.atab; return renderAdmin(); }
+    const kb = e.target.closest('[data-akind]'); if (kb) { admKind = kb.dataset.akind; return renderAdmin(); }
+    const eg = e.target.closest('[data-evgo]'); if (eg) { const [la, lo] = eg.dataset.evgo.split(',').map(Number); return showSpotOnMap(la, lo, 'Activity here'); }
     const u = e.target.closest('[data-user]'); if (u) return adminUserCard(u.dataset.user);
     const cg = e.target.closest('[data-chestgo]'); if (cg) { const c = (adminData.hiddenChests || []).find(x => x.id === cg.dataset.chestgo); if (c) showSpotOnMap(c.lat, c.lon, '📦 ' + c.name, 'chest'); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) adminRemoveChest(rm.dataset.rm, rm.dataset.cell);
@@ -1645,7 +1682,7 @@ function statView() {
 function checkAch() {
   const s = statView(), got = [];
   ACH.forEach(a => { if (!P.ach[a.id] && a.get(s) >= a.goal) { P.ach[a.id] = Date.now(); got.push(a); } });
-  got.forEach(a => earn(CO.achievement, a.n));
+  got.forEach(a => { earn(CO.achievement, a.n); act('ach', a.n); });
   got.forEach((a, i) => setTimeout(() => { toast(`🏅 ${a.n} – new title: ${a.t}`, 'gold'); FX.sfx('ach'); FX.confetti(['#ffb02e', '#ffd98a', '#ffffff'], 45); FX.vibe([30, 40, 30]); }, 600 * i + 400));
   if (got.length) save();
 }
@@ -2002,7 +2039,7 @@ function chooseTeamDialog(firstTime) {
       $$('.teamopt', m).forEach(x => x.disabled = true);
       try {
         const res = await DB.teamSet(id);
-        P.team = res.team; P.teamAt = res.at; save(); renderAll(); closeModal();
+        P.team = res.team; P.teamAt = res.at; save(); renderAll(); closeModal(); act('team', TEAMS[id].icon + ' ' + TEAMS[id].name);
         toast(`${TEAMS[id].icon} You joined ${TEAMS[id].name}!`, 'gold'); FX.sfx('ach'); FX.confetti([TEAMS[id].c, TEAMS[id].c2, '#fff'], 45);
         drawCells(true);
       } catch (e) {
@@ -2220,7 +2257,7 @@ function fxDialog(meta) {
       }
       spend(t.cost); P.stats.fx = (P.stats.fx || 0) + 1; save(); renderAll();
       closeModal(); FX.sfx('reveal', 2); FX.confetti([TEAMS[P.team] ? TEAMS[P.team].c : '#f2b84b', '#fff', '#ffd98a'], 50);
-      toast(`${t.icon} ${t.name} set off at ${meta.name} for ${t.mins} min`, 'gold');
+      toast(`${t.icon} ${t.name} set off at ${meta.name} for ${t.mins} min`, 'gold'); act('fx', t.icon + ' ' + t.name + ' at ' + meta.name, meta);
       loadFx(true);
     });
   });
@@ -2371,6 +2408,7 @@ function glyphGame(id, after, chestLvl) {
           const item = fast && Math.random() < G.itemChance ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
           earn(coins, '✨ Glyph bonus'); if (item) addItem(item.id);
           P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; checkAch(); save();
+          const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
           msg.innerHTML = `✨ <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
           if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
           FX.sfx('reveal', item ? 3 : 2); FX.confetti(['#ffd98a', '#b88bff', '#fff'], item ? 60 : 36);
@@ -2379,6 +2417,7 @@ function glyphGame(id, after, chestLvl) {
         }
       } else {
         accepting = false; msg.innerHTML = '❌ Glyph broke — no bonus this time';
+        { const gm = chests.find(c => c.id === id); act('glyphfail', gm ? gm.name : '', gm); }
         els.forEach(x => x.classList.add('bad')); finish(1200);
       }
     };
@@ -2725,7 +2764,7 @@ function claimDaily() {
   P.daily.streak = P.daily.last && daysBetween(P.daily.last, today) === 1 ? P.daily.streak + 1 : 1;
   P.daily.max = Math.max(P.daily.max || 0, P.daily.streak); P.daily.n++; P.daily.last = today;
   const coins = dailyCoins(P.daily.streak, day);
-  const isNew = addItem(it.id); earn(coins, 'Daily reward'); save(); checkAch(); renderAll();
+  const isNew = addItem(it.id); earn(coins, 'Daily reward'); act('daily'); save(); checkAch(); renderAll();
   if (notifOn()) scheduleDailyReminder();
   FX.sfx('daily');
   modal(`<div style="text-align:center"><p class="sub">Day ${day} reward</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
@@ -3572,11 +3611,12 @@ async function openChest(id, byDrone) {
     if (r.value) { const was = LVL.get(id) || 0; LVL.set(id, r.value.visits || 0); lvlAsked.set(id, Date.now());
       if (chestLevel(was) !== chestLevel(r.value.visits)) drawChestMarkers();
       // your visit was the one that pushed it over a threshold
-      if (firstVisit && LVL_AT.indexOf(r.value.visits) > 0) setTimeout(() => { toast(`⬆️ You levelled ${meta.name} up to level ${chestLevel(r.value.visits)}!`, 'gold'); earn(10 * chestLevel(r.value.visits), 'Chest level-up'); }, 2600); }
+      if (firstVisit && LVL_AT.indexOf(r.value.visits) > 0) setTimeout(() => { toast(`⬆️ You levelled ${meta.name} up to level ${chestLevel(r.value.visits)}!`, 'gold'); act('levelup', meta.name + ' → Lv ' + chestLevel(r.value.visits), meta); earn(10 * chestLevel(r.value.visits), 'Chest level-up'); }, 2600); }
     P.stats.visited[id] = 1; save();
     if (locTarget === id) stopLocate(true);
     await cine.done;
     showChest(meta, r.value, firstVisit);
+    act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(r.value && r.value.visits) + ')' + (byDrone ? ' by drone' : ''), meta);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
     if (firstVisit && DB.remote && P.team) { fieldKeyAt(meta.lat, meta.lon).then(k => DB.cellScore(k)).then(() => fillStandings(true)); drawCellsSoon(); }
@@ -3668,7 +3708,7 @@ async function doTrade(meta, slot, getId, giveId) {
   } catch (e) { return toast('Trade failed: ' + e.message, 'bad'); }
   removeItem(giveId); const isNew = !P.dex[getId]; addItem(getId);
   P.exch[meta.id] = Date.now(); P.stats.ex = (P.stats.ex || 0) + 1; if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
-  earn(CO.trade, 'Trade');
+  earn(CO.trade, 'Trade'); act('trade', `${BY_ID[giveId].n} → ${BY_ID[getId].n} at ${meta.name}`, meta);
   const it = BY_ID[getId]; save(); checkAch(); renderAll();
   FX.sfx('coin');
   modal(`<div style="text-align:center"><p class="sub">You traded and received</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
@@ -3716,7 +3756,7 @@ async function doDonate(meta, slot, giveId) {
   removeItem(giveId);
   P.stats.given = (P.stats.given || 0) + 1;
   if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
-  earn(CO.gift, 'Gift left');
+  earn(CO.gift, 'Gift left'); act('gift', BY_ID[giveId].n + ' at ' + meta.name, meta);
   save(); checkAch(); renderAll(); closeModal();
   toast('\u{1F381} ' + BY_ID[giveId].n + ' left for the next explorer', 'gold');
   FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 22);
@@ -3788,7 +3828,7 @@ function hideDialog(spot, byDrone, asAdmin) {
         await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, { name, lat: at.lat, lon: at.lon, kind: 'player' });
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
       removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; (P.found = P.found || {})[id] = 1; if (byDrone) P.hideDroneN = (P.hideDroneN || 0) + 1; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
-      earn(CO.hide, 'Chest hidden');
+      earn(CO.hide, 'Chest hidden'); act('hide', name + (byDrone ? ' (by drone)' : ''), at);
       chests.push(Object.assign({ src: 'player', by: P.name, at: Date.now() }, meta)); save(); checkAch(); closeModal(); refreshChestViews(); renderAll(); toast('📦 Chest hidden! Other players can find it now.', 'gold'); FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 30);
     };
   });

@@ -127,7 +127,7 @@ async function adminEvent(env, ev) {
   let list = [];
   if (row) { try { list = JSON.parse(row.val) || []; } catch (e) { list = []; } }
   list.unshift(ev);
-  if (list.length > 200) list.length = 200;
+  if (list.length > 600) list.length = 600;
   await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
     .bind('admin/events', JSON.stringify(list)).run();
 }
@@ -316,6 +316,22 @@ export default {
         results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
         return json({ value: out }, 200, cors);
       }
+      // ---- player activity for the admin feed ----------------------------------------------
+      // The game reports what players do; location is rounded to ~100 m before it is stored.
+      if (url.pathname === '/act' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const KINDS = new Set(['newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone']);
+        const k = String(b.k || '');
+        if (!KINDS.has(k)) return json({ error: 'bad kind' }, 400, cors);
+        const ev = { k, u: String(await nameOfUser(env, me)).slice(0, 16), t: Date.now() };
+        const x = String(b.x || '').replace(/[<>]/g, '').slice(0, 80); if (x) ev.x = x;
+        const lat = +b.lat, lon = +b.lon;
+        if (b.lat != null && b.lon != null && isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) { ev.lat = Math.round(lat * 1000) / 1000; ev.lon = Math.round(lon * 1000) / 1000; }
+        await adminEvent(env, ev);
+        return json({ ok: true }, 200, cors);
+      }
       // ---- beacons & fireworks: short-lived effects anyone can see at a chest ----------------
       // fx/<chest> = { type, by, team, lat, lon, at, until }. Not reachable through /kv.
       if (url.pathname === '/fx/set' && req.method === 'POST') {
@@ -411,7 +427,7 @@ export default {
           totals: tot, chestsHidden: hiddenChests.length, chestsRemoved: (blocked && blocked.n) || 0,
           players: list.sort((a, b) => (b.seen || 0) - (a.seen || 0)).slice(0, 300),
           hiddenChests: hiddenChests.slice(0, 60),
-          events: events.slice(0, 100)
+          events: events.slice(0, 600)
         }, 200, cors);
       }
 

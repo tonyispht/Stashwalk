@@ -190,6 +190,10 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
+    act(k, x, lat, lon) {                              // fire-and-forget activity report for the admin feed
+      if (!W || !auth) return;
+      try { fetch(W + '/act', { method: 'POST', headers: whead(), body: JSON.stringify({ k, x, lat, lon }), keepalive: true }).catch(() => {}); } catch (e) {}
+    },
     async fxSet(chest, type, lat, lon) {
       if (!W || !auth) throw new Error('Effects need the shared world');
       const r = await fetch(W + '/fx/set', { method: 'POST', headers: whead(), body: JSON.stringify({ chest, type, lat, lon }) });
