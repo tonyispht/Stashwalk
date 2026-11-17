@@ -795,6 +795,8 @@ function endFlight(why) {
 function flyStep(now) {
   if (!fly) return;
   const dt = Math.min(0.05, (now - fly.last) / 1000); fly.last = now;
+  // hovering: a chest (or any dialog) is open, so ignore the stick until it closes
+  if (modalOpen()) { fly.raf = requestAnimationFrame(flyStep); return; }
   // stick, or arrow keys / WASD on a computer
   let ix = joy.x, iy = joy.y;
   const kx = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0);
@@ -859,7 +861,7 @@ function droneCandidates() {
   return out;
 }
 function probeFromDrone() {
-  if (!fly) return;
+  if (!fly || modalOpen()) return;
   droneScan();
   let best = null, bd = Infinity;
   droneCandidates().forEach(c => { const d = dist(fly.ll, c); if (d < bd) { bd = d; best = c; } });
@@ -910,9 +912,12 @@ async function droneOpen() {
   const id = fly.near.c.id;
   if (!chests.some(c => c.id === id)) chests.push(Object.assign({}, fly.near.c));
   P.stats.droneOpens = (P.stats.droneOpens || 0) + 1;
-  endFlight('open');
+  // the drone hovers where it is while the chest is open, then flight simply carries on
+  joy.x = joy.y = 0; for (const k in keys) keys[k] = false;
+  const kn = $('#droneKnob'); if (kn) kn.style.transform = '';
+  const ob = $('#droneOpen'); if (ob) ob.hidden = true;
+  FX.geiger(Infinity, 1);
   await openChest(id, true);
-  if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: false });
 }
 function wireDrone() {
   const pad = $('#droneJoy'), knob = $('#droneKnob'); if (!pad) return;
@@ -1996,6 +2001,49 @@ function teamBadge() {
   return `<button class="teambadge" id="teamSwitch" style="--tc:${t.c};--tc2:${t.c2}"><span>${t.icon}</span> ${t.name} <small>switch</small></button>`;
 }
 
+// ---------------- faction standings ----------------
+let standData = null, standAt = 0, standBusy = null;
+async function loadStandings(force) {
+  if (!DB.remote) return null;
+  if (!force && standData && Date.now() - standAt < 60000) return standData;
+  if (standBusy) return standBusy;
+  standBusy = DB.teamStandings().then(d => { if (d) { standData = d; standAt = Date.now(); } standBusy = null; return standData; });
+  return standBusy;
+}
+function standingsCard() {
+  if (!DB.remote) return '';
+  return `<div class="card" id="factionCard"><div class="ahead"><b>⚑ Faction standings</b><button class="btn sm ghost" id="standRefresh">↻</button></div>
+    <div id="standBody"><p class="fine">Loading…</p></div></div>`;
+}
+function standRows(d) {
+  const v = d.value, mine = P.team;
+  const ids = TEAM_IDS.slice().sort((a, b) => (v[b].cells - v[a].cells) || (v[b].points - v[a].points));
+  const maxC = Math.max(1, ...ids.map(t => v[t].cells));
+  return ids.map((t, i) => { const T = TEAMS[t], r = v[t];
+    return `<div class="standrow${t === mine ? ' mine' : ''}" style="--tc:${T.c};--tc2:${T.c2}">
+      <div class="standtop"><span class="standrank">${i + 1}</span><span>${T.icon} <b>${T.name}</b>${t === mine ? ' <small>you</small>' : ''}</span>
+      <span class="standnum"><b>${fmtC(r.cells)}</b> field${r.cells === 1 ? '' : 's'}</span></div>
+      <div class="standbar"><i style="width:${Math.round(r.cells / maxC * 100)}%"></i></div>
+      <small class="fine">${fmtC(r.points)} pts · ${fmtC(r.members)} agent${r.members === 1 ? '' : 's'}</small></div>`; }).join('');
+}
+function paintFacBar(d) {
+  const b = $('#facBar'); if (!b) return;
+  if (!d || !DB.remote) { b.hidden = true; return; }
+  const v = d.value, tot = TEAM_IDS.reduce((n, t) => n + v[t].cells, 0);
+  b.hidden = false;
+  b.innerHTML = `<span class="fbseg">${TEAM_IDS.map(t => `<i style="flex:${tot ? Math.max(v[t].cells, tot * 0.04) : 1};background:${TEAMS[t].c}"></i>`).join('')}</span>
+    <span class="fbnums">${TEAM_IDS.map(t => `<span${t === P.team ? ' class="mine"' : ''}>${TEAMS[t].icon}${fmtC(v[t].cells)}</span>`).join('')}</span>`;
+}
+async function fillStandings(force) {
+  const d = await loadStandings(force);
+  paintFacBar(d);
+  const el = $('#standBody'); if (!el) return;
+  if (!d) { el.innerHTML = '<p class="fine">Standings unavailable right now.</p>'; return; }
+  el.innerHTML = d.cellsTotal ? standRows(d) + `<p class="fine" style="margin:8px 0 0">A field goes to the faction with the most first-opens in that ~2 km cell. Ties hold for nobody.</p>`
+    : '<p class="fine">No fields claimed yet. Open a new chest to claim the first one for your faction.</p>';
+}
+function openStandings() { show('me'); setTimeout(() => { const c = $('#factionCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); fillStandings(true); }, 320); }
+
 // ---------------- control fields / cell scoring ----------------
 const CELL_S = 0.02;                          // ~2 km scoring cells
 const cellKeyScore = (lat, lon) => Math.floor(lat / CELL_S) + '_' + Math.floor(lon / CELL_S);
@@ -2451,6 +2499,7 @@ function renderMe() {
       <button class="btn sm ghost" id="refBtn" style="margin-left:6px">Check</button></p>
     <div id="qr"></div><div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
     ${navigator.share ? '<button class="btn ghost big" id="shareBtn" style="margin-top:8px">Share…</button>' : ''}</div>
+    ${standingsCard()}
     ${lbCard()}
     <h2 class="sec" id="achSec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2>
     <p class="fine pad" style="margin-top:-2px">Closest to earning first · completed at the bottom.</p><div style="padding:0 14px">`;
@@ -2497,6 +2546,8 @@ function renderMe() {
   $('#meBox').innerHTML = h;
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
   wireLB(); fillMeRank();
+  if ($('#standRefresh')) $('#standRefresh').onclick = () => fillStandings(true);
+  fillStandings();
   const tj = $('#teamJoin'); if (tj) tj.onclick = () => chooseTeamDialog(true);
   const ts = $('#teamSwitch'); if (ts) ts.onclick = () => chooseTeamDialog(false);
   $('#titleSel').onchange = e => { P.title = e.target.value; save(); renderHeader(); };
@@ -3208,7 +3259,7 @@ async function openChest(id, byDrone) {
     showChest(meta, r.value, firstVisit);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
-    if (firstVisit && DB.remote && P.team) { DB.cellScore(cellKeyScore(meta.lat, meta.lon)); drawCellsSoon(); }
+    if (firstVisit && DB.remote && P.team) { DB.cellScore(cellKeyScore(meta.lat, meta.lon)).then(() => fillStandings(true)); drawCellsSoon(); }
     checkAch(); save();
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
     // before we ask, or the server correctly sees no chest yet - so write it, then report, and
@@ -3636,6 +3687,8 @@ function wire() {
   $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
   $('#legendBtn').onclick = () => { const l = $('#legend'); if (l) l.hidden = !l.hidden; };
   $('#lbBtn').onclick = openLeaderboard;
+  $('#facBar').onclick = openStandings;
+  setTimeout(() => fillStandings(), 2500); setInterval(() => { if (!document.hidden) fillStandings(); }, 180000);
   $('#refreshBtn').onclick = () => { lastLoad = null; try { Object.keys(localStorage).filter(k => k.startsWith('sw_osm')).forEach(k => localStorage.removeItem(k)); } catch (e) {} loadNearby(); };
   $('#hideBtn').onclick = () => hideDialog();
   const rad = $('#rad'); rad.value = radiusMi; $('#rVal').textContent = radiusMi + ' mi';

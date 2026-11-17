@@ -315,6 +315,20 @@ export default {
         results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
         return json({ value: out }, 200, cors);
       }
+      // Global faction standings: cells led (ties count for nobody), total points, members.
+      if (url.pathname === '/teams/standings' && req.method === 'GET') {
+        const out = {}; TEAMS.forEach(t => { out[t] = { cells: 0, points: 0, members: 0 }; });
+        const cs = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'cs/%' LIMIT 50000").all()).results;
+        const byCell = {};
+        cs.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (!out[team]) return;
+          const n = +r.val || 0; out[team].points += n; (byCell[cell] = byCell[cell] || {})[team] = n; });
+        Object.values(byCell).forEach(sc => { let best = null, bn = 0, tie = false;
+          for (const t in sc) { if (sc[t] > bn) { best = t; bn = sc[t]; tie = false; } else if (sc[t] === bn) tie = true; }
+          if (best && !tie) out[best].cells++; });
+        const tm = (await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'team/%' LIMIT 50000").all()).results;
+        tm.forEach(r => { try { const t = JSON.parse(r.val).team; if (out[t]) out[t].members++; } catch (e) {} });
+        return json({ value: out, cellsTotal: Object.keys(byCell).length, at: Date.now() }, 200, cors);
+      }
 
       if (url.pathname === '/admin/stats' && req.method === 'GET') {
         const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);

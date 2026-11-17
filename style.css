@@ -991,3 +991,19 @@ body.dot-rainbow .me-dot{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6
 .gdot{width:48px;height:48px;border-radius:50%;background:#15271d;border:2px solid #2c4d3b;cursor:pointer;transition:transform .1s,background .15s,box-shadow .15s;justify-self:center}
 .gdot.lit{background:var(--acc);border-color:var(--acc2);box-shadow:0 0 16px var(--acc);transform:scale(1.12)}
 .gdot.bad{border-color:var(--bad);background:#3a1a16}
+
+/* ---- faction standings ---- */
+.facbar{position:absolute;top:42px;left:8px;z-index:500;display:flex;flex-direction:column;gap:4px;width:150px;padding:6px 8px;background:#0f1a14e8;border:1px solid #2a4a39;border-radius:12px;color:var(--ink);font:inherit;font-size:11px;cursor:pointer;box-shadow:0 4px 14px #0007}
+.facbar .fbseg{display:flex;height:5px;border-radius:99px;overflow:hidden;gap:2px}
+.facbar .fbseg i{display:block;min-width:4px;border-radius:99px}
+.facbar .fbnums{display:flex;justify-content:space-between}
+.facbar .fbnums .mine{font-weight:700;color:var(--acc2)}
+.standrow{padding:9px 0;border-top:1px solid #ffffff12}
+.standrow:first-child{border-top:0}
+.standrow.mine b{color:var(--tc2)}
+.standtop{display:flex;align-items:center;gap:8px}
+.standtop small{font-size:10px;padding:1px 6px;border-radius:99px;background:var(--tc);color:#08110c;font-weight:700}
+.standrank{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:#ffffff14}
+.standnum{margin-left:auto}
+.standbar{height:6px;border-radius:99px;background:#ffffff10;margin:6px 0 3px;overflow:hidden}
+.standbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--tc),var(--tc2));min-width:3px}

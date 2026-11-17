@@ -190,6 +190,10 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
+    async teamStandings() {
+      if (!W) return null;
+      try { const r = await fetch(W + '/teams/standings'); if (!r.ok) return null; const j = await r.json().catch(() => null); return j && j.value ? j : null; } catch (e) { return null; }
+    },
     async adminStats() {
       if (!W) throw new Error('admin stats need the shared world (Worker)');
       const r = await fetch(W + '/admin/stats', { headers: whead() });
