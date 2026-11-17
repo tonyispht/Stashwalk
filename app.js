@@ -89,10 +89,22 @@ function wildItems(id, day, boost, slots) {
   slots.forEach(s => { out[s] = { id: rollItem(rng(hashStr(id + '|' + day + '|' + s)), boost).id, w: 1, at: Date.now() }; });
   return out;
 }
+// A small fraction of chests (not player-hidden ones) are "rare": they glow on the map and hold
+// a guaranteed Epic+ item plus richer loot and a coin bonus. Deterministic, so everyone agrees.
+const isRare = c => !!c && c.kind !== 'player' && hashStr('rare|' + c.id) % 22 === 0;
+const RARE_BONUS = (C.COINS && C.COINS.rareChest) || 120;
+function chestItems(meta, day, slots) {
+  const boost = kindInfo(meta.kind)[2], rare = isRare(meta);
+  const items = wildItems(meta.id, day, rare ? boost * 3 : boost, slots);
+  if (rare && slots.indexOf('a') >= 0) {   // force the first slot to a guaranteed Epic (or Legendary)
+    const r = rng(hashStr('rareslot|' + meta.id + '|' + day));
+    items.a = { id: rollItem(r, 1, r() < 0.3 ? 4 : 3).id, w: 1, at: Date.now() };
+  }
+  return items;
+}
 function makeChest(meta, day) {
-  const boost = kindInfo(meta.kind)[2];
   return { name: meta.name, lat: meta.lat, lon: meta.lon, kind: meta.kind, day, created: Date.now(),
-           items: wildItems(meta.id, day, boost, SLOT_IDS.slice(0, C.CHEST_SLOTS)) };
+           items: chestItems(meta, day, SLOT_IDS.slice(0, C.CHEST_SLOTS)) };
 }
 function refreshChest(cur, meta, day) {
   // Wild (auto-generated) items rotate daily. Items left by players stay until somebody swaps them.
@@ -101,7 +113,7 @@ function refreshChest(cur, meta, day) {
   const wildSlots = Object.keys(items).filter(s => items[s].w);
   // Make sure the chest is never left empty, even if its stored record was damaged or partial.
   SLOT_IDS.slice(0, C.CHEST_SLOTS).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
-  const fresh = wildItems(meta.id, day, kindInfo(cur.kind || meta.kind)[2], wildSlots);
+  const fresh = chestItems({ id: meta.id, kind: cur.kind || meta.kind }, day, wildSlots);
   cur.items = Object.assign(items, fresh); cur.day = day; return cur;
 }
 
@@ -216,7 +228,8 @@ function newPlayer(name, ref) {
   return { name, created: Date.now(), inv: {}, dex: {}, ach: {}, exch: {}, title: 'Newcomer', ref: ref || '', refPaid: 0, refSent: 0,
            stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0, walkedM: 0, walkPaid: 0, coinsEarned: 0, coinsSpent: 0, bought: 0 },
            daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
-           coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} }, found: {} };
+           coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} }, found: {},
+           cos: { owned: {}, eq: {} }, chal: {}, lb: {} };
 }
 // One trade per chest per TRADE_COOLDOWN_MIN. P.exch[chestId] is when you last traded there.
 const TRADE_MS = () => (C.TRADE_COOLDOWN_MIN || 60) * 60000;
@@ -239,6 +252,10 @@ function normalize(p) {
   p.found = p.found && typeof p.found === 'object' ? p.found : {};
   p.shop = p.shop && typeof p.shop === 'object' ? p.shop : { day: 0, bought: {} };
   p.shop.bought = p.shop.bought || {};
+  p.cos = p.cos && typeof p.cos === 'object' ? p.cos : { owned: {}, eq: {} };
+  p.cos.owned = p.cos.owned || {}; p.cos.eq = p.cos.eq || {};
+  p.chal = p.chal && typeof p.chal === 'object' ? p.chal : {};
+  p.lb = p.lb && typeof p.lb === 'object' ? p.lb : {};
   return p;
 }
 let saveTimer = null;
@@ -466,6 +483,97 @@ function timeToReset() {
   const ms = (utcDay() + 1) * 86400000 - Date.now(), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60;
   return h ? `${h}h ${m}m` : `${m}m`;
 }
+// ---------------- cosmetics (coin sinks) ----------------
+// Buy with coins, equip for free once owned. Everything is applied through CSS variables and a
+// couple of body/map classes, so it recolours the whole app live. The free default is always owned.
+const COSMETICS = {
+  accent: { label: 'App accent', def: 'amber', items: [
+    { id: 'amber', name: 'Amber', cost: 0, a: '#f2b84b', a2: '#ffd98a' },
+    { id: 'emerald', name: 'Emerald', cost: 300, a: '#43d98a', a2: '#b6f5d4' },
+    { id: 'rose', name: 'Rose', cost: 300, a: '#ff7aa8', a2: '#ffc2d6' },
+    { id: 'violet', name: 'Violet', cost: 450, a: '#a98bff', a2: '#d8c9ff' },
+    { id: 'cyan', name: 'Cyan', cost: 450, a: '#4fd6e6', a2: '#b7f0f7' },
+    { id: 'gold', name: 'Royal Gold', cost: 1500, a: '#ffd34d', a2: '#fff0b0' } ] },
+  dot: { label: 'Your map dot', def: 'blue', items: [
+    { id: 'blue', name: 'Classic Blue', cost: 0, c: '#3b9cff' },
+    { id: 'lime', name: 'Lime', cost: 150, c: '#9be34a' },
+    { id: 'pink', name: 'Hot Pink', cost: 150, c: '#ff5fa2' },
+    { id: 'orange', name: 'Ember', cost: 150, c: '#ff9f45' },
+    { id: 'white', name: 'Ghost', cost: 300, c: '#eef6ff' },
+    { id: 'rainbow', name: 'Rainbow', cost: 1000, c: 'rainbow' } ] },
+  map: { label: 'Map style', def: 'classic', items: [
+    { id: 'classic', name: 'Classic', cost: 0, cls: '' },
+    { id: 'midnight', name: 'Midnight', cost: 300, cls: 'mt-midnight' },
+    { id: 'sepia', name: 'Sepia', cost: 300, cls: 'mt-sepia' },
+    { id: 'neon', name: 'Neon', cost: 700, cls: 'mt-neon' },
+    { id: 'blueprint', name: 'Blueprint', cost: 700, cls: 'mt-blue' } ] },
+  drone: { label: 'Drone paint', def: 'silver', items: [
+    { id: 'silver', name: 'Silver', cost: 0, c: '#cfd8e3' },
+    { id: 'crimson', name: 'Crimson', cost: 300, c: '#ff5a5a' },
+    { id: 'emerald', name: 'Emerald', cost: 300, c: '#49e39a' },
+    { id: 'gold', name: 'Gold', cost: 600, c: '#ffd24d' },
+    { id: 'violet', name: 'Violet', cost: 600, c: '#b88bff' } ] }
+};
+const MAP_THEME_CLASSES = COSMETICS.map.items.map(m => m.cls).filter(Boolean);
+const cosGet = (cat, id) => COSMETICS[cat].items.find(x => x.id === id) || COSMETICS[cat].items.find(x => x.id === COSMETICS[cat].def);
+const cosOwned = (cat, id) => cosGet(cat, id).cost === 0 || !!(P.cos.owned[cat + ':' + id]);
+const cosEq = cat => (P.cos.eq && P.cos.eq[cat]) || COSMETICS[cat].def;
+function applyCosmetics() {
+  if (!P) return;
+  const root = document.documentElement.style;
+  const acc = cosGet('accent', cosEq('accent')); root.setProperty('--acc', acc.a); root.setProperty('--acc2', acc.a2);
+  const dot = cosGet('dot', cosEq('dot')); root.setProperty('--medot', dot.c === 'rainbow' ? '#3b9cff' : dot.c);
+  document.body.classList.toggle('dot-rainbow', dot.c === 'rainbow');
+  root.setProperty('--dronecol', cosGet('drone', cosEq('drone')).c);
+  applyMapTheme();
+}
+function applyMapTheme() {
+  const el = $('#map'); if (!el) return;
+  MAP_THEME_CLASSES.forEach(c => el.classList.remove(c));
+  const mt = cosGet('map', cosEq('map'));
+  if (mt.cls) { el.classList.add(mt.cls); el.classList.remove('darkmap'); }   // a theme overrides the dark-map toggle
+  else el.classList.toggle('darkmap', !!(FX.prefs && FX.prefs.darkmap));
+}
+function equipCos(cat, id) {
+  if (!cosOwned(cat, id)) return;
+  P.cos.eq[cat] = id; save(); applyCosmetics(); renderStyle();
+  FX.sfx('tap'); FX.vibe(8);
+}
+function buyCos(cat, id) {
+  const it = cosGet(cat, id);
+  if (cosOwned(cat, id)) return equipCos(cat, id);
+  if ((P.coins || 0) < it.cost) return toast(`Need ${fmtC(it.cost - (P.coins || 0))} more 🪙`, 'bad');
+  modal(`<div style="text-align:center"><h3>${esc(it.name)}</h3><p class="sub">${COSMETICS[cat].label} · 🪙 ${fmtC(it.cost)}</p>
+    <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button><button class="btn" id="buyGo">Buy for 🪙 ${fmtC(it.cost)}</button></div></div>`,
+    m => { $('#okBtn', m).onclick = closeModal; $('#buyGo', m).onclick = () => {
+      if (!spend(it.cost)) return toast('Not enough coins', 'bad');
+      P.cos.owned[cat + ':' + id] = 1; P.cos.eq[cat] = id; save(); applyCosmetics(); renderAll(); closeModal();
+      toast(`🎨 ${it.name} equipped`, 'gold'); FX.sfx('coin');
+    }; });
+}
+function swatch(cat, it) {
+  if (cat === 'map') return `<i class="sw mtsw ${it.cls || 'mtsw-classic'}"></i>`;
+  if (it.c === 'rainbow') return `<i class="sw" style="background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d)"></i>`;
+  if (cat === 'accent') return `<i class="sw" style="background:linear-gradient(135deg,${it.a},${it.a2})"></i>`;
+  return `<i class="sw" style="background:${it.c}"></i>`;
+}
+function renderStyle() {
+  let h = `<div class="card shoptop"><div class="shopbal"><span>Balance</span><b>🪙 ${fmtC(P.coins || 0)}</b></div>
+    <p class="fine" style="margin:6px 0 0">Spend coins on how your game looks. Buy once, switch any time for free.</p></div>`;
+  Object.keys(COSMETICS).forEach(cat => {
+    const g = COSMETICS[cat], eq = cosEq(cat);
+    h += `<h2 class="sec">${g.label}</h2><div class="cosgrid" data-cat="${cat}">`;
+    g.items.forEach(it => {
+      const owned = cosOwned(cat, it.id), on = eq === it.id;
+      h += `<button class="cositem${on ? ' on' : ''}" data-cos="${it.id}">${swatch(cat, it)}
+        <b>${esc(it.name)}</b><small>${on ? '✓ Equipped' : owned ? 'Tap to use' : '🪙 ' + fmtC(it.cost)}</small></button>`;
+    });
+    h += `</div>`;
+  });
+  $('#styleBox').innerHTML = h;
+  $('#styleBox').onclick = e => { const b = e.target.closest('[data-cos]'); if (!b) return; const cat = b.closest('[data-cat]').dataset.cat; buyCos(cat, b.dataset.cos); };
+}
+
 function renderShopHead() {
   const el = $('#shopHead'); if (!el) return;
   const into = ((P.stats.walkedM || 0) % WALK_STEP) / WALK_STEP;
@@ -588,7 +696,7 @@ function droneSVG(cls) {
       `<g transform="translate(${x} ${y})"><circle r="11" fill="#9fd6ff22" stroke="#9fd6ff66" stroke-width="1"/>
        <g class="rotor"><rect x="-10" y="-1.6" width="20" height="3.2" rx="1.6" fill="#dff1ff"/></g>
        <circle r="2.6" fill="#1b2a22"/></g>`).join('')}</g>
-    <rect x="22" y="22" width="20" height="20" rx="6" fill="#f2b84b" stroke="#a8761f" stroke-width="2"/>
+    <rect x="22" y="22" width="20" height="20" rx="6" fill="var(--dronecol,#f2b84b)" stroke="#a8761f" stroke-width="2"/>
     <circle cx="32" cy="32" r="4.5" fill="#1b2a22"/><circle cx="32" cy="32" r="2" fill="#7ff0ff"/>
   </svg>`;
 }
@@ -1711,10 +1819,100 @@ async function boot(key, p) {
   snapshot();                       // keep a copy on the device for offline launches
   $('#auth').hidden = true; $('#app').hidden = false;
   $('#dev').hidden = !DEV;
-  initMap(); renderHeader(); renderAll(); checkAch(); show('explore');
+  initMap(); applyCosmetics(); renderHeader(); renderAll(); checkAch(); show('explore');
   startGPS(true);
   if (P.daily.last !== dayKey()) { show('daily'); setTimeout(() => toast('🎁 Your daily reward is ready!', 'gold'), 300); }
   setTimeout(coachOnce, 1500);
+  if (notifOn()) scheduleDailyReminder();
+  setTimeout(() => submitLB(true), 5000);
+}
+
+// ---------------- notifications ----------------
+// A daily "your reward is ready" reminder, plus an alert when a rare cache comes within reach.
+// Scheduling a notification for a future time needs the Notification Triggers API (Chromium);
+// where it is missing we still request permission and alert live while the app is open.
+const notifOn = () => { try { return localStorage.getItem('sw_notif') === '1'; } catch (e) { return false; } };
+async function enableNotif(on) {
+  if (!window.Notification) return false;
+  if (on) {
+    let perm = Notification.permission;
+    if (perm === 'default') { try { perm = await Notification.requestPermission(); } catch (e) {} }
+    if (perm !== 'granted') { toast(perm === 'denied' ? 'Notifications are blocked in your browser settings' : 'Notifications not allowed', 'bad'); try { localStorage.setItem('sw_notif', '0'); } catch (e) {} return false; }
+    try { localStorage.setItem('sw_notif', '1'); } catch (e) {}
+    scheduleDailyReminder(); toast('🔔 Reminders on', 'gold'); return true;
+  }
+  try { localStorage.setItem('sw_notif', '0'); } catch (e) {} clearDailyReminder(); toast('Reminders off'); return false;
+}
+async function swReg() { try { return navigator.serviceWorker ? await navigator.serviceWorker.ready : null; } catch (e) { return null; } }
+async function clearDailyReminder() {
+  const reg = await swReg(); if (!reg) return;
+  try { (await reg.getNotifications({ tag: 'sw-daily', includeTriggered: true })).forEach(n => n.close()); } catch (e) {}
+}
+async function scheduleDailyReminder() {
+  if (!notifOn() || !window.Notification || Notification.permission !== 'granted') return;
+  const reg = await swReg(); if (!reg) return;
+  await clearDailyReminder();
+  if (!('showTrigger' in Notification.prototype) || !window.TimestampTrigger) return;   // no scheduling on this browser
+  const t = new Date(); t.setHours(10, 0, 0, 0); if (t.getTime() <= Date.now()) t.setDate(t.getDate() + 1);
+  try {
+    await reg.showNotification('Stashwalk', { body: '🎁 Your daily reward is ready — come grab it and keep your streak.',
+      tag: 'sw-daily', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', showTrigger: new TimestampTrigger(t.getTime()) });
+  } catch (e) {}
+}
+// live alert when a rare cache comes within reach and the app is in the background
+let rareAlerted = {};
+async function rareNearAlert(c) {
+  if (!notifOn() || !window.Notification || Notification.permission !== 'granted' || !document.hidden) return;
+  if (rareAlerted[c.id]) return; rareAlerted[c.id] = 1;
+  const reg = await swReg(); if (!reg) return;
+  try { reg.showNotification('Stashwalk', { body: '✨ A rare cache is within reach — open it for guaranteed treasure!', tag: 'sw-rare-' + c.id, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' }); } catch (e) {}
+}
+
+// ---------------- leaderboards ----------------
+const lbOn = () => { try { return localStorage.getItem('sw_lb') !== '0'; } catch (e) { return true; } };
+let lbMetric = 'coins', lbPeriod = 'all', lbSent = 0;
+const LB_METRICS = [['coins', '🪙 Coins'], ['miles', '🚶 Miles'], ['opened', '📦 Chests'], ['dex', '📚 Shelf']];
+function ensureLB() {
+  if (!P.lb || typeof P.lb !== 'object') P.lb = {};
+  const wk = WK(); if (P.lb.wk !== wk) { P.lb.wk = wk; P.lb.wkBase = P.stats.coinsEarned || 0; }
+}
+function lbStats() {
+  ensureLB();
+  return { coins: Math.round(P.stats.coinsEarned || 0), miles: milesOf(), opened: Object.keys(P.stats.visited).length,
+    dex: Object.keys(P.dex).length, wk: WK(), wkCoins: Math.max(0, Math.round((P.stats.coinsEarned || 0) - (P.lb.wkBase || 0))) };
+}
+async function submitLB(force) {
+  if (!DB.remote || !lbOn() || OFFLINE || !P) return;
+  if (!force && Date.now() - lbSent < 120000) return;
+  lbSent = Date.now();
+  try { await DB.lbSubmit(lbStats()); } catch (e) {}
+}
+function lbCard() {
+  return `<div class="card" id="lbCard"><div class="ahead"><b>🏆 Leaderboards</b><button class="btn sm ghost" id="lbRefresh">↻</button></div>
+    <div class="seg subseg" id="lbPeriodSeg" style="margin:10px 0 6px"><button class="${lbPeriod === 'all' ? 'on' : ''}" data-lbp="all">All-time</button><button class="${lbPeriod === 'week' ? 'on' : ''}" data-lbp="week">This week</button></div>
+    ${lbPeriod === 'all' ? `<div class="segs lbtabs" id="lbMetricSeg">${LB_METRICS.map(([k, l]) => `<button class="${lbMetric === k ? 'on' : ''}" data-lbm="${k}">${l}</button>`).join('')}</div>` : '<p class="fine" style="margin:0 0 8px">Most 🪙 coins earned this week.</p>'}
+    ${lbOn() ? '<div id="lbList"><p class="fine">Loading…</p></div>' : '<p class="fine">You are hidden from the leaderboards. Turn on “Appear on leaderboards” in Settings to compete.</p>'}</div>`;
+}
+async function renderLB() {
+  const el = $('#lbList'); if (!el || !lbOn()) return;
+  const m = lbPeriod === 'week' ? 'coins' : lbMetric;
+  try {
+    const d = await DB.lbFetch(m, lbPeriod, WK());
+    const fmt = v => (lbPeriod === 'all' && lbMetric === 'miles') ? (+v).toFixed(1) + ' mi' : fmtC(v);
+    const row = r => `<div class="${r.me ? 'meRow' : ''}"><span class="rk">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</span><span class="nm">${esc(r.name)}</span><b>${fmt(r.v)}</b></div>`;
+    let h = d.top.length ? '<div class="lblist">' + d.top.map(row).join('') + '</div>' : '<p class="fine">No scores yet — be the first!</p>';
+    if (d.you && !d.top.some(r => r.me)) h += `<div class="lblist" style="margin-top:6px">${row({ rank: d.you.rank, name: 'You', v: d.you.v, me: true })}</div>`;
+    el.innerHTML = h;
+  } catch (e) { el.innerHTML = `<p class="fine" style="color:var(--bad)">${esc(e.message)}</p>`; }
+}
+function wireLB() {
+  const card = $('#lbCard'); if (!card) return;
+  const r = $('#lbRefresh', card); if (r) r.onclick = () => { submitLB(true).then(renderLB); r.disabled = true; setTimeout(() => { if ($('#lbRefresh')) $('#lbRefresh').disabled = false; }, 1500); };
+  card.onclick = e => {
+    const mp = e.target.closest('[data-lbp]'); if (mp) { lbPeriod = mp.dataset.lbp; renderMe(); return; }
+    const mm = e.target.closest('[data-lbm]'); if (mm) { lbMetric = mm.dataset.lbm; renderMe(); }
+  };
+  if (lbOn()) renderLB();
 }
 
 // First-run coachmarks: a few pointers at the map, the sheet grip and the Daily tab. Shown
@@ -1755,13 +1953,15 @@ function syncSubViews() {
   $$('#itemsSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === itemsSub));
   $$('#shopSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === shopSub));
   const sp = $('#sub-pack'), sd = $('#sub-dex'); if (sp && sd) { sp.hidden = itemsSub !== 'pack'; sd.hidden = itemsSub !== 'dex'; }
-  const ss = $('#sub-shop'), sc = $('#sub-craft'); if (ss && sc) { ss.hidden = shopSub !== 'shop'; sc.hidden = shopSub !== 'craft'; }
+  const ss = $('#sub-shop'), sy = $('#sub-style'), sc = $('#sub-craft');
+  if (ss && sc) { ss.hidden = shopSub !== 'shop'; if (sy) sy.hidden = shopSub !== 'style'; sc.hidden = shopSub !== 'craft'; }
 }
+const renderShopSub = () => (shopSub === 'shop' ? renderShop() : shopSub === 'style' ? renderStyle() : renderCraft());
 function setSub(group, sub) {
   if (group === 'items') itemsSub = sub; else shopSub = sub;
   syncSubViews(); FX.sfx('tap'); FX.vibe(8);
   if (group === 'items') (itemsSub === 'pack' ? renderPack() : renderDex());
-  else (shopSub === 'shop' ? renderShop() : renderCraft());
+  else renderShopSub();
   const sv = $('#v-' + group); if (sv) sv.scrollTop = 0;
 }
 function show(v) {
@@ -1789,7 +1989,7 @@ function renderAll() {
   if (view === 'explore') renderNearby();
   else if (view === 'items') (itemsSub === 'pack' ? renderPack() : renderDex());
   else if (view === 'daily') renderDaily();
-  else if (view === 'shop') (shopSub === 'shop' ? renderShop() : renderCraft());
+  else if (view === 'shop') renderShopSub();
   else if (view === 'me') renderMe();
 }
 
@@ -1963,8 +2163,70 @@ function renderDaily() {
     h += `<div class="day t${t}${d < cycleDay ? ' done' : ''}${now ? ' now' : ''}"><b>Day ${d}</b><span>${TIER_ICON[t]}</span><small style="color:${RAR[t].c}">${t >= 2 ? RAR[t].n : ''}</small>${d >= cycleDay ? `<em>+${dailyCoins(calStreak, d)}🪙</em>` : ''}</div>`;
   }
   h += `</div><p class="fine pad">Missing a day never resets your progress – just claim the next reward when you're back. Every day pays coins too – more for each day in a row (up to +${CO.dailyStreak * 6}), and a +${CO.dailyBig} bonus on days 7, 14, 21 and 28.</p>`;
+  h += renderChallenges();
   $('#dailyBox').innerHTML = h;
   const b = $('#claimBtn'); if (b) b.onclick = claimDaily;
+  $('#dailyBox').onclick = e => { const c = e.target.closest('[data-chal]'); if (!c) return; const [p, id] = c.dataset.chal.split(':'); claimChallenge(p, id); };
+}
+
+// ---------------- daily & weekly challenges ----------------
+// Deterministic: everyone gets the same set each day/week (seeded by the date), tracked against a
+// snapshot of your cumulative stats taken when the period began.
+const CHALLENGES = [
+  { id: 'open', m: 'open', verb: 'Open {n} chests', day: [3, 6], week: [20, 40], rd: 40, rw: 160, icon: '📦' },
+  { id: 'walk', m: 'walk', verb: 'Walk {n} miles', day: [1, 3], week: [8, 15], rd: 50, rw: 220, icon: '🚶' },
+  { id: 'trade', m: 'trade', verb: 'Make {n} trades', day: [2, 5], week: [15, 30], rd: 40, rw: 160, icon: '🔁' },
+  { id: 'collect', m: 'collect', verb: 'Collect {n} new items', day: [2, 4], week: [10, 20], rd: 45, rw: 170, icon: '📚' },
+  { id: 'road', m: 'road', verb: 'Grab {n} road coins', day: [20, 50], week: [150, 300], rd: 35, rw: 150, icon: '🪙' },
+  { id: 'hide', m: 'hide', verb: 'Hide {n} chests', day: [1, 2], week: [4, 8], rd: 40, rw: 160, icon: '🫳' },
+  { id: 'merge', m: 'merge', verb: 'Merge {n} times', day: [1, 3], week: [6, 12], rd: 40, rw: 160, icon: '🔗' }
+];
+const WK = () => Math.floor(utcDay() / 7);
+function metricVal(m) { const s = statView(); return ({ open: s.visited, walk: milesOf(), trade: s.ex, collect: s.dex, road: s.roadCoins, hide: s.hidden, merge: s.merges })[m] || 0; }
+function snapMetrics() { const o = {}; ['open', 'walk', 'trade', 'collect', 'road', 'hide', 'merge'].forEach(m => o[m] = metricVal(m)); return o; }
+function ensureChal() {
+  if (!P.chal || typeof P.chal !== 'object') P.chal = {};
+  const dk = dayKey(), wk = WK();
+  if (P.chal.day !== dk) { P.chal.day = dk; P.chal.dayBase = snapMetrics(); P.chal.dayDone = {}; }
+  if (P.chal.week !== wk) { P.chal.week = wk; P.chal.weekBase = snapMetrics(); P.chal.weekDone = {}; }
+}
+function pickChallenges(period) {
+  const key = period === 'day' ? dayKey() : 'w' + WK();
+  const R = rng(hashStr('chal|' + period + '|' + key)), pool = CHALLENGES.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+  return pool.slice(0, 3).map(c => { const [lo, hi] = c[period]; return Object.assign({}, c, { goal: lo + Math.floor(R() * (hi - lo + 1)), reward: period === 'day' ? c.rd : c.rw, period }); });
+}
+function challengeReady() {
+  if (!P) return false; ensureChal();
+  return ['day', 'week'].some(p => { const base = p === 'day' ? P.chal.dayBase : P.chal.weekBase, done = p === 'day' ? P.chal.dayDone : P.chal.weekDone;
+    return pickChallenges(p).some(c => !done[c.id] && metricVal(c.m) - (base[c.m] || 0) >= c.goal); });
+}
+function renderChallenges() {
+  ensureChal();
+  const section = (period, title, note) => {
+    const list = pickChallenges(period), base = period === 'day' ? P.chal.dayBase : P.chal.weekBase, done = period === 'day' ? P.chal.dayDone : P.chal.weekDone;
+    let h = `<h2 class="sec">${title} <small>${note}</small></h2><div class="list">`;
+    list.forEach(c => {
+      const cur = Math.max(0, metricVal(c.m) - (base[c.m] || 0)), claimed = !!done[c.id], ready = cur >= c.goal && !claimed;
+      const pct = Math.min(100, Math.round(cur / c.goal * 100)), show = c.m === 'walk' ? Math.min(cur, c.goal).toFixed(1) : Math.floor(Math.min(cur, c.goal));
+      h += `<div class="chal${claimed ? ' done' : ''}${ready ? ' ready' : ''}"><div class="chi">${c.icon}</div>
+        <div class="cbody"><b>${c.verb.replace('{n}', c.goal)}</b>
+        <div class="achbar"><span class="bar"><i style="width:${claimed ? 100 : pct}%" class="${claimed ? 'done' : ''}"></i></span><u>${claimed ? '✓ earned' : show + ' / ' + c.goal}</u></div></div>
+        <button class="btn sm" data-chal="${period}:${c.id}" ${ready ? '' : 'disabled'}>${claimed ? 'Done' : ready ? 'Claim' : '🪙 ' + c.reward}</button></div>`;
+    });
+    return h + '</div>';
+  };
+  return section('day', 'Daily challenges', 'new set at midnight') + section('week', 'Weekly challenges', 'new set each week');
+}
+function claimChallenge(period, id) {
+  if (needNet('Claiming')) return;
+  ensureChal();
+  const c = pickChallenges(period).find(x => x.id === id); if (!c) return;
+  const base = period === 'day' ? P.chal.dayBase : P.chal.weekBase, done = period === 'day' ? P.chal.dayDone : P.chal.weekDone;
+  if (done[id]) return;
+  if (metricVal(c.m) - (base[c.m] || 0) < c.goal) return toast('Not finished yet', 'bad');
+  done[id] = 1; save(); earn(c.reward, (period === 'day' ? 'Daily' : 'Weekly') + ' challenge'); FX.sfx('ach'); FX.confetti(['#ffd98a', '#f2b84b', '#fff'], 30);
+  renderDaily();
 }
 function claimDaily() {
   if (needNet('Claiming your reward')) return;
@@ -1974,6 +2236,7 @@ function claimDaily() {
   P.daily.max = Math.max(P.daily.max || 0, P.daily.streak); P.daily.n++; P.daily.last = today;
   const coins = dailyCoins(P.daily.streak, day);
   const isNew = addItem(it.id); earn(coins, 'Daily reward'); save(); checkAch(); renderAll();
+  if (notifOn()) scheduleDailyReminder();
   FX.sfx('daily');
   modal(`<div style="text-align:center"><p class="sub">Day ${day} reward</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
@@ -2025,6 +2288,7 @@ function renderMe() {
       <button class="btn sm ghost" id="refBtn" style="margin-left:6px">Check</button></p>
     <div id="qr"></div><div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
     ${navigator.share ? '<button class="btn ghost big" id="shareBtn" style="margin-top:8px">Share…</button>' : ''}</div>
+    ${lbCard()}
     <h2 class="sec" id="achSec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2>
     <p class="fine pad" style="margin-top:-2px">Closest to earning first · completed at the bottom.</p><div style="padding:0 14px">`;
   // closest-to-done first, then the ones already earned (most recent first)
@@ -2060,6 +2324,8 @@ function renderMe() {
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
     <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator is running</span></label>
     <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
+    ${window.Notification ? `<label class="tg"><input type="checkbox" id="setNotif" ${notifOn() ? 'checked' : ''}><span>🔔 Daily reminder &amp; alerts</span></label>` : ''}
+    ${DB.remote ? `<label class="tg"><input type="checkbox" id="setLb" ${lbOn() ? 'checked' : ''}><span>🏆 Appear on leaderboards</span></label>` : ''}
     ${DB.remote ? `<p class="fine">📍 Your approximate location is shared with the server and admin team for further development.</p>` : ''}
     ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
     <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
@@ -2067,6 +2333,7 @@ function renderMe() {
     <button class="btn sm ghost" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>`;
   $('#meBox').innerHTML = h;
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
+  wireLB();
   $('#titleSel').onchange = e => { P.title = e.target.value; save(); renderHeader(); };
   $('#refBtn').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; const was = inviteCount; await refreshInvites(); if (inviteCount === was) toast(`${inviteCount} friend${inviteCount === 1 ? '' : 's'} joined so far`); renderMe(); };
   $('#copyBtn').onclick = () => { const i = $('#inviteLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } toast('Invite link copied'); };
@@ -2093,6 +2360,8 @@ function renderMe() {
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
   $('#setMap').onchange = e => { FX.set('darkmap', e.target.checked); applyBasemap(); toast(e.target.checked ? 'Dark map on' : 'Standard map on'); };
+  const sn = $('#setNotif'); if (sn) sn.onchange = async e => { const ok = await enableNotif(e.target.checked); e.target.checked = ok; };
+  const slb = $('#setLb'); if (slb) slb.onchange = e => { try { localStorage.setItem('sw_lb', e.target.checked ? '1' : '0'); } catch (er) {} if (e.target.checked) submitLB(true); toast(e.target.checked ? 'You are on the leaderboards' : 'Hidden from leaderboards'); renderMe(); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
   const rc = $('#recNew'); if (rc) rc.onclick = e => regenRecovery(e.target);
   const rcode = localCode(KEY); if (rcode) wireCodeBox($('#meBox'), P.name, rcode, 'mine');
@@ -2257,7 +2526,7 @@ function applyBasemap() {
       { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
     baseLayer.setZIndex(0);
   }
-  $('#map').classList.toggle('darkmap', !!FX.prefs.darkmap);
+  applyMapTheme();
 }
 function initMap() {
   if (map || !window.L) { if (!window.L) $('#map').innerHTML = '<div class="nomap">Map unavailable offline – the chest list below still works.</div>'; return; }
@@ -2439,7 +2708,7 @@ function markNear() {
 
   chests.forEach(c => {
     const d = dist(pos, c);
-    if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast('📦 ' + c.name + ' is within reach!', 'gold'); FX.sfx('ping'); FX.vibe(200); }
+    if (d <= unlockM(c) && !nearSeen[c.id]) { nearSeen[c.id] = 1; toast((isRare(c) ? '✨ ' : '📦 ') + c.name + ' is within reach!', 'gold'); FX.sfx('ping'); FX.vibe(200); if (isRare(c)) rareNearAlert(c); }
     if (d > unlockM(c) * 3) delete nearSeen[c.id];
   });
 }
@@ -2565,7 +2834,7 @@ function drawChestMarkers() {
     if (row && row.closest('.chest')) row.closest('.chest').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   const one = c => {
-    const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : ''), html: '<span>' + kindInfo(c.kind)[1] + '</span>', iconSize: [30, 30] });
+    const ic = L.divIcon({ className: 'cm' + (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : '') + (isRare(c) ? ' rare' : ''), html: '<span>' + (isRare(c) ? '✨' : kindInfo(c.kind)[1]) + '</span>', iconSize: [30, 30] });
     markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => openOne(c)));
   };
   // bucket by a ~52px pixel grid at the current zoom
@@ -2577,9 +2846,9 @@ function drawChestMarkers() {
   });
   buckets.forEach(group => {
     if (group.length === 1) return one(group[0]);
-    const near = group.some(c => dist(pos, c) <= unlockM(c));
+    const near = group.some(c => dist(pos, c) <= unlockM(c)), rare = group.some(isRare);
     const lat = group.reduce((s, c) => s + c.lat, 0) / group.length, lon = group.reduce((s, c) => s + c.lon, 0) / group.length;
-    const ic = L.divIcon({ className: 'cmcluster' + (near ? ' near' : ''), html: '<span>' + group.length + '</span>', iconSize: [34, 34] });
+    const ic = L.divIcon({ className: 'cmcluster' + (near ? ' near' : '') + (rare ? ' rare' : ''), html: '<span>' + group.length + '</span>', iconSize: [34, 34] });
     markers.push(L.marker([lat, lon], { icon: ic, title: group.length + ' chests' }).addTo(map).on('click', () => {
       try { map.fitBounds(group.map(c => [c.lat, c.lon]), { padding: [60, 60], maxZoom: 17 }); } catch (e) { map.setView([lat, lon], Math.min(17, map.getZoom() + 2)); }
     }));
@@ -2643,7 +2912,8 @@ function renderNearby(force) {
   lastRowIds = rowIds;
   el.innerHTML = list.map(c => {
     const near = c.d <= unlockM(c), wait = tradeWait(c.id);
-    return `<div class="chest${near ? ' near' : ''}"><div class="ci">${kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${c.src === 'player' ? chestBy(c) : kindInfo(c.kind)[0]}${wait ? ' · ✓ traded · again in ' + fmtWait(wait) : ''}</small></div>
+    const rare = isRare(c);
+    return `<div class="chest${near ? ' near' : ''}${rare ? ' rare' : ''}"><div class="ci">${rare ? '✨' : kindInfo(c.kind)[1]}</div><div><b>${esc(c.name)}</b><small>${rare ? '✨ Rare cache' : c.src === 'player' ? chestBy(c) : kindInfo(c.kind)[0]}${wait ? ' · ✓ traded · again in ' + fmtWait(wait) : ''}</small></div>
       <div class="cd">${near ? "YOU'RE<br>HERE" : fmtDist(c.d) + '<br><small>' + dirName(pos, c) + '</small>'}</div>
       <button class="btn sm" data-open="${esc(c.id)}" ${near ? '' : 'disabled'}>${near ? 'OPEN' : 'Open'}</button></div>`;
   }).join('') + (all.length > list.length ? `<div class="empty">+ ${all.length - list.length} more – lower the radius to focus on the closest.</div>` : '');
@@ -2771,6 +3041,7 @@ async function openChest(id, byDrone) {
     await cine.done;
     showChest(meta, r.value);
     if (firstVisit) earn(CO.chestNew, 'New chest');
+    if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
     checkAch(); save();
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
     // before we ask, or the server correctly sees no chest yet - so write it, then report, and
@@ -2793,8 +3064,8 @@ function showChest(meta, chest) {
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
   modal(`<div class="chestopen still lit" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
-    <h3 style="text-align:center">${esc(meta.name)}</h3>
-    <p class="chestby">${chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at }))}</p>
+    <h3 style="text-align:center">${isRare(meta) ? '✨ ' : ''}${esc(meta.name)}</h3>
+    <p class="chestby">${isRare(meta) ? '✨ Rare cache – guaranteed Epic or better' : chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at }))}</p>
     <p class="sub">${done ? `You traded here recently – you can look, and swap again in ${fmtWait(wait)}.` : `Pick one item to take, then one of yours to leave behind. One trade per chest every ${fmtWait(TRADE_MS())}.`}</p>
     <div class="lbl">Inside the chest</div>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
@@ -3185,7 +3456,7 @@ function wire() {
   $('#droneBtn').onclick = launchDrone;
   wireDrone();
   // walking only pays out every tenth of a mile, so write what is in hand when the app is put away
-  document.addEventListener('visibilitychange', () => { if (document.hidden && P && KEY) save(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && P && KEY) { save(); submitLB(); } });
   $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };
   // sub-toggles inside the merged Items and Shop tabs
   $('#itemsSeg').onclick = e => { const b = e.target.closest('button'); if (b) setSub('items', b.dataset.sub); };
@@ -3222,7 +3493,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

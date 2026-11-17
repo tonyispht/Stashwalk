@@ -231,6 +231,36 @@ export default {
         return json({ ok: true, admin: adminsOf(env).has(me) }, 200, cors);
       }
 
+      // ---- leaderboards ----------------------------------------------------------------
+      // Players submit their own cumulative stats; the board is computed here. lb/<user> is not
+      // reachable through /kv (it is not a top-level collection), so only this endpoint writes it.
+      if (url.pathname === '/lb/submit' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const num = (v, max) => Math.max(0, Math.min(max, Math.round(+v || 0)));
+        const rec = { name: (await nameOfUser(env, me)).slice(0, 16),
+          coins: num(b.coins, 1e9), miles: Math.max(0, Math.min(1e6, +b.miles || 0)), opened: num(b.opened, 1e6), dex: num(b.dex, 1e5),
+          wk: num(b.wk, 1e6), wkCoins: num(b.wkCoins, 1e9), t: Date.now() };
+        rec.miles = Math.round(rec.miles * 10) / 10;
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
+          .bind('lb/' + me, JSON.stringify(rec)).run();
+        return json({ ok: true }, 200, cors);
+      }
+      if (url.pathname === '/lb' && req.method === 'GET') {
+        const metric = ['coins', 'miles', 'opened', 'dex'].includes(url.searchParams.get('metric')) ? url.searchParams.get('metric') : 'coins';
+        const period = url.searchParams.get('period') === 'week' ? 'week' : 'all';
+        const wk = Math.round(+url.searchParams.get('wk') || 0);
+        const rows = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'lb/%' LIMIT 20000").all()).results;
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        let list = [];
+        rows.forEach(r => { try { const o = JSON.parse(r.val); const v = period === 'week' ? (o.wk === wk ? o.wkCoins : 0) : o[metric]; list.push({ key: r.path.slice(3), name: o.name, v: v || 0 }); } catch (e) {} });
+        list = list.filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+        const rank = me ? (list.findIndex(x => x.key === me) + 1) : 0;
+        const you = rank ? { rank, v: list[rank - 1].v, name: list[rank - 1].name } : null;
+        return json({ metric, period, wk, total: list.length, top: list.slice(0, 100).map((x, i) => ({ rank: i + 1, name: x.name, v: x.v, me: x.key === me })), you }, 200, cors);
+      }
+
       if (url.pathname === '/admin/stats' && req.method === 'GET') {
         const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
         const now = Date.now();

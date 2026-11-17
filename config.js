@@ -23,7 +23,7 @@ window.GEO_CONFIG = {
   SEARCH_RADIUS_FT: 300,   // size of a search circle
   SEARCH_SHOW_MI: 1,       // search circles appear for undiscovered chests this close to you (or the drone)
   SEARCH_MAX: 12,          // and at most this many at once
-  DISCOVER_FT: 60,         // get this close (on foot, or with the drone) and the chest is found for good
+  DISCOVER_FT: 20,         // get this close (on foot, or with the drone) and the chest is found for good
   MAX_TILES: 40,           // most map tiles loaded at once (each is one degree square)
   STARTER_ITEMS: 3,        // items a brand-new player begins with
   MERGE_COUNT: 3,          // identical items needed to merge one rarity upward

@@ -156,6 +156,19 @@ window.DB = (function () {
       if (!r.ok) throw new Error(j.error || 'admin ' + r.status);
       return j;
     },
+    async lbSubmit(rec) {
+      if (!W || !auth) return null;
+      const r = await fetch(W + '/lb/submit', { method: 'POST', headers: whead(), body: JSON.stringify(rec) });
+      return r.ok ? r.json() : null;
+    },
+    async lbFetch(metric, period, wk) {
+      if (!W) throw new Error('leaderboards need the shared world (Worker)');
+      const r = await fetch(W + '/lb?metric=' + metric + '&period=' + period + '&wk=' + wk, { headers: whead() });
+      const j = await r.json().catch(() => null);
+      if (!j) throw new Error('the Worker needs updating for leaderboards');
+      if (!r.ok) throw new Error(j.error || 'leaderboard ' + r.status);
+      return j;
+    },
     async adminStats() {
       if (!W) throw new Error('admin stats need the shared world (Worker)');
       const r = await fetch(W + '/admin/stats', { headers: whead() });

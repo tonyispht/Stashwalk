@@ -373,6 +373,25 @@ usual 20 m gap from other chests applies. Chests can be hidden anywhere, on foot
 reporting (three reports removes a chest) is the safety valve. `DRONE_HIDE_NEAR_M` can optionally
 require remote hides to be within that many metres of a known park or public place (0 = off).
 
+## Leaderboards, challenges, cosmetics, rare chests, notifications (2026-11)
+- **Leaderboards** (`/lb/submit`, `/lb` on the Worker; card in the Me tab): all-time boards for
+  coins earned, miles, chests opened and shelf size, plus a weekly coins board. Players submit
+  their own cumulative stats (`submitLB`, throttled); the Worker ranks them and returns the top
+  100 plus the caller's rank. Opt out with "Appear on leaderboards" in Settings. `lb/<user>` is
+  not reachable through `/kv`.
+- **Daily & weekly challenges** (Daily tab): a deterministic rotating set (seeded by date), tracked
+  against a snapshot of your cumulative stats taken when the period began, with coin rewards.
+- **Cosmetics / coin sinks** (Shop → Style): buy app accent, map style, player-dot and drone-paint
+  with coins; equip for free. Applied live through CSS variables (`applyCosmetics`). The free
+  default is always owned.
+- **Rare glowing chests**: ~1 in 22 chests (not player-hidden) glow on the map and hold a
+  guaranteed Epic+ item plus a coin bonus. Deterministic (`isRare`).
+- **Push notifications**: a daily "reward ready" reminder via the Notification Triggers API where
+  supported, plus a live alert when a rare cache is within reach. Toggle in Settings. (Full
+  background push for closed-app alerts would need a VAPID push server.)
+- Chests now reveal within **20 ft** (was 60), and the Explore sheet's collapsed state is slimmed
+  so the map is the majority of the screen.
+
 ## Wild chests (auto-generated)
 Parks and campgrounds are sparse in most neighbourhoods, so the game also generates extra chests
 along the **real road and path network** near the player. They are deterministic — seeded by map
