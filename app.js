@@ -2795,7 +2795,9 @@ let lkPick = null;
 function endLinkPick() {
   if (!lkPick) return;
   try { lkPick.layer.remove(); } catch (e) {}
+  (lkPick.hid || []).forEach(l => { try { l.addTo(map); } catch (e) {} });
   const bn = $('#lkBanner'); if (bn) bn.remove();
+  const tr = $('#lkTray'); if (tr) tr.remove();
   document.body.classList.remove('linkpick');
   lkPick = null;
 }
@@ -2803,24 +2805,38 @@ function linkPickMap(meta, chest, R, ranked) {
   if (!map || !window.L) return toast('The map is not available', 'bad');
   endLinkPick(); closeModal(); if (view !== 'explore') show('explore');
   const T = TEAMS[P.team], layer = L.layerGroup().addTo(map);
-  lkPick = { layer, meta, chest };
+  // clear the stage: search circles, coins, state fields and effects step aside until picking ends
+  const hid = [searchLayer, RC.layer, cellLayer, fxLayer].filter(l => l && map.hasLayer(l));
+  hid.forEach(l => map.removeLayer(l));
+  lkPick = { layer, meta, chest, hid };
   document.body.classList.add('linkpick');
   L.circle([meta.lat, meta.lon], { radius: R, color: T.c, weight: 1.5, opacity: .7, dashArray: '6 6', fillColor: T.c, fillOpacity: .05, interactive: false }).addTo(layer);
-  ranked.filter(r => r.st.s === 'ok').forEach(r => L.polyline([[meta.lat, meta.lon], [r.k.lat, r.k.lon]], { color: T.c2, weight: 2, opacity: .65, dashArray: '4 7', interactive: false }).addTo(layer));
+  ranked.filter(r => r.st.s === 'ok').forEach(r => {
+    L.polyline([[meta.lat, meta.lon], [r.k.lat, r.k.lon]], { color: '#49d17a', weight: 9, opacity: .22, interactive: false, lineCap: 'round' }).addTo(layer);
+    L.polyline([[meta.lat, meta.lon], [r.k.lat, r.k.lon]], { color: '#9cf5bd', weight: 2.5, opacity: .95, interactive: false }).addTo(layer);
+  });
   L.marker([meta.lat, meta.lon], { icon: L.divIcon({ className: 'lkorigin', html: `<span style="--tc:${T.c}">🔗</span>`, iconSize: [34, 34] }), interactive: false, zIndexOffset: 3000 }).addTo(layer);
   ranked.forEach(r => {
     const st = r.st.s, nm = esc(RENAMES.get(r.k.id) || r.k.n);
     const note = st === 'ok' ? fmtDist(r.k.d) : st === 'dup' ? 'already linked' : `crosses ${TEAMS[r.st.team] ? TEAMS[r.st.team].name : 'a'} link`;
-    const mk = L.marker([r.k.lat, r.k.lon], { icon: L.divIcon({ className: 'lktarget ' + st, html: `<span class="lkdot">🔑</span><b class="lklbl">${nm}<small>${note}</small></b>`, iconSize: [36, 36] }),
-      interactive: st === 'ok', zIndexOffset: 2800 }).addTo(layer);
-    if (st === 'ok') mk.on('click', () => {
+    const mk = L.marker([r.k.lat, r.k.lon], { icon: L.divIcon({ className: 'lktarget ' + st, html: `<span class="lkdot">${st === 'ok' ? '🔑<i>✓</i>' : st === 'dup' ? '🔗' : '⛔'}</span><b class="lklbl">${nm}<small>${note}</small></b>`, iconSize: st === 'ok' ? [46, 46] : [32, 32] }),
+      interactive: st === 'ok', zIndexOffset: st === 'ok' ? 2900 : 2700 }).addTo(layer);
+    r.pick = () => {
       modal(`<h3>🔗 Link these chests?</h3><p class="sub"><b>${esc(meta.name)}</b> ↔ <b>${nm}</b><br>${fmtDist(r.k.d)} · uses your key to ${nm}.</p>
         <div class="trade"><button class="btn ghost" id="cancelBtn">Pick another</button><button class="btn" id="lkGo">🔗 Link</button></div>`, m => {
         $('#cancelBtn', m).onclick = closeModal;
         $('#lkGo', m).onclick = async () => { $('#lkGo', m).disabled = true; endLinkPick(); const ok = await makeLink(meta, chest, r.k.id); if (!ok) linkPickMap(meta, chest, R, ranked); };
       });
-    });
+    };
+    if (st === 'ok') mk.on('click', r.pick);
   });
+  // a tray of the clear targets: tap one there instead of hunting for its marker
+  const okList = ranked.filter(r => r.st.s === 'ok');
+  const tr = document.createElement('div'); tr.className = 'lktray'; tr.id = 'lkTray';
+  tr.innerHTML = okList.length ? okList.map((r, i) => `<button class="lkchip" data-i="${i}"><span>🔑</span><b>${esc(RENAMES.get(r.k.id) || r.k.n)}</b><small>${fmtDist(r.k.d)}</small></button>`).join('')
+    : '<div class="lkchip none">No clear targets here – every key in range is blocked or already linked.</div>';
+  tr.onclick = e => { const b = e.target.closest('[data-i]'); if (b) okList[+b.dataset.i].pick(); };
+  $('#maprow').appendChild(tr);
   const nOk = ranked.filter(r => r.st.s === 'ok').length;
   const bn = document.createElement('div'); bn.className = 'lkbanner'; bn.id = 'lkBanner';
   bn.innerHTML = `<span>🔗 <b>Tap a green chest</b> to link from ${esc(meta.name)}<small>${nOk} clear · range ${fmtDist(R)}</small></span><button class="btn sm ghost" id="lkBack">Cancel</button>`;
