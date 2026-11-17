@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181315';
+const APP_BUILD = '202611181330';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -2894,7 +2894,8 @@ async function makeLink(meta, chest, toId) {
     act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
     let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
     if (fc) earn(fc, '🔺 Field');
-    save(); checkAch(); backToChest(meta, chest); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
+    save(); checkAch(); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
+    if (r.fields && r.fields.length) fieldReveal(meta, chest, r.fields, r.link); else backToChest(meta, chest);
     FX.confetti([T.c, T.c2, '#fff'], r.fields && r.fields.length ? 80 : 30);
     toast(r.fields && r.fields.length ? `🔺 Field created for ${T.name}! +${15 + fc} 🪙` : `🔗 Linked to ${k.n}! +15 🪙`, 'gold');
     loadLinks(true); fillStandings(true);
@@ -2904,6 +2905,40 @@ async function makeLink(meta, chest, toId) {
     toast(d.error === 'crosses a link' ? `That link would cross a ${TEAMS[d.team] ? TEAMS[d.team].name + ' ' : ''}link` : d.error === 'too far' ? `Too far – this chest's links reach ${fmtDist(d.max)}` : d.error === 'already linked' ? 'Those chests are already linked' : 'Could not link: ' + e.message, 'bad');
     return false;
   }
+}
+// A new field gets a short moment on the map - framed, glowing, with its size - then the chest opens again.
+let fieldShow = null;
+function fieldReveal(meta, chest, fields, link) {
+  if (!map || !window.L || !fields.length) return backToChest(meta, chest);
+  endFieldReveal(true); endLinkPick(); closeModal();
+  const prev = view, was = { c: map.getCenter(), z: map.getZoom() };
+  if (view !== 'explore') show('explore');
+  const T = TEAMS[P.team], layer = L.layerGroup().addTo(map), pts = [];
+  fields.forEach(f => {
+    const ll = f.pts.map(p => [p.lat, p.lon]); pts.push(...ll);
+    L.polygon(ll, { color: T.c2, weight: 3, fillColor: T.c, fillOpacity: .45, className: 'fieldnew', interactive: false }).addTo(layer);
+    ll.forEach(q => L.circleMarker(q, { radius: 7, color: '#fff', weight: 2, fillColor: T.c, fillOpacity: 1, interactive: false }).addTo(layer));
+  });
+  if (link) L.polyline([[link.alat, link.alon], [link.blat, link.blon]], { color: '#fff', weight: 4, opacity: .95, className: 'linknew', interactive: false }).addTo(layer);
+  document.body.classList.add('linkpick');
+  const km2 = fields.reduce((a, f) => a + (f.km2 || 0), 0);
+  const bn = document.createElement('div'); bn.className = 'lkbanner fieldbn'; bn.id = 'fieldBanner'; bn.style.setProperty('--tc', T.c);
+  bn.innerHTML = `<span>🔺 <b>${fields.length > 1 ? fields.length + ' fields' : 'Field'} created for ${T.icon} ${esc(T.name)}</b><small>${km2.toFixed(2)} km² now held by your faction</small></span><button class="btn sm" id="fieldOk">Back to chest</button>`;
+  $('#maprow').appendChild(bn);
+  try { map.invalidateSize(); map.flyToBounds(L.latLngBounds(pts).pad(.35), { maxZoom: 17, duration: .8 }); } catch (e) {}
+  const done = () => { if (fieldShow) { endFieldReveal(); backToChest(meta, chest); } };
+  fieldShow = { layer, prev, was, t: setTimeout(done, 3600) };
+  $('#fieldOk', bn).onclick = done;
+}
+function endFieldReveal(skipRestore) {
+  if (!fieldShow) return;
+  const f = fieldShow; fieldShow = null; clearTimeout(f.t);
+  try { f.layer.remove(); } catch (e) {}
+  const bn = $('#fieldBanner'); if (bn) bn.remove();
+  document.body.classList.remove('linkpick');
+  if (skipRestore) return;
+  try { map.setView(f.was.c, f.was.z, { animate: false }); } catch (e) {}
+  if (f.prev !== 'explore') show(f.prev);
 }
 // Which of your keys in range can be linked from this chest, best first.
 async function linkTargets(meta, R) {
@@ -3271,6 +3306,7 @@ function setSub(group, sub) {
 function show(v) {
   if (v !== 'explore' && fly) endFlight('park');
   if (v !== 'explore' && lkPick) endLinkPick();
+  if (v !== 'explore' && fieldShow) endFieldReveal(true);
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
   if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
@@ -3859,7 +3895,7 @@ let autoUpdTimer = null;
 function autoUpdate() {
   clearTimeout(autoUpdTimer);
   if (!PWA.waiting || PWA.applying) return;
-  const busy = modalOpen() || fly || (typeof lkPick !== 'undefined' && lkPick);
+  const busy = modalOpen() || fly || (typeof lkPick !== 'undefined' && lkPick) || (typeof fieldShow !== 'undefined' && fieldShow);
   if (document.hidden || !busy) {
     if (!document.hidden) toast('✨ Updating Stashwalk…');
     autoUpdTimer = setTimeout(applyUpdate, document.hidden ? 50 : 1200);
@@ -5037,7 +5073,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

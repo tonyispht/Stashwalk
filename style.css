@@ -1427,3 +1427,11 @@ body.linkpick .towermark{display:none!important}
 .lvbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#7ff0ff,var(--acc2));box-shadow:0 0 10px #7ff0ff66}
 .lvfoot{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mut)}
 .sheet .lbl,#modal .lbl,.lbl{text-transform:none!important;letter-spacing:0!important;font-size:13px;font-weight:600;color:var(--ink)}
+
+/* new field reveal */
+.fieldbn{border-color:var(--tc,#49d17a)}
+.leaflet-overlay-pane .fieldnew{animation:fieldIn .9s ease-out both, fieldGlow 1.6s ease-in-out .9s infinite;filter:drop-shadow(0 0 8px #fff8)}
+.leaflet-overlay-pane .linknew{animation:fieldGlow 1.6s ease-in-out infinite}
+@keyframes fieldIn{from{fill-opacity:0;stroke-opacity:0}to{}}
+@keyframes fieldGlow{0%,100%{opacity:1}50%{opacity:.6}}
+@media (prefers-reduced-motion:reduce){.leaflet-overlay-pane .fieldnew,.leaflet-overlay-pane .linknew{animation:none}}
