@@ -2850,9 +2850,9 @@ function runGlyph(id, after, lvl, hard) {
           else finish(item ? 1900 : 1200);
         }
       } else {
-        accepting = false; msg.innerHTML = '❌ Glyph broke — no bonus this time';
+        accepting = false; msg.innerHTML = '❌ <b>Glyph broke</b> – wrong point. No bonus or level point this time.<br><small class="fine">This chest can be hacked again in 30 minutes.</small>';
         { const gm = chests.find(c => c.id === id); act('glyphfail', (gm ? gm.name : '') + (hard ? ' (hard)' : ''), gm); }
-        els.forEach(x => x.classList.add('bad')); finish(1200);
+        els.forEach(x => x.classList.add('bad')); finish(2600);
       }
     };
   });
@@ -4067,13 +4067,20 @@ async function openChest(id, byDrone) {
   try {
     const day = utcDay();
     const firstVisit = !P.stats.visited[id];
+    P.lvlCounted = P.lvlCounted || {};
+    let counted = false;
     const r = await DB.tx('chests/' + id, cur => {
-      if (!cur) { const c = makeChest(meta, day); c.visits = firstVisit ? 1 : 0; return c; }
+      counted = false;
+      if (!cur) { const c = makeChest(meta, day); c.visits = firstVisit ? 1 : 0; counted = firstVisit; return c; }
       let changed = false;
       if ((cur.day || 0) < day) { refreshChest(cur, meta, day); changed = true; }
-      if (firstVisit) { cur.visits = (cur.visits || 0) + 1; changed = true; }   // each explorer counts once
+      // each explorer counts once; explorers from before counting began are added the next time
+      // they open a chest that has no explorers on record yet
+      const backfill = !firstVisit && !P.lvlCounted[id] && !(cur.visits > 0);
+      if (firstVisit || backfill) { cur.visits = (cur.visits || 0) + 1; changed = true; counted = true; }
       return changed ? cur : undefined;
     });
+    if (counted || firstVisit) { P.lvlCounted[id] = 1; save(); }
     if (r.value) { const was = LVL.get(id) || 0, xp = chestXP(r.value); LVL.set(id, xp); lvlAsked.set(id, Date.now());
       if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
       // your visit was the one that pushed it over a threshold
@@ -4117,6 +4124,8 @@ async function glyphLevelPoint(id, pts) {
     if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
     const meta = chests.find(c => c.id === id);
     if (meta && chestLevel(xp) > chestLevel(before)) setTimeout(() => levelUpReward(meta, xp), 1500);   // +2 can jump past a threshold
+    else if (meta) { const l = chestLevel(xp), nx = LVL_AT[l];
+      setTimeout(() => toast(`✨ +${pts || 1} level point${(pts || 1) > 1 ? 's' : ''} for ${meta.name}${nx ? ` · ${xp}/${nx} to Lv ${l + 1}` : ' · max level'}`), 1500); }
   } catch (e) {}
 }
 function lvlChip(chest) {
