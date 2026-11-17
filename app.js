@@ -2554,15 +2554,15 @@ function drawFx() {
       .on('click', () => toast(`${FX_TYPES[f.type].icon} ${FX_TYPES[f.type].name} by ${f.by}${T ? ' ' + T.icon : ''} · ${Math.max(1, Math.round((f.until - Date.now()) / 60000))} min left`));
   });
 }
-function fxDialog(meta) {
+function fxDialog(meta, chest) {
   if (!DB.remote) return toast('Effects need the shared world', 'bad');
   const live = fxList.find(f => f.chest === meta.id && f.until > Date.now());
   modal(`<h3>🎆 Celebrate at ${esc(meta.name)}</h3>
     <p class="sub">Everyone nearby sees it on their map.${live ? ` <b>${FX_TYPES[live.type].icon} ${esc(live.by)}'s ${FX_TYPES[live.type].name.toLowerCase()} is running here now.</b>` : ''}</p>
     <div class="fxopts">${Object.entries(FX_TYPES).map(([k, t]) => `<button class="fxopt" data-fx="${k}" ${P.coins < t.cost ? 'disabled' : ''}>
       <span class="fxic">${t.icon}</span><span class="fxtx"><b>${t.name}</b><small>${t.sub}</small></span><span class="fxcost">${t.cost} 🪙</span></button>`).join('')}</div>
-    <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>`, m => {
-    $('#cancelBtn', m).onclick = closeModal;
+    <div class="trade"><button class="btn ghost" id="cancelBtn">${chest ? 'Back to chest' : 'Close'}</button></div>`, m => {
+    $('#cancelBtn', m).onclick = () => chest ? backToChest(meta, chest) : closeModal();
     $$('.fxopt', m).forEach(b => b.onclick = async () => {
       const k = b.dataset.fx, t = FX_TYPES[k];
       if (P.coins < t.cost) return toast('Not enough coins', 'bad');
@@ -2574,7 +2574,7 @@ function fxDialog(meta) {
         return toast(d.error === 'busy' ? `${d.by}'s effect is still running here` : d.error === 'slow down' ? 'One effect a minute – try again shortly' : 'Could not set it off: ' + e.message, 'bad');
       }
       spend(t.cost); P.stats.fx = (P.stats.fx || 0) + 1; save(); renderAll();
-      closeModal(); FX.sfx('reveal', 2); FX.confetti([TEAMS[P.team] ? TEAMS[P.team].c : '#f2b84b', '#fff', '#ffd98a'], 50);
+      if (chest) backToChest(meta, chest); else closeModal(); FX.sfx('reveal', 2); FX.confetti([TEAMS[P.team] ? TEAMS[P.team].c : '#f2b84b', '#fff', '#ffd98a'], 50);
       toast(`${t.icon} ${t.name} set off at ${meta.name} for ${t.mins} min`, 'gold'); act('fx', t.icon + ' ' + t.name + ' at ' + meta.name, meta);
       loadFx(true);
     });
@@ -2645,6 +2645,11 @@ function renderKeys() {
     const d = e.target.closest('[data-kdrop]'); if (d) { delete P.keys[d.dataset.kdrop]; save(); renderKeys(); }
   };
 }
+// Return to a chest's window (fresh contents) after a side dialog, so it never has to be reopened.
+async function backToChest(meta, chest) {
+  let fresh = null; try { fresh = await DB.get('chests/' + meta.id); } catch (e) {}
+  showChest(meta, fresh && fresh.items ? fresh : chest);
+}
 function linkDialog(meta, chest) {
   if (!P.team) return chooseTeamDialog(false);
   const lvl = chestLevel(chestXP(chest)), R = lvl * LINK_PER_LVL;
@@ -2656,8 +2661,8 @@ function linkDialog(meta, chest) {
     <div class="keylist">${inR.map(k => `<button class="keyrow pick" data-lk="${esc(k.id)}"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span><span class="kgo">Link →</span></button>`).join('')
       || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}
       ${out.length ? `<p class="fine" style="margin:8px 2px 4px">Out of range (${out.length})</p>` + out.slice(0, 8).map(k => `<div class="keyrow off"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span></div>`).join('') : ''}</div>
-    <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>`, m => {
-    $('#cancelBtn', m).onclick = closeModal;
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Back to chest</button></div>`, m => {
+    $('#cancelBtn', m).onclick = () => backToChest(meta, chest);
     $$('[data-lk]', m).forEach(b => b.onclick = async () => {
       const k = P.keys[b.dataset.lk]; if (!k) return;
       $$('[data-lk]', m).forEach(x => x.disabled = true);
@@ -2668,7 +2673,7 @@ function linkDialog(meta, chest) {
         act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
         let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
         if (fc) earn(fc, '🔺 Field');
-        save(); checkAch(); closeModal(); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
+        save(); checkAch(); backToChest(meta, chest); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
         FX.confetti([T.c, T.c2, '#fff'], r.fields && r.fields.length ? 80 : 30);
         toast(r.fields && r.fields.length ? `🔺 Field created for ${T.name}! +${15 + fc} 🪙` : `🔗 Linked to ${k.n}! +15 🪙`, 'gold');
         loadLinks(true); fillStandings(true);
@@ -4163,7 +4168,7 @@ function showChest(meta, chest, canGlyph) {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
-    const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta);
+    const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta, chest);
     const lb = $('#linkBtn', m); if (lb) lb.onclick = () => linkDialog(meta, chest);
     const ar = $('#admRen', m); if (ar) ar.onclick = () => adminRenameDialog(chests.find(c => c.id === meta.id) || meta);
     const am = $('#admRm', m); if (am) am.onclick = () => adminRemoveChest(meta.id);
