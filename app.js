@@ -3329,8 +3329,16 @@ function showStats() {
   const titles = [...new Set(['Newcomer'].concat(got.map(a => a.t)))];
   const n = nextAch();
   const row = (label, val) => `<div class="srow"><span>${label}</span><b>${val}</b></div>`;
-  modal(`<div style="text-align:center"><div class="av big">${esc(P.name[0].toUpperCase())}</div>
-      <h3 style="margin:8px 0 2px">${esc(P.name)}</h3><p class="sub" style="color:var(--acc2);margin:0">${esc(P.title)}</p></div>
+  seedXP();
+  const L = levelOf(P.xp), pct = Math.round(L.into / L.need * 100);
+  modal(`<div style="text-align:center"><span class="avwrap stav">${avatarHtml('big')}<i class="lvbadge big">${L.lvl}</i></span>
+      <h3 style="margin:10px 0 2px">${esc(P.name)}</h3><p class="sub" style="color:var(--acc2);margin:0">${esc(P.title)}</p></div>
+    <div class="lvcard">
+      <div class="lvtop"><b>Level ${L.lvl}</b><span>${fmtC(L.need - L.into)} XP to level ${L.lvl + 1}</span></div>
+      <span class="lvbar"><i style="width:${pct}%"></i></span>
+      <div class="lvfoot"><span>${fmtC(L.into)} / ${fmtC(L.need)} XP</span><span>Total ${fmtC(P.xp)} XP</span></div>
+      <p class="fine" style="margin:8px 0 0">Next level pays <b>${fmtC((L.lvl + 1) * 25)} 🪙</b>. Earn XP from chests, trades, glyph hacks, links, fields, walking and more.</p>
+    </div>
     <div class="lbl">Equipped title</div>
     <select id="titleSel2">${titles.map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
     <p class="fine">${titles.length === 1 ? 'Earn achievements to unlock more titles.' : titles.length + ' titles earned.'}</p>
