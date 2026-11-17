@@ -1,5 +1,9 @@
 (function () {
 'use strict';
+// Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
+// differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
+const APP_BUILD = '202611181315';
+window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
 // Shields: five craft-only tiers (never in chests). Installed on chests and towers they soak up
@@ -3694,7 +3698,7 @@ function renderMe() {
     ${recoveryCard()}${appCard()}
     <details class="card trouble"><summary><b>Troubleshooting</b><small>Updates, screen fit, place list</small></summary>
     <div class="card" style="margin:10px 0 0;padding:0;background:none;border:0"><b>This build</b>
-    <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>. Use this if an update does not seem to have arrived -
+    <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>${APP_BUILD !== String(window.ASSET_V) ? ` <span style="color:#ff9d7a">(game code ${esc(APP_BUILD)} - tap Hard refresh)</span>` : ''}. Use this if an update does not seem to have arrived -
     it reloads everything from scratch without touching your sign-in or settings.</p>
     <button class="btn sm" id="reloadBtn">Hard refresh</button>
     <p class="fine" style="margin-top:12px"><b>Tab bar hidden behind your browser's toolbar?</b>
@@ -3762,6 +3766,14 @@ function renderMe() {
 // A full reload that defeats the browser cache. Scripts and styles are version-stamped, but
 // index.html itself can be served stale, which pins you to an old build - a changing query
 // string forces a fresh copy. Sign-in and settings are left alone.
+// Page and code disagree: the browser served stale code from its own cache. Clear and reload once.
+if (window.ASSET_V && APP_BUILD !== String(window.ASSET_V)) {
+  let tried = null; try { tried = sessionStorage.getItem('sw_heal'); } catch (e) {}
+  if (tried !== String(window.ASSET_V)) {
+    try { sessionStorage.setItem('sw_heal', String(window.ASSET_V)); } catch (e) {}
+    setTimeout(() => hardRefresh(), 0);
+  }
+}
 async function hardRefresh() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); } } catch (e) {}
   try {

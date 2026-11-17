@@ -3,7 +3,7 @@
 // cache anything that comes from the shared world database (that must always be live).
 //
 // VERSION must match window.ASSET_V in index.html - bump both together on every deploy.
-const VERSION = '202611181300';
+const VERSION = '202611181315';
 const SHELL   = 'stashwalk-shell-' + VERSION;   // app code, replaced on every deploy
 const PLACES  = 'stashwalk-places-v1';          // park/campground tiles, never change
 const TILES   = 'stashwalk-maptiles-v1';        // map images, capped below
@@ -39,7 +39,15 @@ self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(SHELL);
     // One bad URL must not fail the whole install, so each file is added on its own.
-    await Promise.all(SHELL_FILES.map(f => c.add(new Request(f, { cache: 'reload' })).catch(() => {})));
+    // Own files are fetched with this build's stamp in the address, so neither the browser's cache
+    // nor the hosting CDN can hand back an older copy; they are stored under the plain name.
+    await Promise.all(SHELL_FILES.map(async f => {
+      try {
+        if (/^https?:/.test(f)) { await c.add(new Request(f, { cache: 'reload' })); return; }
+        const res = await fetch(new Request(f + (f.includes('?') ? '&' : '?') + 'v=' + VERSION, { cache: 'reload' }));
+        if (res.ok) await c.put(f, res);
+      } catch (err) {}
+    }));
   })());
 });
 
