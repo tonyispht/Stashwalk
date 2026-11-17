@@ -894,6 +894,13 @@ function droneSVG(cls) {
 let fly = null;          // { ll:{lat,lon}, vx, vy, raf, last, marker, tether, ring, near, lastProbe }
 const joy = { x: 0, y: 0 };
 const keys = {};
+// Zoom memory (per device): the walking map and the drone view each keep their own zoom.
+const zoomMemOn = () => { try { return localStorage.getItem('sw_zoom_mem') !== '0'; } catch (e) { return true; } };
+const ZOOM = { get p() { if (!zoomMemOn()) return 0; try { return +localStorage.getItem('sw_zoom_p') || 0; } catch (e) { return 0; } },
+  set p(v) { try { localStorage.setItem('sw_zoom_p', v); } catch (e) {} },
+  get d() { if (!zoomMemOn()) return 0; try { return +localStorage.getItem('sw_zoom_d') || 0; } catch (e) { return 0; } },
+  set d(v) { try { localStorage.setItem('sw_zoom_d', v); } catch (e) {} } };
+function rememberZoom() { if (!map) return; const z = map.getZoom(); if (!(z >= 3)) return; if (fly) ZOOM.d = z; else if (pos) ZOOM.p = z; }
 function launchDrone() {
   if (fly) return;
   if (!hasDrone()) { shopSub = 'shop'; return show('shop'); }
@@ -917,7 +924,8 @@ function launchDrone() {
   droneScan(true);
   try { map.dragging.disable(); } catch (e) {}
   RC.lastDraw = null;
-  const z = d.lvl >= 7 ? 15 : d.lvl >= 5 ? 16 : 17;
+  ZOOM.p = map.getZoom();                                      // so landing puts your walking zoom back
+  const z = ZOOM.d || (d.lvl >= 7 ? 15 : d.lvl >= 5 ? 16 : 17);
   if (map.getZoom() !== z) map.setView([ll.lat, ll.lon], z, { animate: false });
   document.body.classList.add('flying');
   // the map grows to fill the screen; once it has, put the drone back in view
@@ -933,6 +941,7 @@ function endFlight(why) {
   RC.lastDraw = null;
   cancelAnimationFrame(fly.raf);
   try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); fly.layer.remove(); } catch (e) {}
+  ZOOM.d = map.getZoom();
   fly = null; joy.x = joy.y = 0;
   try { map.dragging.enable(); } catch (e) {}
   document.body.classList.remove('flying');
@@ -945,10 +954,10 @@ function endFlight(why) {
     d.parked = { lat: at.lat, lon: at.lon, at: Date.now() }; d.live = null; save(); drawParked();
     FX.sfx('place'); toast('📌 Drone parked – it waits here until you fly it again or call it home', 'gold');
     act('drone', 'parked it'); droneSync(true, 'park');
-    if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: true });
+    if (pos && map) map.setView([pos.lat, pos.lon], ZOOM.p || map.getZoom(), { animate: true });
   } else {
     d.parked = null; d.live = null; save(); drawParked(); droneSync(true, 'home');
-    if (why !== 'open') { FX.sfx('dock'); if (pos && map) map.setView([pos.lat, pos.lon], map.getZoom(), { animate: true }); }
+    if (why !== 'open') { FX.sfx('dock'); if (pos && map) map.setView([pos.lat, pos.lon], ZOOM.p || map.getZoom(), { animate: true }); }
     if (why === 'range') toast('🚁 Signal lost – the drone flew home');
   }
   markNear();
@@ -3176,6 +3185,7 @@ function renderMe() {
     <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator is running</span></label>
     <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
     <button class="btn ghost big" id="guideBtn" style="margin:4px 0 8px">📖 How to play</button>
+    <label class="tg"><input type="checkbox" id="setZoomMem" ${zoomMemOn() ? 'checked' : ''}><span>🔍 Remember map & drone zoom</span></label>
     ${window.Notification ? `<label class="tg"><input type="checkbox" id="setNotif" ${notifOn() ? 'checked' : ''}><span>🔔 Daily reminder &amp; alerts</span></label>` : ''}
     ${DB.remote ? `<label class="tg"><input type="checkbox" id="setLb" ${lbOn() ? 'checked' : ''}><span>🏆 Appear on leaderboards</span></label>` : ''}
     ${DB.remote ? `<p class="fine">📍 Your approximate location is shared with the server and admin team for further development.</p>` : ''}
@@ -3218,6 +3228,7 @@ function renderMe() {
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
   $('#setMap').onchange = e => { FX.set('darkmap', e.target.checked); applyBasemap(); toast(e.target.checked ? 'Dark map on' : 'Standard map on'); };
   const gbtn = $('#guideBtn'); if (gbtn) gbtn.onclick = () => openGuide();
+  const szm = $('#setZoomMem'); if (szm) szm.onchange = e => { try { localStorage.setItem('sw_zoom_mem', e.target.checked ? '1' : '0'); } catch (er) {} toast(e.target.checked ? '🔍 Zoom levels will be remembered' : '🔍 Zoom memory off'); };
   const sn = $('#setNotif'); if (sn) sn.onchange = async e => { const ok = await enableNotif(e.target.checked); e.target.checked = ok; };
   const slb = $('#setLb'); if (slb) slb.onchange = e => { try { localStorage.setItem('sw_lb', e.target.checked ? '1' : '0'); } catch (er) {} if (e.target.checked) submitLB(true); toast(e.target.checked ? 'You are on the leaderboards' : 'Hidden from leaderboards'); renderMe(); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
@@ -3393,7 +3404,7 @@ function initMap() {
   map.on('click', e => { if (admPlacing) return adminMapClick(e); if (DEV) setPos(e.latlng.lat, e.latlng.lng, 2, true); });
   // re-cluster the chest markers whenever the view changes
   map.on('zoomend', () => drawChestMarkers());
-  map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon);
+  map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon); map.on('zoomend', rememberZoom);
   map.on('moveend', () => { if (!othersBusy) { clearTimeout(othersTimer); othersTimer = setTimeout(pollDrones, 400); } });
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
   [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
@@ -3466,7 +3477,7 @@ function setPos(lat, lon, acc, manual) {
       accCircle = L.circle([lat, lon], { radius: pos.acc, weight: 1, color: '#3b9cff', fillOpacity: .08, interactive: false }).addTo(map);
     }
     else { meMarker.setLatLng([lat, lon]); accCircle.setLatLng([lat, lon]).setRadius(pos.acc); }
-    if (first) map.setView([lat, lon], 16); else if (manual) map.setView([lat, lon], 18);
+    if (first) map.setView([lat, lon], ZOOM.p || 16); else if (manual) map.setView([lat, lon], 18);
     updateRadiusCircle();
   }
   if (!lastLoad || dist(pos, lastLoad) > Math.min(1000, Math.max(250, radiusM() * 0.3))) loadNearby();
@@ -4416,7 +4427,7 @@ function wire() {
   $('#shopSeg').onclick = e => { const b = e.target.closest('button'); if (b) setSub('shop', b.dataset.sub); };
   $('#gpsBtn').onclick = () => startGPS();
   $('#admBarStop').onclick = () => adminPlaceMode(false);
-  $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
+  $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], ZOOM.p || 16); else startGPS(); };
   $('#legendBtn').onclick = () => { const l = $('#legend'); if (!l) return; if (l.hidden) renderLegend(); l.hidden = !l.hidden; };
   $('#lbBtn').onclick = openLeaderboard;
   $('#facBar').onclick = openStandings;
@@ -4451,7 +4462,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { get map() { return map; }, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
