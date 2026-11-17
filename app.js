@@ -2716,12 +2716,46 @@ function linkStatus(meta, k, links) {
   }
   return { s: 'ok' };
 }
+// Make a link from the chest you're at to a chest you hold the key for. Shared by the list and
+// the map picker. Resolves true on success.
+async function makeLink(meta, chest, toId) {
+  const k = P.keys[toId]; if (!k) return false;
+  const T = TEAMS[P.team];
+  try {
+    const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: toId, lat: k.lat, lon: k.lon, name: k.n });
+    delete P.keys[toId];
+    P.stats.links = (P.stats.links || 0) + 1; earn(15, '🔗 Link');
+    if ((r.len || 0) > (P.stats.longestLinkM || 0)) P.stats.longestLinkM = r.len;
+    (r.fields || []).forEach(f => { if (f.km2 > (P.stats.bigFieldKm2 || 0)) P.stats.bigFieldKm2 = f.km2; });
+    act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
+    let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
+    if (fc) earn(fc, '🔺 Field');
+    save(); checkAch(); backToChest(meta, chest); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
+    FX.confetti([T.c, T.c2, '#fff'], r.fields && r.fields.length ? 80 : 30);
+    toast(r.fields && r.fields.length ? `🔺 Field created for ${T.name}! +${15 + fc} 🪙` : `🔗 Linked to ${k.n}! +15 🪙`, 'gold');
+    loadLinks(true); fillStandings(true);
+    return true;
+  } catch (e) {
+    const d = e.data || {};
+    toast(d.error === 'crosses a link' ? `That link would cross a ${TEAMS[d.team] ? TEAMS[d.team].name + ' ' : ''}link` : d.error === 'too far' ? `Too far – this chest's links reach ${fmtDist(d.max)}` : d.error === 'already linked' ? 'Those chests are already linked' : 'Could not link: ' + e.message, 'bad');
+    return false;
+  }
+}
+// Which of your keys in range can be linked from this chest, best first.
+async function linkTargets(meta, R) {
+  const ks = Object.entries(P.keys).filter(([id]) => id !== meta.id).map(([id, k]) => Object.assign({ id, d: dist(meta, k) }, k)).filter(k => k.d <= R);
+  if (!ks.length) return [];
+  const dLat = R / 111320, dLon = R / (111320 * Math.max(0.2, Math.cos(meta.lat * Math.PI / 180)));
+  const got = await DB.links(meta.lat - dLat, meta.lon - dLon, meta.lat + dLat, meta.lon + dLon);
+  return ks.map(k => ({ k, st: linkStatus(meta, k, got.links || []) })).sort((x, y) => (x.st.s === 'ok' ? 0 : 1) - (y.st.s === 'ok' ? 0 : 1) || x.k.d - y.k.d);
+}
 function linkDialog(meta, chest) {
   if (!P.team) return chooseTeamDialog(false);
   const lvl = chestLevel(chestXP(chest)), R = lvl * LINK_PER_LVL;
   const ks = Object.entries(P.keys).filter(([id]) => id !== meta.id).map(([id, k]) => Object.assign({ id, d: dist(meta, k) }, k)).sort((a, b) => a.d - b.d);
   const inR = ks.filter(k => k.d <= R), out = ks.filter(k => k.d > R);
   const T = TEAMS[P.team];
+  let ranked = null;
   const row = (k, st) => {
     const tag = !st ? '<span class="lkst wait">checking…</span>'
       : st.s === 'ok' ? '<span class="lkst ok">✅ Clear</span>'
@@ -2732,46 +2766,69 @@ function linkDialog(meta, chest) {
   };
   modal(`<h3>🔗 Link from ${esc(meta.name)}</h3>
     <p class="sub">Lv ${lvl} chest – links reach <b>${fmtDist(R)}</b>. Pick a key; it's used up. Links can't cross other links. Close a triangle of three chests to make a ${T.icon} field.</p>
+    ${inR.length ? `<button class="btn ghost big" id="lkMap" style="margin-bottom:8px" disabled>🗺️ Choose on map</button>` : ''}
     <div class="keylist" id="lkList">${inR.map(k => row(k, null)).join('')
       || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}</div>
     ${out.length ? `<p class="fine" style="margin:8px 2px 4px">Out of range (${out.length})</p><div class="keylist">` + out.slice(0, 8).map(k => `<div class="keyrow off"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span></div>`).join('') + '</div>' : ''}
     <div class="trade"><button class="btn ghost" id="cancelBtn">Back to chest</button></div>`, m => {
     $('#cancelBtn', m).onclick = () => backToChest(meta, chest);
-    // look up every link that could be in the way (origin ± range) and mark each key
+    const mb = $('#lkMap', m); if (mb) mb.onclick = () => { if (ranked) linkPickMap(meta, chest, R, ranked); };
     if (inR.length) (async () => {
-      const dLat = R / 111320, dLon = R / (111320 * Math.max(0.2, Math.cos(meta.lat * Math.PI / 180)));
-      const got = await DB.links(meta.lat - dLat, meta.lon - dLon, meta.lat + dLat, meta.lon + dLon);
+      ranked = await linkTargets(meta, R);
       const list = $('#lkList', m); if (!list || !document.body.contains(list)) return;
-      const ranked = inR.map(k => ({ k, st: linkStatus(meta, k, got.links || []) }))
-        .sort((x, y) => (x.st.s === 'ok' ? 0 : 1) - (y.st.s === 'ok' ? 0 : 1) || x.k.d - y.k.d);
       const nOk = ranked.filter(r => r.st.s === 'ok').length;
       list.innerHTML = `<p class="fine" style="margin:0 2px 2px">${nOk} of ${ranked.length} key${ranked.length === 1 ? '' : 's'} in range can link without crossing anything.</p>` + ranked.map(r => row(r.k, r.st)).join('');
+      if (mb) mb.disabled = false;
       wire();
     })();
     const wire = () => $$('[data-lk]', m).forEach(b => b.onclick = async () => {
-      const k = P.keys[b.dataset.lk]; if (!k) return;
       $$('[data-lk]', m).forEach(x => x.disabled = true);
-      try {
-        const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: b.dataset.lk, lat: k.lat, lon: k.lon, name: k.n });
-        delete P.keys[b.dataset.lk];
-        P.stats.links = (P.stats.links || 0) + 1; earn(15, '🔗 Link');
-        if ((r.len || 0) > (P.stats.longestLinkM || 0)) P.stats.longestLinkM = r.len;
-        (r.fields || []).forEach(f => { if (f.km2 > (P.stats.bigFieldKm2 || 0)) P.stats.bigFieldKm2 = f.km2; });
-        act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
-        let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
-        if (fc) earn(fc, '🔺 Field');
-        save(); checkAch(); backToChest(meta, chest); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
-        FX.confetti([T.c, T.c2, '#fff'], r.fields && r.fields.length ? 80 : 30);
-        toast(r.fields && r.fields.length ? `🔺 Field created for ${T.name}! +${15 + fc} 🪙` : `🔗 Linked to ${k.n}! +15 🪙`, 'gold');
-        loadLinks(true); fillStandings(true);
-      } catch (e) {
-        $$('[data-lk]', m).forEach(x => { if (!x.classList.contains('off')) x.disabled = false; });
-        const d = e.data || {};
-        toast(d.error === 'crosses a link' ? `That link would cross a ${TEAMS[d.team] ? TEAMS[d.team].name + ' ' : ''}link` : d.error === 'too far' ? `Too far – this chest's links reach ${fmtDist(d.max)}` : d.error === 'already linked' ? 'Those chests are already linked' : 'Could not link: ' + e.message, 'bad');
-      }
+      const ok = await makeLink(meta, chest, b.dataset.lk);
+      if (!ok) $$('[data-lk]', m).forEach(x => { if (!x.classList.contains('off')) x.disabled = false; });
     });
     wire();
   });
+}
+// Pick the link target on the map: range circle, a marker per key in range (green = clear, red =
+// blocked, grey = already linked) and dashed preview lines to the clear ones. Tap a green chest.
+let lkPick = null;
+function endLinkPick() {
+  if (!lkPick) return;
+  try { lkPick.layer.remove(); } catch (e) {}
+  const bn = $('#lkBanner'); if (bn) bn.remove();
+  document.body.classList.remove('linkpick');
+  lkPick = null;
+}
+function linkPickMap(meta, chest, R, ranked) {
+  if (!map || !window.L) return toast('The map is not available', 'bad');
+  endLinkPick(); closeModal(); if (view !== 'explore') show('explore');
+  const T = TEAMS[P.team], layer = L.layerGroup().addTo(map);
+  lkPick = { layer, meta, chest };
+  document.body.classList.add('linkpick');
+  L.circle([meta.lat, meta.lon], { radius: R, color: T.c, weight: 1.5, opacity: .7, dashArray: '6 6', fillColor: T.c, fillOpacity: .05, interactive: false }).addTo(layer);
+  ranked.filter(r => r.st.s === 'ok').forEach(r => L.polyline([[meta.lat, meta.lon], [r.k.lat, r.k.lon]], { color: T.c2, weight: 2, opacity: .65, dashArray: '4 7', interactive: false }).addTo(layer));
+  L.marker([meta.lat, meta.lon], { icon: L.divIcon({ className: 'lkorigin', html: `<span style="--tc:${T.c}">🔗</span>`, iconSize: [34, 34] }), interactive: false, zIndexOffset: 3000 }).addTo(layer);
+  ranked.forEach(r => {
+    const st = r.st.s, nm = esc(RENAMES.get(r.k.id) || r.k.n);
+    const note = st === 'ok' ? fmtDist(r.k.d) : st === 'dup' ? 'already linked' : `crosses ${TEAMS[r.st.team] ? TEAMS[r.st.team].name : 'a'} link`;
+    const mk = L.marker([r.k.lat, r.k.lon], { icon: L.divIcon({ className: 'lktarget ' + st, html: `<span class="lkdot">🔑</span><b class="lklbl">${nm}<small>${note}</small></b>`, iconSize: [36, 36] }),
+      interactive: st === 'ok', zIndexOffset: 2800 }).addTo(layer);
+    if (st === 'ok') mk.on('click', () => {
+      modal(`<h3>🔗 Link these chests?</h3><p class="sub"><b>${esc(meta.name)}</b> ↔ <b>${nm}</b><br>${fmtDist(r.k.d)} · uses your key to ${nm}.</p>
+        <div class="trade"><button class="btn ghost" id="cancelBtn">Pick another</button><button class="btn" id="lkGo">🔗 Link</button></div>`, m => {
+        $('#cancelBtn', m).onclick = closeModal;
+        $('#lkGo', m).onclick = async () => { $('#lkGo', m).disabled = true; endLinkPick(); const ok = await makeLink(meta, chest, r.k.id); if (!ok) linkPickMap(meta, chest, R, ranked); };
+      });
+    });
+  });
+  const nOk = ranked.filter(r => r.st.s === 'ok').length;
+  const bn = document.createElement('div'); bn.className = 'lkbanner'; bn.id = 'lkBanner';
+  bn.innerHTML = `<span>🔗 <b>Tap a green chest</b> to link from ${esc(meta.name)}<small>${nOk} clear · range ${fmtDist(R)}</small></span><button class="btn sm ghost" id="lkBack">Cancel</button>`;
+  $('#maprow').appendChild(bn);
+  $('#lkBack', bn).onclick = () => { endLinkPick(); backToChest(meta, chest); };
+  // frame your chest and the keys in range (not the whole range circle, which can be miles wide)
+  try { const pts = [[meta.lat, meta.lon]].concat(ranked.map(r => [r.k.lat, r.k.lon]));
+    map.fitBounds(pts, { paddingTopLeft: [50, 110], paddingBottomRight: [50, 70], maxZoom: 17, animate: true }); } catch (e) {}
 }
 let linkLayer = null, linkTimer = null, linkData = { links: [], fields: [] };
 function loadLinksSoon() { clearTimeout(linkTimer); linkTimer = setTimeout(() => loadLinks(), 700); }
@@ -3024,6 +3081,7 @@ function setSub(group, sub) {
 }
 function show(v) {
   if (v !== 'explore' && fly) endFlight('park');
+  if (v !== 'explore' && lkPick) endLinkPick();
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
   if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
