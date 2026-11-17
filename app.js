@@ -942,6 +942,7 @@ function launchDrone() {
 function endFlight(why) {
   if (!fly) return;
   const at = { lat: fly.ll.lat, lon: fly.ll.lon };
+  save(); setTimeout(checkAch, 300);                // distance records from this flight
   RC.lastDraw = null;
   cancelAnimationFrame(fly.raf);
   try { fly.marker.remove(); fly.tether.remove(); fly.ring.remove(); fly.layer.remove(); } catch (e) {}
@@ -955,7 +956,7 @@ function endFlight(why) {
   const hud = $('#droneHud'); if (hud) { hud.hidden = true; hud.innerHTML = ''; }
   const d = droneState();
   if (why === 'park') {
-    d.parked = { lat: at.lat, lon: at.lon, at: Date.now() }; d.live = null; save(); drawParked();
+    d.parked = { lat: at.lat, lon: at.lon, at: Date.now() }; d.live = null; P.stats.droneParks = (P.stats.droneParks || 0) + 1; save(); drawParked();
     FX.sfx('place'); toast('📌 Drone parked – it waits here until you fly it again or call it home', 'gold');
     act('drone', 'parked it'); droneSync(true, 'park');
     if (pos && map) map.setView([pos.lat, pos.lon], ZOOM.p || map.getZoom(), { animate: true });
@@ -986,7 +987,9 @@ function flyStep(now) {
     // hold it inside the range circle around wherever you are now
     const R = droneRangeM(droneState().lvl), d = dist(pos, { lat, lon });
     if (d > R) { const k = R / d; lat = pos.lat + (lat - pos.lat) * k; lon = pos.lon + (lon - pos.lon) * k; }
+    P.stats.droneM = (P.stats.droneM || 0) + Math.hypot(mx, my);
     fly.ll = { lat, lon };
+    const away = dist(pos, fly.ll); if (away > (P.stats.droneMaxM || 0)) P.stats.droneMaxM = away;
     fly.marker.setLatLng([lat, lon]);
     const tilt = Math.max(-18, Math.min(18, ix * 18));
     const w = fly.marker.getElement && fly.marker.getElement(); if (w) w.style.setProperty('--tilt', tilt + 'deg');
@@ -1951,6 +1954,44 @@ ach('rc100', 'Pocket Change', 'Scavenger', 'Pick up 100 road coins', s => s.road
 ach('rc1000', 'Coin Magnet', 'Magnet', 'Pick up 1,000 road coins', s => s.roadCoins, 1000, '🧲');
 ach('drone1', 'Eye in the Sky', 'Drone Pilot', 'Open a chest with your drone', s => s.droneOpens, 1, '🛸');
 ach('drone8', 'Full Range', 'Sky Captain', 'Upgrade your drone to level 8', s => s.droneLvl, 8, '📡');
+// drone
+ach('dopen25', 'Remote Raider', 'Remote Raider', 'Open 25 chests with your drone', s => s.droneOpens, 25, '📦');
+ach('dfar1', 'Long Leash', 'Long Leash', 'Fly your drone a quarter mile from you', s => s.droneFarMi, 0.25, '🪁');
+ach('dfar2', 'Over the Horizon', 'Horizon Chaser', 'Fly your drone a mile from you', s => s.droneFarMi, 1, '🌅');
+ach('dfar3', 'Five-Mile Flight', 'Long-Range Ace', 'Fly your drone 4.5 miles from you', s => s.droneFarMi, 4.5, '🛰️');
+ach('dmi10', 'Frequent Flyer', 'Frequent Flyer', 'Fly your drone 10 miles in total', s => s.droneMi, 10, '✈️');
+ach('dmi100', 'Sky Nomad', 'Sky Nomad', 'Fly your drone 100 miles in total', s => s.droneMi, 100, '🌍');
+ach('dhide1', 'Air Drop', 'Air Dropper', 'Hide a chest with your drone', s => s.droneHides, 1, '🪂');
+ach('dhidefar', 'Long-Range Drop', 'Bombardier', 'Hide a chest with your drone a mile from you', s => s.droneHideFarMi, 1, '🎯');
+ach('dpark5', 'Valet Pilot', 'Valet', 'Park your drone 5 times', s => s.droneParks, 5, '📌');
+// glyphs
+ach('g1', 'First Glyph', 'Glyph Novice', 'Win a glyph hack', s => s.glyphWins, 1, '✨');
+ach('g25', 'Glyph Adept', 'Glyph Adept', 'Win 25 glyph hacks', s => s.glyphWins, 25, '🔮');
+ach('g100', 'Glyph Master', 'Glyph Master', 'Win 100 glyph hacks', s => s.glyphWins, 100, '🌀');
+ach('ghard1', 'Brave Hacker', 'Daredevil', 'Win a Hard glyph hack', s => s.glyphHard, 1, '🔥');
+ach('ghard10', 'Hard Mode Hero', 'Hard Mode Hero', 'Win 10 Hard glyph hacks', s => s.glyphHard, 10, '🌋');
+ach('gfast10', 'Quick Fingers', 'Quick Fingers', 'Get 10 fast glyph solves', s => s.glyphFast, 10, '⚡');
+ach('gspeed', 'Lightning Hands', 'Lightning Hands', 'Solve a glyph at under 0.4 s per point', s => s.glyphBest && s.glyphBest <= 0.4 ? 1 : 0, 1, '🌩️');
+// chests
+ach('lvlup1', 'Level Up', 'Booster', 'Level up a chest', s => s.levelUps, 1, '⬆️');
+ach('lvlup10', 'Cache Builder', 'Cache Builder', 'Level up 10 chests', s => s.levelUps, 10, '🏗️');
+ach('lvl5', 'Seasoned Cache', 'Seasoned', 'Open a level 5 chest', s => s.maxChestLvl, 5, '🧰');
+ach('lvl8', 'Legendary Haunt', 'Legend Seeker', 'Open a level 8 chest', s => s.maxChestLvl, 8, '👑');
+ach('rare5', 'Rare Hunter', 'Rare Hunter', 'Open 5 rare chests', s => s.rareOpens, 5, '💜');
+ach('fx1', 'Light Show', 'Showrunner', 'Set off a beacon or fireworks', s => s.fx, 1, '🎆');
+ach('fx10', 'Festival Maker', 'Festival Maker', 'Set off 10 beacons or fireworks', s => s.fx, 10, '🎇');
+// factions, keys, links & fields
+ach('keys10', 'Key Ring', 'Keyholder', 'Collect 10 chest keys', s => s.keysGot, 10, '🔑');
+ach('keys50', 'Locksmith', 'Locksmith', 'Collect 50 chest keys', s => s.keysGot, 50, '🗝️');
+ach('link1', 'First Link', 'Linker', 'Make a link', s => s.links, 1, '🔗');
+ach('link25', 'Web Weaver', 'Web Weaver', 'Make 25 links', s => s.links, 25, '🕸️');
+ach('longlink', 'Long Reach', 'Long Reach', 'Make a link 3 km long', s => s.longestLinkKm, 3, '📏');
+ach('field1', 'First Field', 'Field Maker', 'Make a field', s => s.fields, 1, '🔺');
+ach('field10', 'Field Marshal', 'Field Marshal', 'Make 10 fields', s => s.fields, 10, '🛡️');
+ach('bigfield', 'Big Sky', 'Big Sky', 'Make a field of 1 km² or more', s => s.bigFieldKm2, 1, '🗺️');
+ach('broke1', 'Saboteur', 'Saboteur', 'Break an enemy link', s => s.broke, 1, '💥');
+ach('broke10', 'Link Breaker', 'Link Breaker', 'Break 10 enemy links', s => s.broke, 10, '⛓️');
+ach('states3', 'State Hopper', 'State Hopper', 'Score points in 3 states', s => s.states, 3, '🇺🇸');
 // The locked achievement you are nearest to finishing - something concrete to aim at.
 function nextAch() {
   const s = statView();
@@ -1982,7 +2023,14 @@ function statView() {
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
            given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
            miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0,
-           droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0, roadCoins: P.stats.roadCoins || 0 };
+           droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0, roadCoins: P.stats.roadCoins || 0,
+           droneMi: (P.stats.droneM || 0) / 1609.34, droneFarMi: (P.stats.droneMaxM || 0) / 1609.34, droneHides: P.stats.droneHides || 0,
+           droneHideFarMi: (P.stats.droneHideMaxM || 0) / 1609.34, droneParks: P.stats.droneParks || 0,
+           glyphs: P.stats.glyphs || 0, glyphWins: P.stats.glyphWins || 0, glyphHard: P.stats.glyphHardWins || 0, glyphFast: P.stats.glyphFast || 0,
+           glyphBest: P.stats.glyphBest || 0, keysGot: P.stats.keysGot || 0, links: P.stats.links || 0, fields: P.stats.fields || 0,
+           broke: P.stats.broke || 0, longestLinkKm: (P.stats.longestLinkM || 0) / 1000, bigFieldKm2: P.stats.bigFieldKm2 || 0,
+           levelUps: P.stats.levelUps || 0, maxChestLvl: P.stats.maxChestLvl || 1, rareOpens: P.stats.rareOpens || 0, fx: P.stats.fx || 0,
+           states: Object.keys(P.stats.states || {}).length };
 }
 function checkAch() {
   const s = statView(), got = [];
@@ -2628,7 +2676,7 @@ async function openControlMap() {
 const MAX_KEYS = 150, LINK_PER_LVL = 1000;
 function gainKey(meta) {
   if (!DB.remote || !meta || P.keys[meta.id]) return;
-  P.keys[meta.id] = { n: meta.name, lat: meta.lat, lon: meta.lon, at: Date.now() };
+  P.keys[meta.id] = { n: meta.name, lat: meta.lat, lon: meta.lon, at: Date.now() }; P.stats.keysGot = (P.stats.keysGot || 0) + 1;
   const ids = Object.keys(P.keys);
   if (ids.length > MAX_KEYS) ids.sort((a, b) => P.keys[a].at - P.keys[b].at).slice(0, ids.length - MAX_KEYS).forEach(k => delete P.keys[k]);
   save(); setTimeout(() => toast(`🔑 You got the key to ${meta.name}`), 1800);
@@ -2707,6 +2755,8 @@ function linkDialog(meta, chest) {
         const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: b.dataset.lk, lat: k.lat, lon: k.lon, name: k.n });
         delete P.keys[b.dataset.lk];
         P.stats.links = (P.stats.links || 0) + 1; earn(15, '🔗 Link');
+        if ((r.len || 0) > (P.stats.longestLinkM || 0)) P.stats.longestLinkM = r.len;
+        (r.fields || []).forEach(f => { if (f.km2 > (P.stats.bigFieldKm2 || 0)) P.stats.bigFieldKm2 = f.km2; });
         act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
         let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
         if (fc) earn(fc, '🔺 Field');
@@ -2878,6 +2928,8 @@ function runGlyph(id, after, lvl, hard) {
         if (idx >= seq.length) {
           accepting = false;
           const secs = (performance.now() - t0) / 1000, fast = secs * 1000 <= len * GLYPH_FAST_MS;
+          if (fast) P.stats.glyphFast = (P.stats.glyphFast || 0) + 1;
+          const spp = secs / len; if (!P.stats.glyphBest || spp < P.stats.glyphBest) P.stats.glyphBest = Math.round(spp * 100) / 100;
           const coins = Math.round((20 + len * 6) * G.mult) + (fast ? G.fastBonus : 0);
           const gotItem = fast ? Math.random() < G.itemChance : Math.random() < G.slowItem;
           const item = gotItem ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
@@ -3280,6 +3332,24 @@ function appCard() {
     <p class="fine">${OFFLINE ? '📴 <b>Offline right now.</b>' : '📶 Connected.'} Map and park data stored on this device.</p></div>`;
 }
 
+// Detailed player stats, grouped, folded behind one tap on the Profile tab.
+function statsCard(s) {
+  const mi = v => v < 0.1 ? Math.round(v * 5280) + ' ft' : v.toFixed(2) + ' mi';
+  const row = (l, v) => `<div class="strow"><span>${l}</span><b>${v}</b></div>`;
+  const grp = (t, rows) => `<div class="stgrp"><h5>${t}</h5>${rows.join('')}</div>`;
+  return `<details class="card statscard"><summary><b>📊 Stats</b><small>Records and totals</small></summary><div class="stgrid">
+    ${grp('🧭 Exploring', [row('Chests opened', fmtC(s.visited)), row('Rare chests', fmtC(s.rareOpens)), row('Highest chest level', 'Lv ' + s.maxChestLvl),
+      row('Chests levelled up', fmtC(s.levelUps)), row('Miles walked', s.miles.toFixed(1)), row('Road coins', fmtC(s.roadCoins)), row('Coins earned', fmtC(s.coinsEarned))])}
+    ${grp('🚁 Drone', [row('Level', s.droneLvl ? 'Lv ' + s.droneLvl : '–'), row('Furthest flight', mi(s.droneFarMi)), row('Distance flown', mi(s.droneMi)),
+      row('Furthest drone hide', s.droneHides ? mi(s.droneHideFarMi) : '–'), row('Chests opened by drone', fmtC(s.droneOpens)), row('Chests hidden by drone', fmtC(s.droneHides)), row('Times parked', fmtC(s.droneParks))])}
+    ${grp('✨ Glyph hacks', [row('Attempts', fmtC(s.glyphs)), row('Wins', fmtC(s.glyphWins)), row('Win rate', s.glyphs ? Math.round(s.glyphWins / s.glyphs * 100) + '%' : '–'),
+      row('Hard wins', fmtC(s.glyphHard)), row('Fast solves', fmtC(s.glyphFast)), row('Best speed', s.glyphBest ? s.glyphBest.toFixed(2) + ' s / point' : '–')])}
+    ${grp('⚑ Faction', [row('Keys collected', fmtC(s.keysGot)), row('Links made', fmtC(s.links)), row('Longest link', s.longestLinkKm ? s.longestLinkKm.toFixed(2) + ' km' : '–'),
+      row('Fields made', fmtC(s.fields)), row('Biggest field', s.bigFieldKm2 ? s.bigFieldKm2.toFixed(2) + ' km²' : '–'), row('Enemy links broken', fmtC(s.broke)), row('States scored', fmtC(s.states))])}
+    ${grp('🔁 Trading & items', [row('Trades', fmtC(s.ex)), row('Gifts left', fmtC(s.given)), row('Chests hidden', fmtC(s.hidden)), row('Items collected', s.dex + ' / ' + ITEMS.length),
+      row('Merges', fmtC(s.merges)), row('Relics crafted', fmtC(s.crafted)), row('Beacons & fireworks', fmtC(s.fx))])}
+  </div></details>`;
+}
 let meTab = 'profile';
 function renderMe() {
   const s = statView(), unlocked = ACH.filter(a => P.ach[a.id]);
@@ -3302,6 +3372,7 @@ function renderMe() {
     <div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
     <div class="row2" style="padding:0;margin-top:8px">${navigator.share ? '<button class="btn ghost sm" id="shareBtn">Share…</button>' : ''}<button class="btn ghost sm" id="qrBtn">Show QR code</button></div>
     <div id="qr" hidden></div></div>
+    ${statsCard(s)}
     <h2 class="sec" id="achSec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2>
     <p class="fine pad" style="margin-top:-2px">Closest to earning first · completed at the bottom.</p><div style="padding:0 14px">`;
   // closest-to-done first, then the ones already earned (most recent first)
@@ -3315,7 +3386,7 @@ function renderMe() {
       <small style="display:inline;color:var(--acc2)">${got ? '· ' + esc(a.t) : ''}</small>
       <small>${esc(a.d)}</small>
       <div class="achbar"><span class="bar"><i style="width:${got ? 100 : pct}%" class="${got ? 'done' : ''}"></i></span>
-        <u>${got ? '✓ earned' : v + ' / ' + a.goal}</u></div></div></div>`;
+        <u>${got ? '✓ earned' : (Number.isInteger(v) ? fmtC(v) : (+v).toFixed(2)) + ' / ' + fmtC(a.goal)}</u></div></div></div>`;
   });
   h += `</div></div>
     <div class="mesec" data-mt="ranks">${standingsCard()}${lbCard()}</div>
@@ -4124,6 +4195,8 @@ async function openChest(id, byDrone) {
       return changed ? cur : undefined;
     });
     if (counted || firstVisit) { P.lvlCounted[id] = 1; save(); }
+    if (r.value) { const lv = chestLevel(chestXP(r.value)); if (lv > (P.stats.maxChestLvl || 1)) P.stats.maxChestLvl = lv; }
+    if (firstVisit && DB.remote && P.team) fieldKeyAt(meta.lat, meta.lon).then(k => { (P.stats.states = P.stats.states || {})[k] = 1; save(); checkAch(); });
     if (r.value) { const was = LVL.get(id) || 0, xp = chestXP(r.value); LVL.set(id, xp); lvlAsked.set(id, Date.now());
       if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
       // your visit was the one that pushed it over a threshold
@@ -4135,7 +4208,7 @@ async function openChest(id, byDrone) {
     gainKey(meta);
     act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(chestXP(r.value)) + ')' + (byDrone ? ' by drone' : ''), meta);
     if (firstVisit) earn(CO.chestNew, 'New chest');
-    if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
+    if (firstVisit && isRare(meta)) { P.stats.rareOpens = (P.stats.rareOpens || 0) + 1; earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
     if (firstVisit && DB.remote && P.team) { fieldKeyAt(meta.lat, meta.lon).then(k => DB.cellScore(k)).then(() => fillStandings(true)); drawCellsSoon(); }
     checkAch(); save();
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
@@ -4153,7 +4226,7 @@ async function openChest(id, byDrone) {
   } catch (e) { cine.kill(); toast('Could not open chest: ' + e.message, 'bad'); }
 }
 function levelUpReward(meta, xp) {
-  const l = chestLevel(xp);
+  const l = chestLevel(xp); P.stats.levelUps = (P.stats.levelUps || 0) + 1; save(); checkAch();
   toast(`⬆️ You levelled ${meta.name} up to level ${l}!`, 'gold'); act('levelup', meta.name + ' → Lv ' + l, meta); earn(10 * l, 'Chest level-up');
 }
 // A successful glyph hack adds a level point to the chest for everyone.
@@ -4369,6 +4442,7 @@ function hideDialog(spot, byDrone, asAdmin) {
         await DB.set('chests/' + id, ch);
         await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, { name, lat: at.lat, lon: at.lon, kind: 'player' });
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
+      if (byDrone && pos) { P.stats.droneHides = (P.stats.droneHides || 0) + 1; const far = dist(pos, at); if (far > (P.stats.droneHideMaxM || 0)) P.stats.droneHideMaxM = far; }
       removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; (P.found = P.found || {})[id] = 1; if (byDrone) P.hideDroneN = (P.hideDroneN || 0) + 1; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
       earn(CO.hide, 'Chest hidden'); act('hide', name + (byDrone ? ' (by drone)' : ''), at);
       chests.push(Object.assign({ src: 'player', by: P.name, at: Date.now() }, meta)); save(); checkAch(); closeModal(); refreshChestViews(); renderAll(); toast('📦 Chest hidden! Other players can find it now.', 'gold'); FX.sfx('place'); FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#ffd98a', '#fff'], 30);

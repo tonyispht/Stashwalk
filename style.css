@@ -1337,3 +1337,17 @@ body.flying .mapacts{display:none}
 .lkst.wait{color:var(--mut);font-weight:400}
 .keyrow.pick:disabled{cursor:default}
 .dhead .dmph{font-weight:500;font-size:11px;color:#9fdfe6;margin-left:4px}
+
+/* ---- detailed stats ---- */
+details.statscard summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:10px}
+details.statscard summary::-webkit-details-marker{display:none}
+details.statscard summary small{color:var(--mut);font-size:12px}
+details.statscard summary::after{content:'›';margin-left:auto;font-size:20px;color:var(--mut);transition:transform .15s}
+details.statscard[open] summary::after{transform:rotate(90deg)}
+.stgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px}
+.stgrp{background:#ffffff06;border-radius:12px;padding:8px 10px}
+.stgrp h5{margin:2px 0 6px;font:600 12.5px/1.2 Inter,system-ui,sans-serif;color:var(--acc2)}
+.strow{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid #ffffff0d;font-size:12.5px}
+.strow:first-of-type{border-top:0}
+.strow span{color:var(--mut)}
+.strow b{color:var(--ink);font-weight:600;text-align:right}
