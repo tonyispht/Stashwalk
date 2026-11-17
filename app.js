@@ -1475,7 +1475,7 @@ function renderAdmin() {
     const online = p => p.seen && now - p.seen < 150000;
     const q = admQ.trim().toLowerCase();
     const shown = ppl.filter(p => !q || String(p.name).toLowerCase().includes(q)).slice(0, 60);
-    const tabs = [['players', '👥 Players'], ['chests', '📦 Hidden chests'], ['activity', '🔔 Activity']];
+    const tabs = [['players', '👥 Players'], ['chests', '📦 Hidden'], ['removed', '🗑️ Removed'], ['activity', '🔔 Activity']];
     let body = '';
     if (admTab === 'players') body = `<input id="admQ" class="admq" placeholder="Search players" value="${esc(admQ)}">
       <div class="alist">${shown.map(p => `<div><span>${online(p) ? '🟢' : p.seen && now - p.seen < 86400000 ? '🟡' : '⚪'} ${uLink(p.name)}${p.lat != null ? ' <small title="has a location">📍</small>' : ''}</span>
@@ -1483,6 +1483,7 @@ function renderAdmin() {
     else if (admTab === 'chests') body = `<p class="fine">Chests hidden by players, newest first. Tap a name to see it on the map.</p>
       <div class="alist">${(d.hiddenChests || []).map(c => `<div><span><button class="ulink" data-chestgo="${esc(c.id)}">📦 ${esc(c.name)}</button><small> ${c.by ? 'by ' + uLink(c.by) : ''}</small></span>
         <small>${c.at ? ago(c.at) : ''} <button class="btn sm ghost danger" data-rm="${esc(c.id)}" data-cell="${esc(c.cell)}">Remove</button></small></div>`).join('') || '<p class="fine">No hidden chests yet.</p>'}</div>`;
+    else if (admTab === 'removed') body = admRemovedHtml();
     else body = admActivity(d);
     el.innerHTML = `<div class="ahead"><b>🛡️ Admin</b><button class="btn sm ghost" id="admRefresh">↻</button></div>
       <div class="apills">${pill(d.accounts, 'accounts')}${pill(d.online, 'online')}${pill(d.active24h, '24 h')}${pill(d.active7d, '7 days')}</div>
@@ -1520,6 +1521,8 @@ function renderAdmin() {
     const u = e.target.closest('[data-user]'); if (u) return adminUserCard(u.dataset.user);
     const cg = e.target.closest('[data-chestgo]'); if (cg) { const c = (adminData.hiddenChests || []).find(x => x.id === cg.dataset.chestgo); if (c) showSpotOnMap(c.lat, c.lon, '📦 ' + c.name, 'chest'); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) adminRemoveChest(rm.dataset.rm, rm.dataset.cell);
+    const rs = e.target.closest('[data-restore]'); if (rs) return adminRestore(rs.dataset.restore);
+    const rg = e.target.closest('[data-rmgo]'); if (rg) { const [la, lo] = rg.dataset.rmgo.split(',').map(Number); return showSpotOnMap(la, lo, rg.dataset.name || 'Removed chest'); }
   };
 }
 // ---- admin: players on the map ----
@@ -1568,18 +1571,64 @@ async function adminUserCard(name) {
   });
 }
 async function adminRemoveChest(id, cell) {
-  const c = ((adminData && adminData.hiddenChests) || []).find(x => x.id === id) || { name: id };
-  modal(`<h3>Remove "${esc(c.name)}"?</h3><p class="sub">It disappears for every player straight away, with whatever is inside. This cannot be undone.</p>
+  const c = chests.find(x => x.id === id) || ((adminData && adminData.hiddenChests) || []).find(x => x.id === id) || { id, name: id };
+  modal(`<h3>Remove "${esc(c.name)}"?</h3><p class="sub">It disappears for every player straight away. You can bring it back (with what it held) from Admin → 🗑️ Removed.</p>
     <div class="trade"><button class="btn ghost" id="cancelBtn">Keep it</button><button class="btn danger" id="rmGo">Remove</button></div>`, m => {
     $('#cancelBtn', m).onclick = closeModal;
     $('#rmGo', m).onclick = async () => {
       $('#rmGo', m).disabled = true;
-      try { await DB.adminRemove(id, cell); } catch (e) { $('#rmGo', m).disabled = false; return toast('Could not remove: ' + e.message, 'bad'); }
-      BLOCKED.add(id); chests = chests.filter(x => x.id !== id);
+      const cl = cell || (c.kind === 'player' && c.lat != null ? cellKey(c.lat, c.lon) : '');
+      try { await DB.adminRemove(id, cl, { name: c.name0 || c.name, kind: c.kind || '', lat: c.lat, lon: c.lon }); }
+      catch (e) { $('#rmGo', m).disabled = false; return toast('Could not remove: ' + e.message, 'bad'); }
+      BLOCKED.add(id); chests = chests.filter(x => x.id !== id); admRemoved = null;
       if (adminData) adminData.hiddenChests = (adminData.hiddenChests || []).filter(x => x.id !== id);
       closeModal(); refreshChestViews(); renderAdmin(); toast('🗑️ Chest removed', 'gold');
     };
   });
+}
+// Admin tools for any chest: from its map pin (any distance) or inside the chest window.
+function adminChestSheet(c) {
+  const d = pos ? dist(pos, c) : null, lv = chestLevel(LVL.get(c.id));
+  modal(`<div class="gdhead"><h3>🛡️ ${esc(c.name)}</h3><button class="locx" id="acClose">✕</button></div>
+    <p class="sub" style="margin-top:4px">${kindInfo(c.kind)[1]} ${kindInfo(c.kind)[0]} · Lv ${lv}${d != null ? ' · ' + fmtDist(d) + ' away' : ''}${isRare(c) ? ' · ✨ rare' : ''}${c.by ? ' · hidden by ' + esc(c.by) : ''}</p>
+    ${c.name0 ? `<p class="fine">Renamed from “${esc(c.name0)}”</p>` : ''}<p class="fine" style="word-break:break-all">ID ${esc(c.id)}</p>
+    <div class="admacts"><button class="btn" id="acOpen">📦 Open from here</button><button class="btn ghost" id="acRen">✏️ Rename</button><button class="btn ghost danger" id="acRm">🗑️ Remove</button></div>`, m => {
+    $('#acClose', m).onclick = closeModal;
+    $('#acOpen', m).onclick = () => { closeModal(); openChest(c.id, true); };
+    $('#acRen', m).onclick = () => adminRenameDialog(c);
+    $('#acRm', m).onclick = () => adminRemoveChest(c.id);
+  });
+}
+function adminRenameDialog(c) {
+  const orig = c.name0 || c.name;
+  modal(`<h3>✏️ Rename chest</h3><p class="sub">Every player sees the new name.${c.name0 ? ` Original: “${esc(orig)}”.` : ''}</p>
+    <input id="rnName" class="admq" maxlength="40" value="${esc(c.name)}" style="width:100%">
+    <div class="trade">${c.name0 ? '<button class="btn ghost" id="rnReset">Reset</button>' : '<button class="btn ghost" id="cancelBtn">Cancel</button>'}<button class="btn" id="rnSave">Save</button></div>`, m => {
+    const inp = $('#rnName', m); setTimeout(() => { inp.focus(); inp.select(); }, 50);
+    const save = async name => {
+      try { const r = await DB.adminPost('/admin/rename', { chest: c.id, name }); name = r.name; }
+      catch (e) { return toast('Could not rename: ' + e.message, 'bad'); }
+      if (name && name !== orig) RENAMES.set(c.id, name); else RENAMES.delete(c.id);
+      closeModal(); refreshChestViews(); toast(name && name !== orig ? `✏️ Renamed to “${name}”` : '↩️ Back to its original name', 'gold');
+    };
+    $('#rnSave', m).onclick = () => { const v = inp.value.trim(); if (!v) return toast('Type a name', 'bad'); save(v === orig ? '' : v); };
+    inp.onkeydown = e => { if (e.key === 'Enter') $('#rnSave', m).click(); };
+    const rs = $('#rnReset', m); if (rs) rs.onclick = () => save('');
+    const cb = $('#cancelBtn', m); if (cb) cb.onclick = closeModal;
+  });
+}
+let admRemoved = null, admRemovedBusy = false;
+function admRemovedHtml() {
+  if (!admRemoved) { if (!admRemovedBusy) { admRemovedBusy = true; DB.adminRemoved().then(l => { admRemoved = l; }).catch(e => { admRemoved = []; toast('Could not load removed chests: ' + e.message, 'bad'); }).finally(() => { admRemovedBusy = false; if (admTab === 'removed') renderAdmin(); }); }
+    return '<p class="fine">Loading…</p>'; }
+  return `<p class="fine">Chests removed by an admin or by player reports, newest first. Restore brings one back with what it held.</p>
+    <div class="alist">${admRemoved.map(c => `<div><span>${c.flagged ? '🚩' : '🗑️'} ${esc(c.name || c.id)}${c.by ? ` <small>by ${esc(c.by)}</small>` : c.flagged ? ' <small>reported</small>' : ''}</span>
+      <small>${c.at ? ago(c.at) : ''}${c.lat != null ? ` <button class="ulink" data-rmgo="${c.lat},${c.lon}" data-name="${esc(c.name || '')}" title="Show on map">📍</button>` : ''} <button class="btn sm ghost" data-restore="${esc(c.id)}">Restore</button></small></div>`).join('') || '<p class="fine">Nothing has been removed.</p>'}</div>`;
+}
+async function adminRestore(id) {
+  try { await DB.adminPost('/admin/restore', { chest: id }); } catch (e) { return toast('Could not restore: ' + e.message, 'bad'); }
+  BLOCKED.delete(id); admRemoved = (admRemoved || []).filter(c => c.id !== id); renderAdmin();
+  toast('↩️ Chest restored', 'gold'); lastLoad = null; loadNearby();
 }
 // ---- admin: hide a chest anywhere by tapping the map ----
 function adminPlaceMode(on) {
@@ -3301,6 +3350,17 @@ const TILES = new Map();
 let BLOCKED = new Set();
 async function loadBlocked() {
   try { (await DB.blockedChests()).forEach(id => BLOCKED.add(id)); } catch (e) {}
+  if (!renamesAt || Date.now() - renamesAt > 600000) await loadRenames();
+}
+// Admin renames: an override name for any chest, shared with every player.
+const RENAMES = new Map(); let renamesAt = 0;
+async function loadRenames() {
+  renamesAt = Date.now();
+  try { const o = await DB.renames(); RENAMES.clear(); Object.keys(o).forEach(id => RENAMES.set(id, o[id])); } catch (e) {}
+}
+function applyRenames(list) {
+  (list || []).forEach(c => { if (!c) return; const n = RENAMES.get(c.id);
+    if (n) { if (c.name0 == null) c.name0 = c.name; c.name = n; } else if (c.name0 != null) { c.name = c.name0; delete c.name0; } });
 }
 let tileIndex = null, tileIndexErr = '';
 const placeId = (lat, lon) => 'r' + Math.round(lat * 1e4).toString(36).replace('-', 'm') + '_' + Math.round(lon * 1e4).toString(36).replace('-', 'm');
@@ -3380,6 +3440,7 @@ function inRadius() {
   return chests.map(c => Object.assign({}, c, { d: dist(pos, c) })).filter(c => c.d <= R).sort((a, b) => a.d - b.d);
 }
 function refreshChestViews() {
+  applyRenames(chests); if (fly) applyRenames(fly.local);
   if (view === 'explore') renderNearby();
   if (!map || !window.L) return;
   refreshSearch(true);
@@ -3421,6 +3482,7 @@ function drawChestMarkers() {
   const openOne = c => {
     const d = dist(pos, c);
     if (d <= unlockM(c)) return openChest(c.id);
+    if (isAdmin()) return adminChestSheet(c);
     toast(`${c.name} – ${fmtDist(d)} ${dirName(pos, c)}. Walk closer to open it.`);
     const row = $('[data-open="' + c.id + '"]');
     if (row && row.closest('.chest')) row.closest('.chest').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -3708,11 +3770,13 @@ function showChest(meta, chest, canGlyph) {
       ${DB.remote ? `<button class="btn sm ghost" id="fxBtn">\u{1F386} Celebrate</button>` : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
       <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
-    </div>`, m => {
+    </div>${isAdmin() ? `<div class="admrow"><span>🛡️ Admin</span><button class="btn sm ghost" id="admRen">✏️ Rename</button><button class="btn sm ghost danger" id="admRm">🗑️ Remove</button></div>` : ''}`, m => {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
     const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta);
+    const ar = $('#admRen', m); if (ar) ar.onclick = () => adminRenameDialog(chests.find(c => c.id === meta.id) || meta);
+    const am = $('#admRm', m); if (am) am.onclick = () => adminRemoveChest(meta.id);
     const gy = $('#glyphBtn', m);
     if (gy && !gy.disabled) gy.onclick = () => {
       // hack first, then the lined-up trade (if any) goes through whatever the glyph result

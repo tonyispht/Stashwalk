@@ -1175,3 +1175,8 @@ body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
 .gmode:active{transform:scale(.98)}
 .glv.hardtag{--lc:#ff7a3d;border-color:#ff7a3d;color:#ffb080}
 .glyph.hard .gdot.lit{background:#ff7a3d;box-shadow:0 0 18px #ff7a3d}
+
+/* ---- admin chest tools ---- */
+.admacts{display:grid;gap:8px;margin-top:12px}
+.admrow{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border-radius:12px;border:1px dashed #c7a3ff66;background:#22183f55;font-size:12.5px}
+.admrow span{color:#c7a3ff;font-weight:700;margin-right:auto}

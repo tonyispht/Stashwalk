@@ -454,17 +454,64 @@ export default {
         }, 200, cors);
       }
 
-      // remove a hidden chest for everyone, straight away
+      // remove any chest (place, road/trail or player-hidden) for everyone, straight away.
+      // What it held is kept inside block/<chest>, so /admin/restore can bring it back.
       if (url.pathname === '/admin/remove' && req.method === 'POST') {
         const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
         const b = await req.json().catch(() => ({}));
         const chest = String(b.chest || ''), cell = String(b.cell || '');
         if (!SEG.test(chest)) return json({ error: 'bad chest' }, 400, cors);
-        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO NOTHING').bind('block/' + chest, '1').run();
+        const cRow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('chests/' + chest).first();
+        const cellRow = /^-?\d+_-?\d+$/.test(cell)
+          ? await env.DB.prepare('SELECT path, val FROM kv WHERE path = ?').bind('cells/' + cell + '/' + chest).first()
+          : await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? LIMIT 1').bind('cells/%/' + chest).first();
+        const rec = { at: Date.now(), by: ad.me, name: String(b.name || '').slice(0, 60), kind: String(b.kind || '').slice(0, 20),
+          lat: isFinite(+b.lat) ? +b.lat : null, lon: isFinite(+b.lon) ? +b.lon : null,
+          chestVal: cRow ? cRow.val : null, cellPath: cellRow ? cellRow.path : null, cellVal: cellRow ? cellRow.val : null };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('block/' + chest, JSON.stringify(rec)).run();
         await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('chests/' + chest).run();
-        if (/^-?\d+_-?\d+$/.test(cell)) await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('cells/' + cell + '/' + chest).run();
-        else await env.DB.prepare("DELETE FROM kv WHERE path LIKE ? ").bind('cells/%/' + chest).run();
+        if (cellRow) await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind(cellRow.path).run();
         return json({ ok: true }, 200, cors);
+      }
+      // removed chests, newest first (admin)
+      if (url.pathname === '/admin/removed' && req.method === 'GET') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        const { results } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'block/%' LIMIT 3000").all();
+        const list = results.map(r => { let o = {}; try { o = JSON.parse(r.val); } catch (e) {} if (typeof o !== 'object' || !o) o = {};
+          return { id: r.path.slice(6), name: o.name || '', kind: o.kind || '', at: o.at || 0, by: o.by || '', lat: o.lat, lon: o.lon, flagged: !o.by }; })
+          .sort((x, y) => y.at - x.at).slice(0, 300);
+        return json({ value: list, total: results.length }, 200, cors);
+      }
+      // bring a removed chest back, with what it held when it was removed
+      if (url.pathname === '/admin/restore' && req.method === 'POST') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''); if (!SEG.test(chest)) return json({ error: 'bad chest' }, 400, cors);
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('block/' + chest).first();
+        if (!row) return json({ error: 'not removed' }, 404, cors);
+        let o = {}; try { o = JSON.parse(row.val) || {}; } catch (e) {}
+        const put = 'INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1';
+        if (o.cellPath && o.cellVal && /^cells\/-?\d+_-?\d+\/[A-Za-z0-9_-]+$/.test(o.cellPath)) await env.DB.prepare(put).bind(o.cellPath, o.cellVal).run();
+        if (o.chestVal) await env.DB.prepare(put).bind('chests/' + chest, o.chestVal).run();
+        await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('block/' + chest).run();
+        await env.DB.prepare('DELETE FROM kv WHERE path LIKE ?').bind('flagv/' + chest + '/%').run();
+        return json({ ok: true }, 200, cors);
+      }
+      // rename any chest for everyone; an empty name goes back to the original
+      if (url.pathname === '/admin/rename' && req.method === 'POST') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''); if (!SEG.test(chest)) return json({ error: 'bad chest' }, 400, cors);
+        const name = String(b.name || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (!name) await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('rename/' + chest).run();
+        else await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('rename/' + chest, name).run();
+        return json({ ok: true, name }, 200, cors);
+      }
+      // every renamed chest, for all players
+      if (url.pathname === '/renames' && req.method === 'GET') {
+        const { results } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'rename/%' LIMIT 5000").all();
+        const out = {}; results.forEach(r => { out[r.path.slice(7)] = r.val; });
+        return json({ value: out }, 200, cors);
       }
 
       // ---- account recovery -------------------------------------------------------

@@ -149,8 +149,23 @@ window.DB = (function () {
       if (!r.ok) throw new Error(j.error || 'admin ' + r.status);
       return j;
     },
-    async adminRemove(chest, cell) {
-      const r = await fetch(W + '/admin/remove', { method: 'POST', headers: whead(), body: JSON.stringify({ chest, cell }) });
+    async adminPost(path, body) {
+      const r = await fetch(W + path, { method: 'POST', headers: whead(), body: JSON.stringify(body) });
+      const j = await r.json().catch(() => null);
+      if (!j) throw new Error('the Worker needs updating for that');
+      if (!r.ok) throw new Error(j.error || 'admin ' + r.status);
+      return j;
+    },
+    async adminRemoved() {
+      const r = await fetch(W + '/admin/removed', { headers: whead() }); const j = await r.json().catch(() => null);
+      if (!r.ok || !j) throw new Error((j && j.error) || 'admin ' + r.status); return j.value || [];
+    },
+    async renames() {
+      if (!W) return {};
+      try { const r = await fetch(W + '/renames'); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
+    },
+    async adminRemove(chest, cell, meta) {
+      const r = await fetch(W + '/admin/remove', { method: 'POST', headers: whead(), body: JSON.stringify(Object.assign({ chest, cell }, meta || {})) });
       const j = await r.json().catch(() => null);
       if (!j) throw new Error('the Worker needs updating to remove chests');
       if (!r.ok) throw new Error(j.error || 'admin ' + r.status);
