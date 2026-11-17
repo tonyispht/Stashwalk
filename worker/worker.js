@@ -538,6 +538,28 @@ export default {
         }
         return json({ value: out }, 200, cors);
       }
+      // ---- world pulse: anonymous recent activity near you, so the map feels alive -----------
+      // No names, ~100 m rounding (done at /act), and nothing newer than 90 s so it can't be used to follow anyone.
+      if (url.pathname === '/pulse' && req.method === 'GET') {
+        const bb = String(url.searchParams.get('b') || '').split(',').map(Number);
+        if (bb.length !== 4 || bb.some(x => !isFinite(x))) return json({ error: 'bad box' }, 400, cors);
+        const [s0, w0, n0, e0] = bb;
+        if (n0 - s0 > 1 || Math.abs(e0 - w0) > 1.5) return json({ value: [] }, 200, cors);
+        const PUB = new Set(['open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
+        const now = Date.now(), row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('admin/events').first();
+        let list = []; if (row) { try { list = JSON.parse(row.val) || []; } catch (e) {} }
+        const me = String(req.headers.get('X-User') || '').toLowerCase(), out = [];
+        for (const ev of list) {
+          const age = now - ev.t; if (age > 1800000) break;
+          if (age < 90000 || !PUB.has(ev.k) || ev.lat == null) continue;
+          if (me && String(ev.u || '').toLowerCase() === me) continue;
+          if (ev.lat < s0 || ev.lat > n0 || ev.lon < w0 || ev.lon > e0) continue;
+          let h = 0; for (const ch of String(ev.t) + ev.k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+          out.push({ id: h.toString(36), k: ev.k, lat: ev.lat, lon: ev.lon, t: ev.t });
+          if (out.length >= 40) break;
+        }
+        return json({ value: out }, 200, cors);
+      }
       // ---- player activity for the admin feed ----------------------------------------------
       // The game reports what players do; location is rounded to ~100 m before it is stored.
       if (url.pathname === '/act' && req.method === 'POST') {

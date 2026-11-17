@@ -1571,3 +1571,52 @@ body[class*="bg-"]{background-color:var(--bg)}
 .mtsw.mts-esri-topo{background:linear-gradient(135deg,#e9e4d2,#a9c79a)}
 .mtsw.mts-hot{background:linear-gradient(135deg,#f5e9d8,#e8b98a)}
 .mtsw.mts-cyclosm{background:linear-gradient(135deg,#eef2e6,#7fb3d5)}
+/* ===== a living map ===== */
+.leaflet-life-pane{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.leaflet-life-pane>*{position:absolute;inset:0;pointer-events:none}
+.lifecv{width:100%;height:100%}
+/* the sky follows the clock */
+.lifesky{transition:background 4s ease,opacity 4s ease;mix-blend-mode:soft-light;opacity:0}
+.sky-dawn .lifesky{opacity:.9;background:linear-gradient(180deg,#ff9eb066,#ffc98a33 45%,transparent 75%)}
+.sky-day .lifesky{opacity:.5;background:radial-gradient(ellipse at 80% -10%,#fff6cf55,transparent 60%)}
+.sky-dusk .lifesky{opacity:1;background:linear-gradient(180deg,#ff8a3d66,#ff5f6d33 50%,#5b3a8a22)}
+.sky-eve .lifesky{opacity:1;background:linear-gradient(180deg,#3a2a7a77,#1b2a5a44 60%,#0b1a3a33);mix-blend-mode:multiply}
+.sky-night .lifesky{opacity:1;background:radial-gradient(ellipse at 50% 120%,#0a1a3a33,#050b1f88);mix-blend-mode:multiply}
+/* slow cloud shadows on daytime maps */
+.lifeclouds{overflow:hidden;opacity:0;transition:opacity 4s}
+.sky-day .lifeclouds,.sky-dawn .lifeclouds{opacity:1}
+.lifeclouds i{position:absolute;width:70vmax;height:40vmax;border-radius:50%;background:radial-gradient(ellipse,#00000024,transparent 65%);
+  animation:cloudDrift 95s linear infinite;left:-80vmax}
+.lifeclouds i:nth-child(1){top:5%;animation-delay:-20s}
+.lifeclouds i:nth-child(2){top:45%;animation-duration:130s;animation-delay:-75s;width:90vmax}
+.lifeclouds i:nth-child(3){top:70%;animation-duration:110s;animation-delay:-40s;opacity:.7}
+@keyframes cloudDrift{to{transform:translateX(200vmax)}}
+.leaflet-life-pane.still .lifeclouds i{animation:none;display:none}
+/* other players' recent actions */
+.lifepulse{background:none;border:0;pointer-events:none}
+.lifepulse i{position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:2px solid #ffffffcc;
+  box-shadow:0 0 12px #ffffff88,inset 0 0 12px #ffffff44;animation:pulseRing 2.4s ease-out both}
+.lifepulse i+i{animation-delay:.7s}
+.lifepulse b{position:absolute;left:50%;top:50%;font-size:22px;transform:translate(-50%,-50%);filter:drop-shadow(0 2px 4px #000a);animation:pulseIcon 4s ease-out both}
+.lifepulse.k-field i,.lifepulse.k-link i{border-color:#7ff0ff;box-shadow:0 0 14px #7ff0ffaa}
+.lifepulse.k-break i,.lifepulse.k-towerdown i{border-color:#ff7a5a;box-shadow:0 0 14px #ff7a5aaa}
+.lifepulse.k-ach i,.lifepulse.k-levelup i,.lifepulse.k-newchest i{border-color:#ffd98a;box-shadow:0 0 14px #ffd98aaa}
+@keyframes pulseRing{from{transform:scale(.1);opacity:1}to{transform:scale(1.4);opacity:0}}
+@keyframes pulseIcon{0%{opacity:0;transform:translate(-50%,-30%) scale(.4)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}
+  22%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1;transform:translate(-50%,-90%)}100%{opacity:0;transform:translate(-50%,-120%)}}
+.worldtick{position:absolute;left:50%;top:58px;z-index:615;transform:translate(-50%,-14px);opacity:0;pointer-events:none;max-width:calc(100% - 24px);
+  padding:6px 12px;border-radius:99px;background:color-mix(in srgb,var(--bg) 88%,transparent);border:1px solid var(--line);font-size:12.5px;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 14px #0008;transition:opacity .35s,transform .35s}
+.worldtick.in{opacity:1;transform:translate(-50%,0)}
+body.linkpick .worldtick,body.linkpick .lifepulse{display:none}
+/* little signs of life on everything */
+.rcm i{animation:coinGlint 4.5s ease-in-out infinite;animation-delay:calc(var(--d,0) * -1s)}
+.rcm:nth-child(3n) i{animation-delay:-1.4s}.rcm:nth-child(3n+1) i{animation-delay:-2.9s}.rcm:nth-child(5n) i{animation-delay:-3.7s}
+@keyframes coinGlint{0%,86%,100%{filter:none}92%{filter:brightness(1.6) drop-shadow(0 0 4px #fff6cf)}}
+.cm2:not(.near) .pin{animation:pinBob 3.6s ease-in-out infinite}
+.cm2:nth-child(2n):not(.near) .pin{animation-delay:-1.2s}.cm2:nth-child(3n):not(.near) .pin{animation-delay:-2.3s}
+.cm2.rare:not(.near) .pin{animation:pinBob 2.6s ease-in-out infinite,rareGleam 3s ease-in-out infinite}
+@keyframes pinBob{0%,100%{translate:0 0}50%{translate:0 -3px}}
+@keyframes rareGleam{0%,100%{filter:drop-shadow(0 0 2px #ffd98a66)}50%{filter:drop-shadow(0 0 9px #ffd98a)}}
+body.modal-open .rcm i,body.modal-open .cm2 .pin,body.modal-open .lifeclouds i{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.rcm i,.cm2 .pin,.lifeclouds i,.lifepulse i,.lifepulse b{animation:none}}

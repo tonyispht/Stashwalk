@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181520';
+const APP_BUILD = '202611181540';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -3540,7 +3540,7 @@ function show(v) {
   if (v !== 'explore' && fieldShow) endFieldReveal(true);
   view = v;
   $$('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
-  if (v === 'explore') { lastRender = 0; lastRowIds = ''; }
+  if (v === 'explore') { lastRender = 0; lastRowIds = ''; if (typeof lifeKick === 'function') { setTimeout(lifeKick, 50); setTimeout(lifePulse, 1500); } }
   if (v === 'items' || v === 'shop') syncSubViews();
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   renderAll(); window.scrollTo(0, 0);
@@ -4222,10 +4222,108 @@ function applyBasemap() {
   if (!map || !window.L) return;
   applyMapTheme();
 }
+// ================= a living map =================
+// Ambient motes drifting over the map (fireflies at night, pollen by day), a sky tint that follows the
+// local time, slow cloud shadows, and soft pulses where other players did something recently.
+// All of it sits in its own pane between the map tiles and the markers, and stops when not visible.
+const LIFE = { pane: null, cv: null, ctx: null, motes: [], raf: 0, sky: null, clouds: null, last: 0, seen: new Set(), pulseT: 0 };
+const lifeOn = () => juicy() && !FX.isLow();
+function skyPhase(d) {
+  const h = d.getHours() + d.getMinutes() / 60;
+  if (h < 5 || h >= 21) return 'night';
+  if (h < 7) return 'dawn';
+  if (h < 17.5) return 'day';
+  if (h < 19.5) return 'dusk';
+  return 'eve';
+}
+function lifeInit() {
+  if (!map || LIFE.pane) return;
+  LIFE.pane = map.createPane('life'); LIFE.pane.style.zIndex = 350; LIFE.pane.style.pointerEvents = 'none';
+  LIFE.pane.innerHTML = '<div class="lifesky"></div><div class="lifeclouds"><i></i><i></i><i></i></div><canvas class="lifecv"></canvas>';
+  LIFE.sky = LIFE.pane.querySelector('.lifesky'); LIFE.clouds = LIFE.pane.querySelector('.lifeclouds'); LIFE.cv = LIFE.pane.querySelector('canvas'); LIFE.ctx = LIFE.cv.getContext('2d');
+  const pin = () => { try { L.DomUtil.setPosition(LIFE.pane, map.containerPointToLayerPoint([0, 0])); } catch (e) {} };
+  map.on('move zoom viewreset resize', pin); pin();
+  const size = () => { const r = $('#map').getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1);
+    LIFE.cv.width = r.width * d; LIFE.cv.height = r.height * d; LIFE.cv.style.width = r.width + 'px'; LIFE.cv.style.height = r.height + 'px'; LIFE.ctx.setTransform(d, 0, 0, d, 0, 0); LIFE.w = r.width; LIFE.h = r.height; LIFE.pane.style.width = r.width + 'px'; LIFE.pane.style.height = r.height + 'px'; };
+  size(); addEventListener('resize', size); if (window.ResizeObserver) try { new ResizeObserver(size).observe($('#map')); } catch (e) {}
+  lifeSky(); setInterval(lifeSky, 60000);
+  document.addEventListener('visibilitychange', lifeKick);
+  lifeKick();
+  setInterval(lifePulse, 40000); setTimeout(lifePulse, 4000);
+}
+function lifeSky() {
+  if (!LIFE.sky) return;
+  const ph = skyPhase(new Date());
+  LIFE.phase = ph;
+  LIFE.pane.className = 'leaflet-pane leaflet-life-pane sky-' + ph + (lifeOn() ? '' : ' still');
+}
+function lifeKick() {
+  lifeSky();
+  if (LIFE.raf || !lifeOn() || document.hidden) return;
+  LIFE.last = performance.now(); LIFE.raf = requestAnimationFrame(lifeTick);
+}
+function moteColor() {
+  const ph = LIFE.phase;
+  if (ph === 'night' || ph === 'eve') return ['#d8ff7a', '#fff3a0', '#9fffd0'];       // fireflies
+  if (ph === 'dusk' || ph === 'dawn') return ['#ffd8a0', '#ffc1d6', '#fff'];
+  return ['#ffffff', '#fff6cf', '#e8ffd8'];                                             // pollen / dust
+}
+function lifeTick(now) {
+  LIFE.raf = 0;
+  if (!lifeOn() || document.hidden || view !== 'explore' || modalOpen()) { if (LIFE.ctx) LIFE.ctx.clearRect(0, 0, LIFE.w || 0, LIFE.h || 0); if (!document.hidden) setTimeout(lifeKick, 1500); return; }
+  const dt = Math.min(0.05, (now - LIFE.last) / 1000); LIFE.last = now;
+  const c = LIFE.ctx, W = LIFE.w, H = LIFE.h, night = LIFE.phase === 'night' || LIFE.phase === 'eve';
+  const want = Math.round((W * H) / (night ? 9000 : 16000));
+  const cols = moteColor();
+  while (LIFE.motes.length < want) LIFE.motes.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 8, vy: (Math.random() - .5) * 6 - 2, r: .8 + Math.random() * (night ? 1.8 : 1.3), ph: Math.random() * 6.28, sp: .6 + Math.random() * 1.4, col: cols[(Math.random() * cols.length) | 0] });
+  if (LIFE.motes.length > want) LIFE.motes.length = want;
+  c.clearRect(0, 0, W, H);
+  const t = now / 1000;
+  for (const m of LIFE.motes) {
+    m.vx += (Math.sin(t * .3 + m.ph) * 3 - m.vx * .4) * dt; m.vy += (Math.cos(t * .25 + m.ph) * 2 - m.vy * .4) * dt;
+    m.x += m.vx * dt * 2.2; m.y += m.vy * dt * 2.2;
+    if (m.x < -10) m.x = W + 10; if (m.x > W + 10) m.x = -10; if (m.y < -10) m.y = H + 10; if (m.y > H + 10) m.y = -10;
+    const blink = night ? Math.max(0, Math.sin(t * m.sp + m.ph)) ** 3 : .35 + .25 * Math.sin(t * m.sp + m.ph);
+    if (blink < .02) continue;
+    c.globalAlpha = blink * (night ? .95 : .55);
+    if (night) { const g = c.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 5); g.addColorStop(0, m.col); g.addColorStop(1, 'transparent'); c.fillStyle = g; c.beginPath(); c.arc(m.x, m.y, m.r * 5, 0, 6.29); c.fill(); }
+    c.fillStyle = m.col; c.beginPath(); c.arc(m.x, m.y, m.r, 0, 6.29); c.fill();
+  }
+  c.globalAlpha = 1;
+  LIFE.raf = requestAnimationFrame(lifeTick);
+}
+// other players' recent actions, shown as soft rings with an icon (anonymous, a little delayed)
+const PULSE_ICON = { open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣', link: '🔗', field: '🔺', break: '💥', tower: '🗼', towerdown: '💥', ach: '🏅', levelup: '⭐', gift: '🎁', trade: '🔁', craft: '⚒️', merge: '🧪' };
+const PULSE_TEXT = { open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
+async function lifePulse() {
+  if (!map || !DB.remote || !DB.pulse || document.hidden || view !== 'explore' || !juicy()) return;
+  if (Date.now() - LIFE.pulseT < 30000) return; LIFE.pulseT = Date.now();
+  const b = map.getBounds().pad(.2);
+  const list = await DB.pulse(b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+  const fresh = list.filter(e => !LIFE.seen.has(e.id)).slice(0, 6);
+  fresh.forEach((e, i) => { LIFE.seen.add(e.id); setTimeout(() => showPulse(e), i * 1400 + Math.random() * 900); });
+  if (LIFE.seen.size > 500) LIFE.seen = new Set([...LIFE.seen].slice(-200));
+}
+function showPulse(e) {
+  if (!map || !window.L || view !== 'explore') return;
+  const ic = PULSE_ICON[e.k] || '✨';
+  const m = L.marker([e.lat, e.lon], { icon: L.divIcon({ className: 'lifepulse k-' + e.k, html: `<i></i><i></i><b>${ic}</b>`, iconSize: [90, 90] }), interactive: false, keyboard: false, zIndexOffset: -200 }).addTo(map);
+  setTimeout(() => { try { map.removeLayer(m); } catch (er) {} }, 4200);
+  if (pos && map.getBounds().contains([e.lat, e.lon])) {
+    const d = dist(pos, e), mins = Math.max(2, Math.round((Date.now() - e.t) / 60000));
+    worldTick(`${ic} Someone ${PULSE_TEXT[e.k] || 'was busy'} ${fmtDist(d)} away · ${mins} min ago`);
+  }
+}
+function worldTick(text) {
+  const host = $('#maprow'); if (!host) return;
+  let el = $('#worldTick'); if (!el) { el = document.createElement('div'); el.id = 'worldTick'; el.className = 'worldtick'; host.appendChild(el); }
+  el.textContent = text; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('in'), 4200);
+}
 function initMap() {
   if (map || !window.L) { if (!window.L) $('#map').innerHTML = '<div class="nomap">Map unavailable offline – the chest list below still works.</div>'; return; }
   map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
-  applyBasemap();
+  applyBasemap(); try { lifeInit(); } catch (e) {}
   map.on('click', e => { if (admPlacing) return adminMapClick(e); if (DEV) setPos(e.latlng.lat, e.latlng.lng, 2, true); });
   // re-cluster the chest markers whenever the view changes
   map.on('zoomend', () => drawChestMarkers());
@@ -5315,7 +5413,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
