@@ -63,7 +63,7 @@ function tile(it, o = {}) {
   if (o.sil) return `<div class="tile sil sr${it.r}" data-id="${it.id}" style="${pv}"><span class="em">${it.e}</span></div>`;
   return `<div class="tile r${it.r}${it.crafted ? ' cr' : ''}${o.sel ? ' sel' : ''}${o.big ? ' big' : ''}" data-id="${it.id}" data-slot="${o.slot || ''}" title="${esc(it.n)}" style="${pv}">` +
     (o.by ? `<span class="by">${esc(o.by)}</span>` : '') +
-    (!o.big && P && P.dex && !P.dex[it.id] ? `<i class="newtag${o.by ? ' r' : ''}" title="Not in your collection yet">NEW</i>` : '') +
+    (!o.big && !o.mine && P && P.dex && !P.dex[it.id] ? `<i class="newtag${o.by ? ' r' : ''}" title="Not in your collection yet">NEW</i>` : '') +
     `<span class="em">${it.e}</span>` +
     (o.count > 1 ? `<b class="cnt">×${o.count}</b>` : '') + (o.big ? '' : `<i class="nm">${esc(it.n)}</i>`) + '</div>';
 }
@@ -4155,7 +4155,7 @@ function showChest(meta, chest, canGlyph) {
       <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}</p></div></div>
     ${lvlChip(chest)}
     <h4 class="chsec">Inside the chest</h4>
-    <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
+    <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '', mine: !!chest.items[s].by && String(chest.items[s].by).toLowerCase() === String(P.name).toLowerCase() }) : ''; }).join('')}</div>
     ${done ? `<p class="chnote">You traded here recently. You can swap again in ${fmtWait(wait)}.</p>` : `<h4 class="chsec">Your pack <small>pick one to leave behind</small></h4><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
     <button class="btn big chswap" id="swapBtn" disabled>Pick an item from each row to trade</button>`}
     <div class="actiles">
