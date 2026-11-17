@@ -1241,7 +1241,7 @@ function droneCard() {
 // The same coins appear for everyone on a given day; who has picked up what is per player.
 // Walk - or fly the drone - close and they are pulled in.
 const RCF = Object.assign({ on: true, tiles: 'https://tiles.openfreemap.org/planet', pathEvery: 90, roadEvery: 180, chance: 0.55,
-  value: [2, 3], pathBonus: 1, stackChance: 0.04, stackValue: 25, magnetFt: 80, droneMagnetFt: 100, dronePerDay: 60 }, C.ROAD_COINS || {});
+  value: [2, 3], pathBonus: 1, stackChance: 0.04, stackValue: 25, magnetFt: 80, droneMagnetFt: 100 }, C.ROAD_COINS || {});
 const RZ = 14;                                     // the deepest zoom the vector tiles carry
 const RC = { tpl: null, tj: null, tiles: new Map(), loading: new Set(), layer: null, marks: new Map(), lastDraw: null, lastDrawDrone: null, combo: 0, comboT: 0 };
 
@@ -1522,16 +1522,14 @@ function rcCollect(at, byDrone) {
   if (!RCF.on || !P || !map || OFFLINE) return;
   const R = (byDrone ? RCF.droneMagnetFt : RCF.magnetFt) * 0.3048;
   const g = rcGot();
-  if (byDrone && RCF.dronePerDay && g.drone >= RCF.dronePerDay) return;
   RC.marks.forEach((m, id) => {
     const c = m.coin; if (!c || m.flying) return;
     const d = dist(at, c);
     const tug = d <= R * 2;
     if (m.tug !== tug) { m.tug = tug; const el = m.getElement && m.getElement(); if (el) el.classList.toggle('tug', tug); }
     if (d > R) return;
-    if (byDrone && RCF.dronePerDay && g.drone >= RCF.dronePerDay) return;
     (g.got[c.k] = g.got[c.k] || []).push(c.i);
-    if (byDrone) { g.drone++; if (RCF.dronePerDay && g.drone === RCF.dronePerDay) toast(`🛸 The drone's coin bag is full for today – coins on foot still count`); }
+    if (byDrone) g.drone++;
     m.flying = true;
     rcFlyIn(m, byDrone);
   });

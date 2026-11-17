@@ -90,8 +90,7 @@ window.GEO_CONFIG = {
     stackChance: 0.04,     // now and then a gold stack instead
     stackValue: 25,
     magnetFt: 80,          // they fly to you inside this distance
-    droneMagnetFt: 100,    // and to the drone inside this
-    dronePerDay: 60        // most the drone can pick up in a day (0 = no limit). Walking has no limit.
+    droneMagnetFt: 100     // and to the drone inside this (no daily limit, on foot or by drone)
   },
 
   // Extra chests generated along the real road & path network near the player, so there is
