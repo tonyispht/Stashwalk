@@ -1197,3 +1197,48 @@ body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
 .droneicon .dteam{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2.5px solid var(--tc);box-shadow:0 0 6px var(--tc);pointer-events:none}
 #droneBtn.isparked{border-color:#7ff0ff;box-shadow:0 0 0 2px #7ff0ff44;position:relative}
 #droneBtn.isparked::after{content:'📌';position:absolute;right:-5px;top:-6px;font-size:11px}
+
+/* ---- profile picture (avatar), colours and frames ---- */
+.av:has(.avx){background:none;padding:0}
+.avx{position:relative;isolation:isolate;display:inline-grid;width:100%;height:100%;border-radius:50%;flex:none;vertical-align:middle}
+.avx .avin{width:100%;height:100%;border-radius:50%;display:grid;place-items:center;background:var(--avbg);color:var(--avink);font-weight:800;overflow:hidden;line-height:1}
+.avx .avem{font-size:1.05em;filter:drop-shadow(0 1px 1px #0005)}
+.av .avx{font-size:15px}
+.avx.mid{width:34px;height:34px;font-size:15px;margin-right:8px}
+.avx.big{width:66px;height:66px;font-size:28px}
+.avx.sw-av{width:42px;height:42px;font-size:18px}
+.mename{display:flex;align-items:center;min-width:0}
+.mename b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avx.fr-silver .avin{box-shadow:0 0 0 2px #e3eaf0,0 0 0 3.5px #0007}
+.avx.fr-gold .avin{box-shadow:0 0 0 2.5px #ffd34d,0 0 10px #ffd34daa}
+.avx.fr-team .avin{box-shadow:0 0 0 2.5px var(--tc),0 0 10px var(--tc)}
+.avx.fr-leaf .avin{box-shadow:0 0 0 2.5px #49d17a}
+.avx.fr-leaf::after{content:'🌿';position:absolute;right:-6%;bottom:-8%;font-size:.55em;transform:rotate(-20deg)}
+.avx.fr-neon .avin{animation:avNeon 2s ease-in-out infinite}
+@keyframes avNeon{0%,100%{box-shadow:0 0 0 2px var(--acc),0 0 6px var(--acc)}50%{box-shadow:0 0 0 2.5px var(--acc2),0 0 16px var(--acc)}}
+.avx.fr-fire::before{content:'';position:absolute;inset:-14%;border-radius:50%;z-index:-1;
+  background:radial-gradient(circle,#ffdc6b 0 52%,#ff7a2e 62%,#e2382b55 72%,transparent 74%);animation:avFire 1.1s ease-in-out infinite alternate}
+@keyframes avFire{from{transform:scale(.96) rotate(-4deg);filter:blur(.5px)}to{transform:scale(1.06) rotate(4deg);filter:blur(1.5px)}}
+.avx.fr-spin::before{content:'';position:absolute;inset:-9%;border-radius:50%;z-index:-1;
+  background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d);animation:avSpin 2.4s linear infinite}
+@keyframes avSpin{to{transform:rotate(360deg)}}
+.avx.fr-stars .avin{box-shadow:0 0 0 2px #fff6,0 0 12px #c9b8ff}
+.avx.fr-stars::before,.avx.fr-stars::after{content:'✦';position:absolute;color:#fff7c2;font-size:.45em;text-shadow:0 0 6px #fff;animation:avTwinkle 1.8s ease-in-out infinite}
+.avx.fr-stars::before{left:-10%;top:-6%}
+.avx.fr-stars::after{right:-8%;bottom:-4%;animation-delay:.9s}
+@keyframes avTwinkle{0%,100%{opacity:.2;transform:scale(.7)}50%{opacity:1;transform:scale(1.15)}}
+body.modal-open .avx::before,body.modal-open .avx .avin{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.avx::before,.avx::after,.avx .avin{animation:none!important}}
+
+/* ---- style shop: groups, preview, new swatches ---- */
+.stylegroups{display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px 2px}
+.stylegroups button{font:inherit;font-size:12.5px;padding:6px 11px;border-radius:99px;border:1px solid #2a4a39;background:#13241b;color:var(--ink);cursor:pointer}
+.stylegroups button.on{background:var(--acc);color:#1a1206;border-color:var(--acc)}
+.stylepreview{display:flex;align-items:center;justify-content:center;gap:26px;margin:12px 14px 2px;padding:14px;border-radius:16px;background:radial-gradient(ellipse at center,#1d3a2a,#0f1a14);border:1px solid #234230}
+.stylepreview .spme{display:grid;place-items:center;min-width:34px;min-height:34px}
+.stylepreview .spme .me-dot{position:static;margin:0}
+.stylepreview .spdrone .dronewrap::before,.stylepreview .spdrone .dronewrap::after{display:none}
+.sw.swdl{display:flex;align-items:center;justify-content:center;gap:4px;background:#1b2622}
+.sw.swdl b{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px currentColor}
+.sw.swdrone{display:grid;place-items:center;background:#1b2622}
+.sw.swdrone .dronesvg{width:34px;height:34px}

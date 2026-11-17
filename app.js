@@ -510,7 +510,27 @@ const COSMETICS = {
     { id: 'ghost', name: 'Ghost', cost: 400, em: '👻' },
     { id: 'alien', name: 'Alien', cost: 500, em: '👽' },
     { id: 'crown', name: 'Crown', cost: 1200, em: '👑' },
-    { id: 'dragon', name: 'Dragon', cost: 1500, em: '🐉' } ] },
+    { id: 'dragon', name: 'Dragon', cost: 1500, em: '🐉' },
+    { id: 'cat', name: 'Cat', cost: 300, em: '🐱' },
+    { id: 'dog', name: 'Dog', cost: 300, em: '🐶' },
+    { id: 'frog', name: 'Frog', cost: 300, em: '🐸' },
+    { id: 'panda', name: 'Panda', cost: 400, em: '🐼' },
+    { id: 'penguin', name: 'Penguin', cost: 400, em: '🐧' },
+    { id: 'owlp', name: 'Owl', cost: 400, em: '🦉' },
+    { id: 'turtle', name: 'Turtle', cost: 350, em: '🐢' },
+    { id: 'unicorn', name: 'Unicorn', cost: 900, em: '🦄' },
+    { id: 'robot', name: 'Robot', cost: 500, em: '🤖' },
+    { id: 'ninja', name: 'Ninja', cost: 600, em: '🥷' },
+    { id: 'wizard', name: 'Wizard', cost: 700, em: '🧙' },
+    { id: 'astro', name: 'Astronaut', cost: 800, em: '🧑‍🚀' },
+    { id: 'pirate', name: 'Pirate Flag', cost: 600, em: '🏴‍☠️' },
+    { id: 'skull', name: 'Skull', cost: 500, em: '💀' },
+    { id: 'mushroom', name: 'Mushroom', cost: 350, em: '🍄' },
+    { id: 'cactus', name: 'Cactus', cost: 300, em: '🌵' },
+    { id: 'flame', name: 'Flame', cost: 450, em: '🔥' },
+    { id: 'bolt', name: 'Lightning', cost: 450, em: '⚡' },
+    { id: 'diamond', name: 'Diamond', cost: 1000, em: '💎' },
+    { id: 'phoenix', name: 'Phoenix', cost: 1800, em: '🐦‍🔥' } ] },
   dicon: { label: 'Drone model', def: 'classic', items: [
     { id: 'classic', name: 'Quadcopter', cost: 0, em: '' },
     { id: 'ufo', name: 'UFO', cost: 350, em: '🛸' },
@@ -520,7 +540,27 @@ const COSMETICS = {
     { id: 'eagle', name: 'Eagle', cost: 550, em: '🦅' },
     { id: 'owl', name: 'Owl', cost: 550, em: '🦉' },
     { id: 'satellite', name: 'Satellite', cost: 700, em: '🛰️' },
-    { id: 'rocketd', name: 'Rocket', cost: 900, em: '🚀' } ] },
+    { id: 'rocketd', name: 'Rocket', cost: 900, em: '🚀' },
+    { id: 'plane', name: 'Biplane', cost: 450, em: '🛩️' },
+    { id: 'parachute', name: 'Parachute', cost: 300, em: '🪂' },
+    { id: 'bee', name: 'Bumblebee', cost: 400, em: '🐝' },
+    { id: 'butterfly', name: 'Butterfly', cost: 400, em: '🦋' },
+    { id: 'bat', name: 'Bat', cost: 450, em: '🦇' },
+    { id: 'parrot', name: 'Parrot', cost: 500, em: '🦜' },
+    { id: 'dragonfly', name: 'Dragon', cost: 1200, em: '🐲' },
+    { id: 'cloud', name: 'Cloud', cost: 350, em: '☁️' },
+    { id: 'disc', name: 'Flying Disc', cost: 300, em: '🥏' },
+    { id: 'comet', name: 'Comet', cost: 1100, em: '☄️' },
+    { id: 'witch', name: 'Broomstick', cost: 800, em: '🧹' },
+    { id: 'genie', name: 'Magic Carpet', cost: 1500, em: '🧞' } ] },
+  dlight: { label: 'Drone lights', def: 'classic', items: [
+    { id: 'classic', name: 'Nav Lights', cost: 0, c1: '#ff4d4d', c2: '#49e07f', c3: '#7ff0ff' },
+    { id: 'police', name: 'Patrol', cost: 300, c1: '#ff3b3b', c2: '#3b7bff', c3: '#ffffff' },
+    { id: 'ice', name: 'Glacier', cost: 300, c1: '#d6f6ff', c2: '#7fe0ff', c3: '#bff6ff' },
+    { id: 'sunset', name: 'Sunset', cost: 350, c1: '#ff9f45', c2: '#ff5fa2', c3: '#ffd98a' },
+    { id: 'toxic', name: 'Toxic', cost: 350, c1: '#9bff3b', c2: '#3bff9b', c3: '#d4ff6b' },
+    { id: 'royal', name: 'Royal', cost: 500, c1: '#ffd24d', c2: '#b88bff', c3: '#ffd24d' },
+    { id: 'stealth', name: 'Stealth', cost: 500, c1: '#3a3f46', c2: '#3a3f46', c3: '#ff3b3b' } ] },
   accent: { label: 'App accent', def: 'amber', items: [
     { id: 'amber', name: 'Amber', cost: 0, a: '#f2b84b', a2: '#ffd98a' },
     { id: 'emerald', name: 'Emerald', cost: 300, a: '#43d98a', a2: '#b6f5d4' },
@@ -536,6 +576,11 @@ const COSMETICS = {
     { id: 'pink', name: 'Hot Pink', cost: 150, c: '#ff5fa2' },
     { id: 'orange', name: 'Ember', cost: 150, c: '#ff9f45' },
     { id: 'white', name: 'Ghost White', cost: 300, c: '#eef6ff' },
+    { id: 'purple', name: 'Grape', cost: 150, c: '#a06bff' },
+    { id: 'teal', name: 'Lagoon', cost: 150, c: '#2fd0b6' },
+    { id: 'red', name: 'Signal Red', cost: 150, c: '#ff4d4d' },
+    { id: 'yellow', name: 'Sunbeam', cost: 200, c: '#ffd84a' },
+    { id: 'black', name: 'Shadow', cost: 300, c: '#2a2f36' },
     { id: 'rainbow', name: 'Rainbow', cost: 1000, c: 'rainbow' } ] },
   map: { label: 'Map style', def: 'classic', items: [
     { id: 'classic', name: 'Classic', cost: 0, cls: '' },
@@ -552,8 +597,76 @@ const COSMETICS = {
     { id: 'carbon', name: 'Carbon', cost: 400, c: '#4a5568' },
     { id: 'hotpink', name: 'Hot Pink', cost: 400, c: '#ff5fa2' },
     { id: 'gold', name: 'Gold', cost: 600, c: '#ffd24d' },
-    { id: 'violet', name: 'Violet', cost: 600, c: '#b88bff' } ] }
+    { id: 'violet', name: 'Violet', cost: 600, c: '#b88bff' },
+    { id: 'sky', name: 'Sky Blue', cost: 300, c: '#5ab8ff' },
+    { id: 'tangerine', name: 'Tangerine', cost: 300, c: '#ff9a3c' },
+    { id: 'lemon', name: 'Lemon', cost: 300, c: '#ffe45c' },
+    { id: 'mint', name: 'Mint', cost: 350, c: '#7ff0c8' },
+    { id: 'olive', name: 'Army Olive', cost: 350, c: '#7b8a3e' },
+    { id: 'navy', name: 'Navy', cost: 350, c: '#2d4a8a' },
+    { id: 'white', name: 'Arctic White', cost: 400, c: '#f4f8fb' },
+    { id: 'black', name: 'Midnight Black', cost: 450, c: '#1e2328' },
+    { id: 'copper', name: 'Copper', cost: 600, c: '#c8794a' },
+    { id: 'rosegold', name: 'Rose Gold', cost: 800, c: '#e8a39b' } ] },
+  avatar: { label: 'Profile picture', def: 'initial', items: [
+    { id: 'initial', name: 'Your Initial', cost: 0, em: '' },
+    { id: 'hiker', name: 'Hiker', cost: 200, em: '🥾' },
+    { id: 'map', name: 'Treasure Map', cost: 200, em: '🗺️' },
+    { id: 'chest', name: 'Treasure', cost: 250, em: '💰' },
+    { id: 'tent', name: 'Camper', cost: 250, em: '⛺' },
+    { id: 'mountain', name: 'Mountain', cost: 250, em: '🏔️' },
+    { id: 'tree', name: 'Evergreen', cost: 200, em: '🌲' },
+    { id: 'sun', name: 'Sunshine', cost: 200, em: '☀️' },
+    { id: 'moon', name: 'Moon', cost: 250, em: '🌙' },
+    { id: 'foxa', name: 'Fox', cost: 350, em: '🦊' },
+    { id: 'wolf', name: 'Wolf', cost: 400, em: '🐺' },
+    { id: 'bear', name: 'Bear', cost: 400, em: '🐻' },
+    { id: 'lion', name: 'Lion', cost: 450, em: '🦁' },
+    { id: 'tiger', name: 'Tiger', cost: 450, em: '🐯' },
+    { id: 'octopus', name: 'Octopus', cost: 450, em: '🐙' },
+    { id: 'shark', name: 'Shark', cost: 500, em: '🦈' },
+    { id: 'cool', name: 'Cool Shades', cost: 300, em: '😎' },
+    { id: 'cowboy', name: 'Cowboy', cost: 400, em: '🤠' },
+    { id: 'robota', name: 'Robot', cost: 450, em: '🤖' },
+    { id: 'alien2', name: 'Alien', cost: 450, em: '👾' },
+    { id: 'ghosta', name: 'Ghost', cost: 400, em: '👻' },
+    { id: 'pumpkin', name: 'Pumpkin', cost: 400, em: '🎃' },
+    { id: 'crystal', name: 'Crystal Ball', cost: 700, em: '🔮' },
+    { id: 'trophy', name: 'Champion', cost: 1000, em: '🏆' },
+    { id: 'crowna', name: 'Royalty', cost: 1400, em: '👑' } ] },
+  avbg: { label: 'Profile colour', def: 'amber', items: [
+    { id: 'amber', name: 'Amber', cost: 0, g: 'linear-gradient(135deg,var(--acc),#d9822b)', ink: '#2a1d00' },
+    { id: 'forest', name: 'Forest', cost: 200, g: 'linear-gradient(135deg,#49d17a,#1e7a46)', ink: '#05210f' },
+    { id: 'ocean', name: 'Ocean', cost: 200, g: 'linear-gradient(135deg,#4fb3ff,#1d4fa8)', ink: '#04142e' },
+    { id: 'berry', name: 'Berry', cost: 250, g: 'linear-gradient(135deg,#ff6fae,#8a2be2)', ink: '#2a0420' },
+    { id: 'lava', name: 'Lava', cost: 250, g: 'linear-gradient(135deg,#ffb347,#e2382b)', ink: '#2a0800' },
+    { id: 'slate', name: 'Slate', cost: 200, g: 'linear-gradient(135deg,#8a99a8,#3a4654)', ink: '#0b1218' },
+    { id: 'mintc', name: 'Mint', cost: 250, g: 'linear-gradient(135deg,#b6f5d4,#2fd0b6)', ink: '#05241e' },
+    { id: 'night', name: 'Night Sky', cost: 400, g: 'radial-gradient(circle at 30% 30%,#4a3f9e,#0b0f2a)', ink: '#f2f0ff' },
+    { id: 'aurora', name: 'Aurora', cost: 700, g: 'linear-gradient(135deg,#43e97b,#38f9d7,#a98bff)', ink: '#06231a' },
+    { id: 'sunsetbg', name: 'Sunset', cost: 600, g: 'linear-gradient(160deg,#ffd86b,#ff7a5c,#a8326b)', ink: '#2a0712' },
+    { id: 'rainbowbg', name: 'Rainbow', cost: 1200, g: 'conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d)', ink: '#1b0f00' },
+    { id: 'goldbg', name: 'Solid Gold', cost: 1500, g: 'linear-gradient(135deg,#fff0b0,#ffd34d 45%,#b8860b)', ink: '#2a1d00' } ] },
+  avframe: { label: 'Profile frame', def: 'none', items: [
+    { id: 'none', name: 'No Frame', cost: 0, cls: '' },
+    { id: 'silver', name: 'Silver Ring', cost: 250, cls: 'fr-silver' },
+    { id: 'goldr', name: 'Gold Ring', cost: 500, cls: 'fr-gold' },
+    { id: 'team', name: 'Faction Ring', cost: 400, cls: 'fr-team' },
+    { id: 'leaf', name: 'Leafy', cost: 450, cls: 'fr-leaf' },
+    { id: 'neon', name: 'Neon Glow', cost: 700, cls: 'fr-neon' },
+    { id: 'fire', name: 'Flame Aura', cost: 900, cls: 'fr-fire' },
+    { id: 'spin', name: 'Rainbow Spin', cost: 1200, cls: 'fr-spin' },
+    { id: 'stars', name: 'Starlight', cost: 1500, cls: 'fr-stars' } ] }
 };
+const STYLE_GROUPS = [['all', 'All'], ['me', '🧍 Player', ['picon', 'dot']], ['drone', '🚁 Drone', ['dicon', 'drone', 'dlight']],
+  ['profile', '🪪 Profile', ['avatar', 'avbg', 'avframe']], ['app', '🎨 App & map', ['accent', 'map']]];
+let styleGroup = 'all';
+// the profile picture: initial or emoji, in the chosen colour and frame
+function avatarHtml(cls) {
+  const ic = cosGet('avatar', cosEq('avatar')), bg = cosGet('avbg', cosEq('avbg')), fr = cosGet('avframe', cosEq('avframe'));
+  const tc = TEAMS[P.team] ? TEAMS[P.team].c : 'var(--acc)';
+  return `<span class="avx ${cls || ''} ${fr.cls}" style="--avbg:${bg.g};--avink:${bg.ink};--tc:${tc}"><span class="avin">${ic.em ? `<span class="avem">${ic.em}</span>` : esc((P.name || '?')[0].toUpperCase())}</span></span>`;
+}
 // the player map marker's inner HTML for the equipped icon
 function meIconHtml() {
   const ic = cosGet('picon', cosEq('picon'));
@@ -574,6 +687,9 @@ function applyCosmetics() {
   const dot = cosGet('dot', cosEq('dot')); root.setProperty('--medot', dot.c === 'rainbow' ? '#3b9cff' : dot.c);
   document.body.classList.toggle('dot-rainbow', dot.c === 'rainbow');
   root.setProperty('--dronecol', cosGet('drone', cosEq('drone')).c);
+  const dl = cosGet('dlight', cosEq('dlight')); root.setProperty('--dl1', dl.c1); root.setProperty('--dl2', dl.c2); root.setProperty('--dl3', dl.c3);
+  const hav = $('#hAv'); if (hav) hav.innerHTML = avatarHtml();
+  if (typeof drawParked === 'function' && P.drone && P.drone.parked) drawParked();
   refreshMeIcon();
   if (fly && fly.marker && window.L) try { fly.marker.setIcon(L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneGlyph()}</div>`, iconSize: [52, 52] })); } catch (e) {}
   applyMapTheme();
@@ -604,8 +720,13 @@ function buyCos(cat, id) {
 }
 function swatch(cat, it) {
   if (cat === 'picon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw" style="background:#3b9cff;box-shadow:0 0 0 4px #3b9cff33 inset"></i>`;
-  if (cat === 'dicon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swem" style="font-size:20px">🚁</i>`;
+  if (cat === 'dicon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swdrone">${droneSVG('mini')}</i>`;
   if (cat === 'map') return `<i class="sw mtsw ${it.cls || 'mtsw-classic'}"></i>`;
+  if (cat === 'avatar') return `<span class="avx sw-av" style="--avbg:${cosGet('avbg', cosEq('avbg')).g};--avink:${cosGet('avbg', cosEq('avbg')).ink}"><span class="avin">${it.em ? `<span class="avem">${it.em}</span>` : esc((P.name || '?')[0].toUpperCase())}</span></span>`;
+  if (cat === 'avbg') return `<span class="avx sw-av" style="--avbg:${it.g};--avink:${it.ink}"><span class="avin">${esc((P.name || '?')[0].toUpperCase())}</span></span>`;
+  if (cat === 'avframe') return `<span class="avx sw-av ${it.cls}" style="--avbg:${cosGet('avbg', cosEq('avbg')).g};--avink:${cosGet('avbg', cosEq('avbg')).ink};--tc:${TEAMS[P.team] ? TEAMS[P.team].c : 'var(--acc)'}"><span class="avin">${esc((P.name || '?')[0].toUpperCase())}</span></span>`;
+  if (cat === 'dlight') return `<i class="sw swdl"><b style="background:${it.c1}"></b><b style="background:${it.c3}"></b><b style="background:${it.c2}"></b></i>`;
+  if (cat === 'drone') return `<i class="sw swdrone" style="--dronecol:${it.c}">${droneSVG('mini')}</i>`;
   if (it.c === 'rainbow') return `<i class="sw" style="background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d)"></i>`;
   if (cat === 'accent') return `<i class="sw" style="background:linear-gradient(135deg,${it.a},${it.a2})"></i>`;
   return `<i class="sw" style="background:${it.c}"></i>`;
@@ -613,9 +734,12 @@ function swatch(cat, it) {
 function renderStyle() {
   let h = `<div class="card shoptop"><div class="shopbal"><span>Balance</span><b>🪙 ${fmtC(P.coins || 0)}</b></div>
     <p class="fine" style="margin:6px 0 0">Spend coins on how your game looks. Buy once, switch any time for free.</p></div>`;
-  Object.keys(COSMETICS).forEach(cat => {
-    const g = COSMETICS[cat], eq = cosEq(cat);
-    h += `<h2 class="sec">${g.label}</h2><div class="cosgrid" data-cat="${cat}">`;
+  h += `<div class="stylegroups">${STYLE_GROUPS.map(([k, l]) => `<button class="${styleGroup === k ? 'on' : ''}" data-sg="${k}">${l}</button>`).join('')}</div>`;
+  h += `<div class="stylepreview">${avatarHtml('big')}<div class="spme">${meIconHtml()}</div><div class="spdrone">${droneGlyphWrap()}</div></div>`;
+  const grp = STYLE_GROUPS.find(g => g[0] === styleGroup);
+  STYLE_GROUPS.flatMap(g => g[2] || []).filter(cat => !grp || !grp[2] || grp[2].includes(cat)).forEach(cat => {
+    const g = COSMETICS[cat], eq = cosEq(cat), own = g.items.filter(it => cosOwned(cat, it.id)).length;
+    h += `<h2 class="sec">${g.label} <small>${own}/${g.items.length} owned</small></h2><div class="cosgrid" data-cat="${cat}">`;
     g.items.forEach(it => {
       const owned = cosOwned(cat, it.id), on = eq === it.id;
       h += `<button class="cositem${on ? ' on' : ''}" data-cos="${it.id}">${swatch(cat, it)}
@@ -624,7 +748,9 @@ function renderStyle() {
     h += `</div>`;
   });
   $('#styleBox').innerHTML = h;
-  $('#styleBox').onclick = e => { const b = e.target.closest('[data-cos]'); if (!b) return; const cat = b.closest('[data-cat]').dataset.cat; buyCos(cat, b.dataset.cos); };
+  $('#styleBox').onclick = e => {
+    const sg = e.target.closest('[data-sg]'); if (sg) { styleGroup = sg.dataset.sg; return renderStyle(); }
+    const b = e.target.closest('[data-cos]'); if (!b) return; const cat = b.closest('[data-cat]').dataset.cat; buyCos(cat, b.dataset.cos); };
 }
 
 function renderShopHead() {
@@ -754,12 +880,12 @@ function droneSVG(cls) {
       <circle r="4.6" fill="#1d2329" stroke="#6b7782" stroke-width="1"/>
       <g class="rotor"><path d="M-11 -.2 C-6 -2.6 -2 -2 0 0 C2 2 6 2.6 11 .2 C6 1.2 2 1.4 0 0 C-2 -1.4 -6 -1.2 -11 -.2Z" fill="#eef4f8" stroke="#9fb2c0" stroke-width=".4"/></g>
       <circle r="1.7" fill="#aab6bf"/></g>`).join('')}</g>
-    <circle cx="17.5" cy="17.5" r="1.6" fill="#ff4d4d"/><circle cx="46.5" cy="17.5" r="1.6" fill="#ff4d4d"/>
-    <circle cx="17.5" cy="46.5" r="1.6" fill="#49e07f"/><circle cx="46.5" cy="46.5" r="1.6" fill="#49e07f"/>
+    <circle cx="17.5" cy="17.5" r="1.6" fill="var(--dl1,#ff4d4d)"/><circle cx="46.5" cy="17.5" r="1.6" fill="var(--dl1,#ff4d4d)"/>
+    <circle cx="17.5" cy="46.5" r="1.6" fill="var(--dl2,#49e07f)"/><circle cx="46.5" cy="46.5" r="1.6" fill="var(--dl2,#49e07f)"/>
     <path d="M32 15.5 L40.5 21 L42 37 L37 47.5 L27 47.5 L22 37 L23.5 21 Z" fill="var(--dronecol,#f2b84b)" stroke="#0007" stroke-width="1.6" stroke-linejoin="round"/>
     <path d="M32 20 L37.5 23.5 L38.5 35 L32 38.5 L25.5 35 L26.5 23.5 Z" fill="#ffffff2e"/>
     <path d="M28 42.5 H36 M28.5 45 H35.5" stroke="#0005" stroke-width="1.2" stroke-linecap="round"/>
-    <circle cx="32" cy="16.5" r="3.6" fill="#14181c" stroke="#5b6670" stroke-width=".8"/><circle cx="32" cy="16.5" r="1.7" fill="#7ff0ff"/><circle cx="31.4" cy="15.9" r=".5" fill="#fff"/>
+    <circle cx="32" cy="16.5" r="3.6" fill="#14181c" stroke="#5b6670" stroke-width=".8"/><circle cx="32" cy="16.5" r="1.7" fill="var(--dl3,#7ff0ff)"/><circle cx="31.4" cy="15.9" r=".5" fill="#fff"/>
   </svg>`;
 }
 
@@ -2696,7 +2822,7 @@ function show(v) {
   if (v === 'me') refreshInvites();
 }
 function renderHeader() {
-  $('#hAv').textContent = P.name[0].toUpperCase(); $('#hName').textContent = P.name;
+  $('#hAv').innerHTML = avatarHtml(); $('#hName').textContent = P.name;
   $('#hStreakV').textContent = streakNow(); $('#hPackV').textContent = packCount();
   $('#hCoinsV').textContent = fmtC(P.coins || 0);
   renderWalk(); renderDroneBtn();
@@ -2998,7 +3124,7 @@ function renderMe() {
   const s = statView(), unlocked = ACH.filter(a => P.ach[a.id]);
   const titles = ['Newcomer'].concat(unlocked.map(a => a.t));
   const link = location.origin + location.pathname.replace(/index\.html$/, '') + '?ref=' + encodeURIComponent(P.name);
-  let h = adminCardShell() + `<div class="card"><div class="meTop"><b>${esc(P.name)}</b>${teamBadge()}</div><small class="fine">Equipped title</small>
+  let h = adminCardShell() + `<div class="card"><div class="meTop"><span class="mename">${avatarHtml('mid')}<b>${esc(P.name)}</b></span>${teamBadge()}</div><small class="fine">Equipped title</small>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
     <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p>
     <p class="fine" id="meRankLine" style="margin:6px 0 0">🏆 Loading rank…</p></div>
