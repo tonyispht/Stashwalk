@@ -169,6 +169,27 @@ window.DB = (function () {
       if (!r.ok) throw new Error(j.error || 'leaderboard ' + r.status);
       return j;
     },
+    async teamGet() {
+      if (!W || !auth) return null;
+      const r = await fetch(W + '/team', { headers: whead() });
+      return r.ok ? r.json() : null;
+    },
+    async teamSet(team) {
+      if (!W) throw new Error('teams need the shared world (Worker)');
+      const r = await fetch(W + '/team/set', { method: 'POST', headers: whead(), body: JSON.stringify({ team }) });
+      const j = await r.json().catch(() => null);
+      if (!j) throw new Error('the Worker needs updating for teams');
+      if (!r.ok) { const e = new Error(j.error || 'team ' + r.status); e.data = j; throw e; }
+      return j;
+    },
+    async cellScore(cell) {
+      if (!W || !auth) return null;
+      try { const r = await fetch(W + '/cell/score', { method: 'POST', headers: whead(), body: JSON.stringify({ cell }) }); return r.ok ? r.json() : null; } catch (e) { return null; }
+    },
+    async cellScores(cells) {
+      if (!W || !cells.length) return {};
+      try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
+    },
     async adminStats() {
       if (!W) throw new Error('admin stats need the shared world (Worker)');
       const r = await fetch(W + '/admin/stats', { headers: whead() });

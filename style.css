@@ -971,3 +971,23 @@ body.dot-rainbow .me-dot{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6
 #map.mt-mono .leaflet-tile-pane{filter:grayscale(1) contrast(.95) brightness(.95)}
 #map.mt-vapor .leaflet-tile-pane{filter:hue-rotate(275deg) saturate(1.8) contrast(1.05) brightness(1.02)}
 #map.mt-vapor .leaflet-control-attribution{background:#2a0a3ccc;color:#ffb3f0}
+
+/* factions / teams */
+.meTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.teambadge{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--tc,#5a7);background:color-mix(in srgb,var(--tc,#5a7) 18%,#0f1d15);color:#fff;border-radius:99px;padding:4px 10px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.teambadge small{color:var(--mut);font-weight:600}
+.teambadge.join{border-color:var(--acc);color:var(--acc2);background:#2a2108}
+.teampick{display:grid;gap:8px;margin:12px 0}
+.teamopt{display:grid;grid-template-columns:44px 1fr;grid-template-rows:auto auto;gap:0 12px;align-items:center;text-align:left;background:#0f1d15;border:2px solid var(--tc);border-radius:14px;padding:12px;color:var(--ink);font:inherit;cursor:pointer;position:relative;box-shadow:0 0 0 0 var(--tc)}
+.teamopt .ti{grid-row:1/3;font-size:30px;width:44px;height:44px;display:grid;place-items:center;background:color-mix(in srgb,var(--tc) 22%,#0f1d15);border-radius:12px}
+.teamopt b{font-size:16px;color:var(--tc2)}
+.teamopt small{color:var(--mut);font-size:12px}
+.teamopt em{position:absolute;top:10px;right:12px;font-style:normal;font-size:11px;color:var(--tc2)}
+.teamopt.on{box-shadow:0 0 0 2px var(--tc)}
+.teamopt:active{transform:scale(.98)}
+
+/* glyph hacking */
+.glyph{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;width:200px;margin:14px auto;padding:10px}
+.gdot{width:48px;height:48px;border-radius:50%;background:#15271d;border:2px solid #2c4d3b;cursor:pointer;transition:transform .1s,background .15s,box-shadow .15s;justify-self:center}
+.gdot.lit{background:var(--acc);border-color:var(--acc2);box-shadow:0 0 16px var(--acc);transform:scale(1.12)}
+.gdot.bad{border-color:var(--bad);background:#3a1a16}

@@ -9,6 +9,8 @@
 const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites', 'feed']);
 const FLAGS_TO_REMOVE = 3;   // distinct players who must flag a chest before it is dropped
 const SEG = /^[A-Za-z0-9_-]{1,64}$/;
+const TEAMS = new Set(['ember', 'tide', 'grove']);
+const TEAM_COOLDOWN = 7 * 86400000;        // switch teams at most once a week
 const ITEM_ID = /^(\d{1,3}_[0-4]|c\d{1,3})$/;   // base items, or crafted relics (c0, c1, ...)
 let ready = false;
 
@@ -259,6 +261,59 @@ export default {
         const rank = me ? (list.findIndex(x => x.key === me) + 1) : 0;
         const you = rank ? { rank, v: list[rank - 1].v, name: list[rank - 1].name } : null;
         return json({ metric, period, wk, total: list.length, top: list.slice(0, 100).map((x, i) => ({ rank: i + 1, name: x.name, v: x.v, me: x.key === me })), you }, 200, cors);
+      }
+
+      // ---- factions / teams ----------------------------------------------------------------
+      // The server is the source of truth for a player's team and enforces the weekly switch
+      // cooldown. team/<user> = { team, at }. Not reachable through /kv.
+      if (url.pathname === '/team' && req.method === 'GET') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+        let t = null; if (row) { try { t = JSON.parse(row.val); } catch (e) {} }
+        return json({ team: t && t.team || null, at: t && t.at || 0, cooldownMs: TEAM_COOLDOWN }, 200, cors);
+      }
+      if (url.pathname === '/team/set' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        if (!TEAMS.has(String(b.team))) return json({ error: 'unknown team' }, 400, cors);
+        const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+        let cur = null; if (row) { try { cur = JSON.parse(row.val); } catch (e) {} }
+        const now = Date.now();
+        if (cur && cur.team && cur.team !== b.team && now - (cur.at || 0) < TEAM_COOLDOWN)
+          return json({ error: 'cooldown', team: cur.team, at: cur.at, nextAt: (cur.at || 0) + TEAM_COOLDOWN }, 429, cors);
+        const rec = { team: b.team, at: (cur && cur.team === b.team) ? (cur.at || now) : now };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
+          .bind('team/' + me, JSON.stringify(rec)).run();
+        return json({ ok: true, team: rec.team, at: rec.at }, 200, cors);
+      }
+
+      // ---- control fields / cell scoring ---------------------------------------------------
+      // Opening a new chest scores its map cell for the opener's team. cs/<cell>/<team> is a
+      // counter. Reads are batched. Not reachable through /kv.
+      if (url.pathname === '/cell/score' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const b = await req.json().catch(() => ({}));
+        const cell = String(b.cell || '');
+        if (!/^-?\d+_-?\d+$/.test(cell)) return json({ error: 'bad cell' }, 400, cors);
+        const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
+        let team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} }
+        if (!TEAMS.has(team)) return json({ ok: true, scored: false, reason: 'no team' }, 200, cors);
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = CAST(CAST(kv.val AS INTEGER) + 1 AS TEXT), v = kv.v + 1')
+          .bind('cs/' + cell + '/' + team, '1').run();
+        return json({ ok: true, scored: true, team }, 200, cors);
+      }
+      if (url.pathname === '/cells/scores' && req.method === 'GET') {
+        const keys = (url.searchParams.get('cells') || '').split(',').filter(k => /^-?\d+_-?\d+$/.test(k)).slice(0, 80);
+        if (!keys.length) return json({ value: {} }, 200, cors);
+        const sql = 'SELECT path, val FROM kv WHERE ' + keys.map(() => 'path LIKE ?').join(' OR ') + ' LIMIT 4000';
+        const { results } = await env.DB.prepare(sql).bind(...keys.map(k => 'cs/' + k + '/%')).all();
+        const out = {};
+        keys.forEach(k => { out[k] = {}; });
+        results.forEach(r => { const seg = r.path.split('/'); const cell = seg[1], team = seg[2]; if (out[cell]) out[cell][team] = +r.val || 0; });
+        return json({ value: out }, 200, cors);
       }
 
       if (url.pathname === '/admin/stats' && req.method === 'GET') {

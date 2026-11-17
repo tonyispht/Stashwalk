@@ -229,7 +229,7 @@ function newPlayer(name, ref) {
            stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0, walkedM: 0, walkPaid: 0, coinsEarned: 0, coinsSpent: 0, bought: 0 },
            daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
            coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} }, found: {},
-           cos: { owned: {}, eq: {} }, chal: {}, lb: {} };
+           cos: { owned: {}, eq: {} }, chal: {}, lb: {}, team: '', glyphDone: {} };
 }
 // One trade per chest per TRADE_COOLDOWN_MIN. P.exch[chestId] is when you last traded there.
 const TRADE_MS = () => (C.TRADE_COOLDOWN_MIN || 60) * 60000;
@@ -254,6 +254,7 @@ function normalize(p) {
   p.shop.bought = p.shop.bought || {};
   p.cos = p.cos && typeof p.cos === 'object' ? p.cos : { owned: {}, eq: {} };
   p.cos.owned = p.cos.owned || {}; p.cos.eq = p.cos.eq || {};
+  p.team = p.team || ''; p.glyphDone = p.glyphDone && typeof p.glyphDone === 'object' ? p.glyphDone : {};
   p.chal = p.chal && typeof p.chal === 'object' ? p.chal : {};
   p.lb = p.lb && typeof p.lb === 'object' ? p.lb : {};
   return p;
@@ -1867,6 +1868,7 @@ async function boot(key, p) {
   setTimeout(coachOnce, 1500);
   if (notifOn()) scheduleDailyReminder();
   setTimeout(() => submitLB(true), 5000);
+  ensureTeam();
 }
 
 // ---------------- notifications ----------------
@@ -1947,6 +1949,114 @@ async function renderLB() {
     el.innerHTML = h;
   } catch (e) { el.innerHTML = `<p class="fine" style="color:var(--bad)">${esc(e.message)}</p>`; }
 }
+// ---------------- factions / teams ----------------
+const TEAMS = {
+  ember: { name: 'Embers', icon: '🔥', c: '#ff6b4a', c2: '#ffb199', blurb: 'Bold and relentless.' },
+  tide:  { name: 'Tide',   icon: '🌊', c: '#3b9cff', c2: '#9fd0ff', blurb: 'Calm, deep, unstoppable.' },
+  grove: { name: 'Grove',  icon: '🌿', c: '#49d17a', c2: '#b6f0c9', blurb: 'Patient and everywhere.' }
+};
+const TEAM_IDS = ['ember', 'tide', 'grove'];
+const teamOf = id => TEAMS[id] || null;
+const myTeam = () => teamOf(P && P.team);
+async function ensureTeam() {
+  if (!DB.remote || !P) return;
+  try { const info = await DB.teamGet(); if (info && info.team) { P.team = info.team; P.teamAt = info.at; save(); renderHeader(); return; } } catch (e) { return; }
+  const show = () => { if (modalOpen()) return setTimeout(show, 1200); chooseTeamDialog(true); };   // wait for welcome/daily first
+  show();
+}
+function chooseTeamDialog(firstTime) {
+  if (needNet('Choosing a faction')) return;
+  modal(`<div style="text-align:center"><h3>${firstTime ? 'Choose your faction' : 'Switch faction'}</h3>
+    <p class="sub">${firstTime ? 'Pick a team to play for. Every chest you open claims its area for your faction on the map.' : 'You can switch once a week. Areas you already claimed keep their colour.'}</p></div>
+    <div class="teampick">${TEAM_IDS.map(id => { const t = TEAMS[id], on = P.team === id; return `<button class="teamopt${on ? ' on' : ''}" data-team="${id}" style="--tc:${t.c};--tc2:${t.c2}"><span class="ti">${t.icon}</span><b>${t.name}</b><small>${t.blurb}</small>${on ? '<em>Current</em>' : ''}</button>`; }).join('')}</div>
+    ${firstTime ? '' : '<div class="trade"><button class="btn ghost" id="cancelBtn">Cancel</button></div>'}`, m => {
+    if (firstTime) $('#modal').onclick = null;         // required: no backdrop dismiss
+    else $('#cancelBtn', m).onclick = closeModal;
+    $$('.teamopt', m).forEach(b => b.onclick = async () => {
+      const id = b.dataset.team;
+      if (id === P.team) return closeModal();
+      $$('.teamopt', m).forEach(x => x.disabled = true);
+      try {
+        const res = await DB.teamSet(id);
+        P.team = res.team; P.teamAt = res.at; save(); renderAll(); closeModal();
+        toast(`${TEAMS[id].icon} You joined ${TEAMS[id].name}!`, 'gold'); FX.sfx('ach'); FX.confetti([TEAMS[id].c, TEAMS[id].c2, '#fff'], 45);
+        drawCells(true);
+      } catch (e) {
+        $$('.teamopt', m).forEach(x => x.disabled = false);
+        if (e.data && e.data.nextAt) { const d = Math.max(1, Math.ceil((e.data.nextAt - Date.now()) / 86400000)); toast(`You can switch again in ${d} day${d === 1 ? '' : 's'}`, 'bad'); }
+        else toast('Could not set faction: ' + e.message, 'bad');
+      }
+    });
+  });
+}
+function teamBadge() {
+  const t = myTeam();
+  if (!DB.remote) return '';
+  if (!t) return `<button class="teambadge join" id="teamJoin">⚑ Join a faction</button>`;
+  return `<button class="teambadge" id="teamSwitch" style="--tc:${t.c};--tc2:${t.c2}"><span>${t.icon}</span> ${t.name} <small>switch</small></button>`;
+}
+
+// ---------------- control fields / cell scoring ----------------
+const CELL_S = 0.02;                          // ~2 km scoring cells
+const cellKeyScore = (lat, lon) => Math.floor(lat / CELL_S) + '_' + Math.floor(lon / CELL_S);
+let cellLayer = null, cellDrawAt = 0, cellDrawTimer = null;
+function drawCellsSoon() { clearTimeout(cellDrawTimer); cellDrawTimer = setTimeout(() => drawCells(), 600); }
+async function drawCells(force) {
+  if (!map || !window.L || !DB.remote || view !== 'explore') return;
+  if (map.getZoom() < 13) { if (cellLayer) cellLayer.clearLayers(); return; }   // only when zoomed in
+  const now = Date.now(); if (!force && now - cellDrawAt < 3500) return; cellDrawAt = now;
+  const b = map.getBounds(), S = CELL_S, keys = [];
+  for (let a = Math.floor(b.getSouth() / S); a <= Math.floor(b.getNorth() / S); a++)
+    for (let c = Math.floor(b.getWest() / S); c <= Math.floor(b.getEast() / S); c++) { keys.push(a + '_' + c); if (keys.length >= 70) break; }
+  const scores = await DB.cellScores(keys);
+  if (!cellLayer) cellLayer = L.layerGroup().addTo(map); else cellLayer.clearLayers();
+  keys.forEach(k => {
+    const sc = scores[k]; if (!sc) return; let lead = null, max = 0;
+    for (const t in sc) if (sc[t] > max) { max = sc[t]; lead = t; }
+    if (!lead || !TEAMS[lead]) return;
+    const [a, c] = k.split('_').map(Number), t = TEAMS[lead];
+    L.rectangle([[a * S, c * S], [(a + 1) * S, (c + 1) * S]], { color: t.c, weight: 1, opacity: .45, fillColor: t.c, fillOpacity: .13, interactive: false }).addTo(cellLayer);
+  });
+}
+
+// ---------------- glyph hacking (optional bonus) ----------------
+function glyphGame(id) {
+  if (P.glyphDone[id]) return;
+  P.glyphDone[id] = 1; save();
+  const N = 9, len = 4 + Math.floor(Math.random() * 2), seq = [];
+  while (seq.length < len) { const n = Math.floor(Math.random() * N); if (!seq.includes(n)) seq.push(n); }
+  const dots = Array.from({ length: N }, (_, i) => `<button class="gdot" data-g="${i}"></button>`).join('');
+  modal(`<div style="text-align:center"><h3>✨ Glyph hack</h3><p class="sub" id="gMsg">Watch the glyph…</p>
+    <div class="glyph" id="gGrid">${dots}</div>
+    <p class="fine" id="gHint">Repeat the pattern in order for a bonus.</p></div>`, m => {
+    const grid = $('#gGrid', m), msg = $('#gMsg', m), els = $$('.gdot', grid);
+    let accepting = false, idx = 0;
+    const flash = i => { els[i].classList.add('lit'); setTimeout(() => els[i].classList.remove('lit'), 320); };
+    // play the sequence, then accept input
+    seq.forEach((n, i) => setTimeout(() => flash(n), 500 + i * 470));
+    setTimeout(() => { accepting = true; msg.textContent = 'Your turn — tap the glyph'; }, 500 + seq.length * 470 + 250);
+    grid.onclick = e => {
+      const btn = e.target.closest('.gdot'); if (!btn || !accepting) return;
+      const n = +btn.dataset.g; flash(n);
+      if (n === seq[idx]) {
+        idx++;
+        if (idx >= seq.length) {
+          accepting = false;
+          const coins = 20 + len * 6, item = Math.random() < 0.28 ? rollItem(Math.random, 1.4) : null, fresh = item && !P.dex[item.id];
+          earn(coins, '✨ Glyph bonus'); if (item) addItem(item.id);
+          checkAch(); save();
+          msg.innerHTML = `✨ <b>Nice!</b> +${coins} 🪙${item ? ' + an item' : ''}`;
+          FX.sfx('reveal', 2); FX.confetti(['#ffd98a', '#b88bff', '#fff'], 36);
+          setTimeout(() => { closeModal(); if (item) showMade(item, 'Glyph bonus', fresh); }, item ? 900 : 1100);
+        }
+      } else {
+        accepting = false; msg.innerHTML = '❌ Glyph broke — no bonus this time';
+        els.forEach(x => x.classList.add('bad')); setTimeout(closeModal, 1100);
+      }
+    };
+  });
+}
+
 // Quick access from the map: jump to the Me tab and scroll to the leaderboard.
 function openLeaderboard() { show('me'); setTimeout(() => { const c = $('#lbCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 320); }
 // Player's all-time coins rank, shown in the profile card.
@@ -2024,7 +2134,7 @@ function show(v) {
   if (v === 'items' || v === 'shop') syncSubViews();
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   renderAll(); window.scrollTo(0, 0);
-  if (v === 'explore' && map) setTimeout(() => map.invalidateSize(), 50);
+  if (v === 'explore' && map) setTimeout(() => { map.invalidateSize(); drawCells(); }, 50);
   if (v === 'me') refreshInvites();
 }
 function renderHeader() {
@@ -2330,7 +2440,7 @@ function renderMe() {
   const s = statView(), unlocked = ACH.filter(a => P.ach[a.id]);
   const titles = ['Newcomer'].concat(unlocked.map(a => a.t));
   const link = location.origin + location.pathname.replace(/index\.html$/, '') + '?ref=' + encodeURIComponent(P.name);
-  let h = adminCardShell() + `<div class="card"><b>${esc(P.name)}</b><br><small class="fine">Equipped title</small>
+  let h = adminCardShell() + `<div class="card"><div class="meTop"><b>${esc(P.name)}</b>${teamBadge()}</div><small class="fine">Equipped title</small>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
     <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p>
     <p class="fine" id="meRankLine" style="margin:6px 0 0">🏆 Loading rank…</p></div>
@@ -2387,6 +2497,8 @@ function renderMe() {
   $('#meBox').innerHTML = h;
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
   wireLB(); fillMeRank();
+  const tj = $('#teamJoin'); if (tj) tj.onclick = () => chooseTeamDialog(true);
+  const ts = $('#teamSwitch'); if (ts) ts.onclick = () => chooseTeamDialog(false);
   $('#titleSel').onchange = e => { P.title = e.target.value; save(); renderHeader(); };
   $('#refBtn').onclick = async e => { e.target.disabled = true; e.target.textContent = 'Checking…'; const was = inviteCount; await refreshInvites(); if (inviteCount === was) toast(`${inviteCount} friend${inviteCount === 1 ? '' : 's'} joined so far`); renderMe(); };
   $('#copyBtn').onclick = () => { const i = $('#inviteLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } toast('Invite link copied'); };
@@ -2588,6 +2700,7 @@ function initMap() {
   map.on('click', e => { if (admPlacing) return adminMapClick(e); if (DEV) setPos(e.latlng.lat, e.latlng.lng, 2, true); });
   // re-cluster the chest markers whenever the view changes
   map.on('zoomend', () => drawChestMarkers());
+  map.on('moveend', drawCellsSoon); map.on('zoomend', drawCellsSoon);
   const fix = () => { try { map.invalidateSize({ animate: false }); } catch (e) {} };
   [0, 150, 500, 1200].forEach(ms => setTimeout(fix, ms));
   addEventListener('resize', fix); addEventListener('orientationchange', () => setTimeout(fix, 300));
@@ -3092,9 +3205,10 @@ async function openChest(id, byDrone) {
     P.stats.visited[id] = 1; save();
     if (locTarget === id) stopLocate(true);
     await cine.done;
-    showChest(meta, r.value);
+    showChest(meta, r.value, firstVisit);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
+    if (firstVisit && DB.remote && P.team) { DB.cellScore(cellKeyScore(meta.lat, meta.lon)); drawCellsSoon(); }
     checkAch(); save();
     // First chest opened: let the server credit whoever invited us. The visit has to be stored
     // before we ask, or the server correctly sees no chest yet - so write it, then report, and
@@ -3110,8 +3224,9 @@ async function openChest(id, byDrone) {
     }
   } catch (e) { cine.kill(); toast('Could not open chest: ' + e.message, 'bad'); }
 }
-function showChest(meta, chest) {
+function showChest(meta, chest, canGlyph) {
   const wait = tradeWait(meta.id), done = wait > 0;
+  const glyphOk = !!canGlyph && !P.glyphDone[meta.id];
   const slots = Object.keys(chest.items || {}).filter(s => chest.items[s] && BY_ID[chest.items[s].id]).sort();
   if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
@@ -3126,12 +3241,14 @@ function showChest(meta, chest) {
     <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button><button class="btn" id="swapBtn" disabled>Choose items</button></div>`}
     ${done ? '<div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>' : ''}
     <div class="chestfoot">
+      ${glyphOk ? `<button class="btn sm" id="glyphBtn">\u{2728} Glyph hack – bonus</button>` : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
       <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
     </div>`, m => {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
+    const gy = $('#glyphBtn', m); if (gy) gy.onclick = () => glyphGame(meta.id);
     // Lid lifts, light spills out, then the items rise one after another. The whole
     // sequence lands in well under a second so it never feels like waiting.
     const ios = document.body.classList.contains('ios');
@@ -3547,7 +3664,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
