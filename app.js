@@ -935,6 +935,7 @@ function wireDrone() {
   const up = e => { if (e.pointerId !== pid) return; pid = null; joy.x = joy.y = 0; knob.style.transform = ''; };
   pad.addEventListener('pointerup', up); pad.addEventListener('pointercancel', up);
   $('#droneOpen').onclick = droneOpen;
+  $('#droneHomeBtn').onclick = () => endFlight('home');
   addEventListener('keydown', e => {
     if (!fly || (e.target && e.target.closest && e.target.closest('input,textarea,select'))) return;
     if (/^(Arrow|[wasd]$)/.test(e.key)) { keys[e.key] = true; e.preventDefault(); }

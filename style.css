@@ -1024,3 +1024,7 @@ body.dot-rainbow .me-dot{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6
 .lyrow .tgl::after{content:'';position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#cfe0d6;transition:transform .15s}
 .lyrow input:checked + .tgl{background:var(--acc)}
 .lyrow input:checked + .tgl::after{transform:translateX(15px);background:#1a1206}
+
+/* drone: return-home button, parked just above the Open chest spot */
+.dronehome{position:absolute;right:14px;bottom:80px;z-index:520;font-size:13px;padding:9px 14px;background:#0f1a14ee;border:1px solid #2f6a63;color:#bff6ff;box-shadow:0 4px 16px #0008}
+body:not(.flying) .dronehome{display:none}
