@@ -151,6 +151,47 @@ async function shieldHit(env, target, attackerTeam) {
 const geoM = (a, b) => { const rad = Math.PI / 180, dLa = (b.lat - a.lat) * rad, dLo = (b.lon - a.lon) * rad;
   const h = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
 
+// ---- live pushes -------------------------------------------------------------------------
+const PULSE_KINDS = new Set(['open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
+const pulseId = ev => { let h = 0; for (const ch of String(ev.t) + ev.k) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h.toString(36); };
+// One instance holds every player's socket (hibernating, so idle sockets cost nothing). Each socket
+// remembers the map area its player is looking at; a new event goes only to sockets whose area holds it.
+export class Pulse {
+  constructor(state) {
+    this.state = state;
+    try { state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong')); } catch (e) {}
+  }
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === '/pub') {
+      const ev = await req.json().catch(() => null); if (!ev) return new Response('bad', { status: 400 });
+      const msg = JSON.stringify({ t: 'pulse', e: { id: pulseId(ev), k: ev.k, lat: ev.lat, lon: ev.lon, t: ev.t } });
+      let n = 0;
+      for (const ws of this.state.getWebSockets()) {
+        let a = null; try { a = ws.deserializeAttachment(); } catch (e) {}
+        if (!a || !a.b || (a.u && a.u === ev.uk)) continue;
+        const [s0, w0, n0, e0] = a.b;
+        if (ev.lat < s0 || ev.lat > n0 || ev.lon < w0 || ev.lon > e0) continue;
+        try { ws.send(msg); n++; } catch (e) {}
+      }
+      return new Response(JSON.stringify({ sent: n }));
+    }
+    const pair = new WebSocketPair(), client = pair[0], server = pair[1];
+    this.state.acceptWebSocket(server);
+    server.serializeAttachment({ u: String(url.searchParams.get('u') || '').toLowerCase().slice(0, 40), b: null });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  async webSocketMessage(ws, msg) {
+    let d = null; try { d = JSON.parse(msg); } catch (e) { return; }
+    if (d && Array.isArray(d.b) && d.b.length === 4 && d.b.every(Number.isFinite)) {
+      const [s0, w0, n0, e0] = d.b;
+      if (n0 > s0 && n0 - s0 <= 1 && Math.abs(e0 - w0) <= 1.5) { let a = {}; try { a = ws.deserializeAttachment() || {}; } catch (e) {} a.b = [s0, w0, n0, e0]; ws.serializeAttachment(a); }
+    }
+  }
+  async webSocketClose(ws, code) { try { ws.close(code === 1005 ? 1000 : code, 'bye'); } catch (e) {} }
+  async webSocketError(ws) { try { ws.close(1011, 'error'); } catch (e) {} }
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url), origin = req.headers.get('Origin') || '';
@@ -160,6 +201,12 @@ export default {
                    'Access-Control-Allow-Headers': 'Content-Type,X-User,X-Hash', 'Vary': 'Origin' };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (!okOrigin) return json({ error: 'origin not allowed' }, 403, cors);
+    // live pushes (nearby activity) over one WebSocket per player, held by the Pulse Durable Object
+    if (url.pathname === '/live') {
+      if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected a websocket' }, 426, cors);
+      if (!env.PULSE) return json({ error: 'live updates are off' }, 503, cors);
+      return env.PULSE.get(env.PULSE.idFromName('world')).fetch(req);
+    }
     if (!env.DB) return json({ error: 'D1 binding "DB" is missing' }, 500, cors);
     try {
       await init(env.DB);
@@ -580,7 +627,7 @@ export default {
         if (bb.length !== 4 || bb.some(x => !isFinite(x))) return json({ error: 'bad box' }, 400, cors);
         const [s0, w0, n0, e0] = bb;
         if (n0 - s0 > 1 || Math.abs(e0 - w0) > 1.5) return json({ value: [] }, 200, cors);
-        const PUB = new Set(['open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
+        const PUB = PULSE_KINDS;
         const now = Date.now(), row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('admin/events').first();
         let list = []; if (row) { try { list = JSON.parse(row.val) || []; } catch (e) {} }
         const me = String(req.headers.get('X-User') || '').toLowerCase(), out = [];
@@ -589,8 +636,7 @@ export default {
           if (!PUB.has(ev.k) || ev.lat == null) continue;
           if (me && String(ev.u || '').toLowerCase() === me) continue;
           if (ev.lat < s0 || ev.lat > n0 || ev.lon < w0 || ev.lon > e0) continue;
-          let h = 0; for (const ch of String(ev.t) + ev.k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-          out.push({ id: h.toString(36), k: ev.k, lat: ev.lat, lon: ev.lon, t: ev.t });
+          out.push({ id: pulseId(ev), k: ev.k, lat: ev.lat, lon: ev.lon, t: ev.t });
           if (out.length >= 40) break;
         }
         return json({ value: out }, 200, cors);
@@ -609,6 +655,9 @@ export default {
         const lat = +b.lat, lon = +b.lon;
         if (b.lat != null && b.lon != null && isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) { ev.lat = Math.round(lat * 1000) / 1000; ev.lon = Math.round(lon * 1000) / 1000; }
         await adminEvent(env, ev);
+        if (env.PULSE && ev.lat != null && PULSE_KINDS.has(k)) {
+          try { await env.PULSE.get(env.PULSE.idFromName('world')).fetch('https://pulse/pub', { method: 'POST', body: JSON.stringify({ k, lat: ev.lat, lon: ev.lon, t: ev.t, uk: me }) }); } catch (e) {}
+        }
         return json({ ok: true }, 200, cors);
       }
       // ---- beacons & fireworks: short-lived effects anyone can see at a chest ----------------

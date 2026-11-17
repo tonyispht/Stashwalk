@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181650';
+const APP_BUILD = '202611181710';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -4426,6 +4426,9 @@ function lifeInit() {
   document.addEventListener('visibilitychange', lifeKick);
   lifeKick();
   setInterval(lifePulse, 4000); setTimeout(lifePulse, 1500);
+  liveConnect();
+  map.on('moveend', liveArea);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) liveClose(); else liveConnect(); });
 }
 function lifeSky() {
   if (!LIFE.sky) return;
@@ -4509,6 +4512,7 @@ const PULSE_ICON = { open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣',
 const PULSE_TEXT = { open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
 async function lifePulse() {
   if (!map || !DB.remote || !DB.pulse || document.hidden || view !== 'explore' || !juicy()) return;
+  if (LIFE.live && LIFE.pulsed) return;              // pushed live - only the first look replays recent activity
   if (Date.now() - LIFE.pulseT < 3500 || LIFE.pulseBusy) return; LIFE.pulseT = Date.now(); LIFE.pulseBusy = true;
   const b = map.getBounds().pad(.2);
   let list = []; try { list = await DB.pulse(b.getSouth(), b.getWest(), b.getNorth(), b.getEast()); } finally { LIFE.pulseBusy = false; }
@@ -4517,6 +4521,34 @@ async function lifePulse() {
   const fresh = list.filter(e => !LIFE.seen.has(e.id)).slice(0, 6);
   fresh.forEach((e, i) => { LIFE.seen.add(e.id); setTimeout(() => showPulse(e), i * 600); });
   if (LIFE.seen.size > 500) LIFE.seen = new Set([...LIFE.seen].slice(-200));
+}
+// ---- live pushes: one WebSocket; falls back to asking every few seconds while it is down ----
+const LIVE = { ws: null, wait: 2000, timer: 0, ping: 0 };
+function liveConnect() {
+  if (LIVE.ws || !DB.remote || !DB.liveUrl || document.hidden || OFFLINE) return;
+  const u = DB.liveUrl(); if (!u) return;
+  let ws; try { ws = new WebSocket(u); } catch (e) { return liveRetry(); }
+  LIVE.ws = ws;
+  ws.onopen = () => { LIVE.wait = 2000; LIFE.live = true; liveArea(true); clearInterval(LIVE.ping); LIVE.ping = setInterval(() => { try { ws.send('ping'); } catch (e) {} }, 30000); };
+  ws.onmessage = ev => {
+    if (ev.data === 'pong') return;
+    let d = null; try { d = JSON.parse(ev.data); } catch (e) { return; }
+    if (d && d.t === 'pulse' && d.e && !LIFE.seen.has(d.e.id) && view === 'explore' && juicy()) { LIFE.seen.add(d.e.id); showPulse(d.e); }
+  };
+  ws.onclose = () => { clearInterval(LIVE.ping); if (LIVE.ws === ws) { LIVE.ws = null; LIFE.live = false; liveRetry(); } };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+function liveRetry() {
+  clearTimeout(LIVE.timer); if (document.hidden) return;
+  LIVE.timer = setTimeout(liveConnect, LIVE.wait); LIVE.wait = Math.min(30000, LIVE.wait * 2);
+}
+function liveClose() { clearTimeout(LIVE.timer); clearInterval(LIVE.ping); const ws = LIVE.ws; LIVE.ws = null; LIFE.live = false; if (ws) try { ws.close(1000); } catch (e) {} }
+function liveArea(force) {
+  const ws = LIVE.ws; if (!ws || ws.readyState !== 1 || !map) return;
+  const b = map.getBounds().pad(.2), s0 = b.getSouth(), n0 = Math.min(b.getNorth(), s0 + 1), w0 = b.getWest(), e0 = Math.min(b.getEast(), w0 + 1.5);
+  const key = [s0, w0, n0, e0].map(x => x.toFixed(3)).join(',');
+  if (!force && key === LIVE.area) return; LIVE.area = key;
+  try { ws.send(JSON.stringify({ b: [s0, w0, n0, e0] })); } catch (e) {}
 }
 function showPulse(e) {
   if (!map || !window.L || view !== 'explore') return;
@@ -5635,7 +5667,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
