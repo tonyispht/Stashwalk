@@ -1404,3 +1404,16 @@ body.linkpick .droneicon.parked,body.linkpick .me-icon{display:none!important}
 .towercard .twbig{font-size:34px;line-height:1}
 .towercard small{display:block;color:var(--mut);font-size:12px;margin-top:3px;line-height:1.35}
 body.linkpick .towermark{display:none!important}
+
+/* ---- player level & XP ---- */
+.top{position:sticky}
+.hxp{position:absolute;left:0;right:0;bottom:-1px;height:3px;background:#ffffff10;overflow:hidden;pointer-events:none}
+.hxp i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7ff0ff,var(--acc2));box-shadow:0 0 8px #7ff0ff88;transition:width .5s ease-out}
+.avwrap{position:relative;display:inline-block}
+.lvbadge{position:absolute;right:-6px;bottom:-4px;min-width:19px;height:17px;padding:0 4px;border-radius:9px;background:#0f1a14;border:1.5px solid #7ff0ff;
+  color:#bff6ff;font:800 10px/14px system-ui,sans-serif;text-align:center;font-style:normal;box-shadow:0 0 6px #7ff0ff66}
+.xprow{display:flex;align-items:center;gap:8px;margin:12px 0 0}
+.xprow .xplv{color:#bff6ff;font-size:14px;white-space:nowrap}
+.xprow .xpbar{flex:1;height:8px;border-radius:99px;background:#ffffff12;overflow:hidden}
+.xprow .xpbar i{display:block;height:100%;background:linear-gradient(90deg,#7ff0ff,var(--acc2));border-radius:99px}
+.xprow small{color:var(--mut);font-size:11.5px;white-space:nowrap}

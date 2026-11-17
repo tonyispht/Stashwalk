@@ -246,7 +246,7 @@ function newPlayer(name, ref) {
            stats: { visited: {}, ex: 0, hidden: 0, gaveRare: 0, walkedM: 0, walkPaid: 0, coinsEarned: 0, coinsSpent: 0, bought: 0 },
            daily: { n: 0, last: '', streak: 0, max: 0 }, hideDay: '', hideN: 0,
            coins: (C.COINS && C.COINS.start) || 0, coinsV: 1, shop: { day: 0, bought: {} }, found: {},
-           cos: { owned: {}, eq: {} }, chal: {}, lb: {}, team: '', glyphDone: {}, keys: {} };
+           cos: { owned: {}, eq: {} }, chal: {}, lb: {}, team: '', glyphDone: {}, keys: {}, xp: 0 };
 }
 // One trade per chest per TRADE_COOLDOWN_MIN. P.exch[chestId] is when you last traded there.
 const TRADE_MS = () => (C.TRADE_COOLDOWN_MIN || 60) * 60000;
@@ -441,7 +441,7 @@ function addWalk(m) {
   const paid = P.stats.walkPaid || 0, steps = Math.floor(P.stats.walkedM / WALK_STEP);
   if (steps > paid) {
     P.stats.walkPaid = steps;
-    earn((steps - paid) * CO.mile / 10, 'Walking');
+    earn((steps - paid) * CO.mile / 10, 'Walking'); gainXP((steps - paid) * 10);
     if (Math.floor(steps / 10) > Math.floor(paid / 10)) {
       const miles = Math.floor(steps / 10);
       toast(`🥾 ${miles} mile${miles === 1 ? '' : 's'} walked!`, 'gold'); FX.sfx('ach'); FX.vibe([20, 30, 20]);
@@ -1576,7 +1576,7 @@ function rcFlyIn(m, byDrone) {
       FX.sfx('pickup', RC.combo);
       if (c.stack) { FX.sfx('coin'); const p = FX.centerOf(byDrone && fly && fly.marker.getElement ? fly.marker.getElement() : document.querySelector('.me-dot')); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#fff'], 18); }
       FX.vibe(c.stack ? [20, 30, 20] : 12);
-      P.stats.roadCoins = (P.stats.roadCoins || 0) + 1;
+      P.stats.roadCoins = (P.stats.roadCoins || 0) + 1; gainXP(c.stack ? 10 : 1);
       earn(c.v, c.stack ? 'Gold stack!' : 'Road coins');
       clearTimeout(RC.saveT); RC.saveT = setTimeout(() => { checkAch(); save(); }, 900);
     }
@@ -1658,7 +1658,46 @@ function startPresence() {
 const adminSeen = () => { try { return +localStorage.getItem('sw_admin_seen') || 0; } catch (e) { return 0; } };
 const setAdminSeen = t => { try { localStorage.setItem('sw_admin_seen', String(t)); } catch (e) {} };
 // Player activity reported to the admin feed (rounded location only).
+// ---- player levels: XP for nearly everything you do ----
+const XP_FOR = { newchest: 50, open: 10, trade: 40, gift: 25, hide: 60, glyph: 30, glyphfail: 5, levelup: 40, fx: 15, ach: 100, merge: 20,
+  craft: 40, daily: 25, drone: 5, link: 60, field: 150, break: 80, shield: 40, tower: 200, towerdown: 250 };
+const xpNeed = l => Math.round(150 * Math.pow(l, 1.35));            // XP to go from level l to l+1
+function levelOf(xp) { let l = 1, left = xp || 0; while (left >= xpNeed(l) && l < 200) { left -= xpNeed(l); l++; } return { lvl: l, into: left, need: xpNeed(l) }; }
+// Players from before levels existed start at the level their history has earned.
+function seedXP() {
+  if (P.xp != null) return;
+  const st = P.stats || {};
+  P.xp = Object.keys(st.visited || {}).length * 50 + (st.ex || 0) * 40 + (st.hidden || 0) * 60 + (st.given || 0) * 25 + Object.keys(P.ach || {}).length * 100
+    + Math.floor(milesOf() * 100) + (st.roadCoins || 0) + (st.glyphWins || 0) * 30 + (st.links || 0) * 60 + (st.fields || 0) * 150 + (st.merges || 0) * 20 + (st.crafted || 0) * 40
+    + ((P.daily && P.daily.n) || 0) * 25;
+}
+function gainXP(n) {
+  if (!P || !(n > 0)) return;
+  seedXP();
+  const before = levelOf(P.xp).lvl;
+  P.xp += Math.round(n);
+  const L = levelOf(P.xp);
+  if (L.lvl > before) {
+    const coins = L.lvl * 25; P.coins = (P.coins || 0) + coins; P.stats.coinsEarned = (P.stats.coinsEarned || 0) + coins;
+    setTimeout(() => { toast(`🎉 Level ${L.lvl}! +${coins} 🪙`, 'gold'); FX.sfx('ach'); FX.confetti(['#7ff0ff', '#ffd98a', '#ffffff'], 70); FX.vibe([40, 50, 40]); }, 900);
+    if (DB.remote && DB.act) { const l = pos; DB.act('ach', `Level ${L.lvl}`, l ? l.lat : null, l ? l.lon : null); }
+  }
+  renderXP();
+}
+function renderXP() {
+  if (!P) return;
+  seedXP();
+  const L = levelOf(P.xp), pct = Math.round(L.into / L.need * 100);
+  const b = $('#hLvl'); if (b) b.textContent = L.lvl;
+  const bar = $('#hXp'); if (bar) bar.style.width = pct + '%';
+  const card = $('#meXp'); if (card) card.innerHTML = xpRow();
+}
+function xpRow() {
+  const L = levelOf(P.xp);
+  return `<div class="xprow"><b class="xplv">Lv ${L.lvl}</b><span class="xpbar"><i style="width:${Math.round(L.into / L.need * 100)}%"></i></span><small>${fmtC(L.into)} / ${fmtC(L.need)} XP</small></div>`;
+}
 function act(k, x, at) {
+  if (XP_FOR[k]) gainXP(XP_FOR[k] + (k === 'glyph' && /hard/.test(x || '') ? 40 : 0));
   if (!DB.remote || !DB.act) return;
   const l = at && at.lat != null ? at : pos;
   DB.act(k, x ? String(x).slice(0, 80) : '', l ? l.lat : null, l ? l.lon : null);
@@ -2571,6 +2610,8 @@ const GUIDE = () => {
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
+  ['⭐', 'Your level', `<p>You earn <b>XP</b> for nearly everything: finding and opening chests, trading, gifts, hiding chests, glyph hacks (more for Hard), links, fields, breaking enemy links, shields, towers, achievements, daily rewards, walking and road coins.</p>
+    <p>Your level shows on your profile picture, with a thin progress bar under the top bar and the full numbers on Me → Profile. Each level needs a little more XP than the last, and every level-up pays coins.</p>`],
   ['🛡️', 'Shields & towers', `<ul><li><b>Shields</b> come in five tiers – Wooden, Iron, Steel, Mythril and Aegis – blocking 1, 2, 3, 5 and 8 hacks. Craft them in Shop → Craft from 3 items of the same rarity, or merge 3 shields into the next tier.</li>
     <li>Tap <b>🛡️ Shield</b> in a chest to protect it for your faction. Each enemy Hard glyph win wears it down by 1; their links and fields there only break once it's gone.</li>
     <li><b>Faction towers</b> are bought in the Shop (${fmtC(TOWER_PRICE)} 🪙) and placed where you stand. Your faction gets a bonus item from every chest within 5 miles, once a chest per day (two towers in range give two).</li>
@@ -3236,7 +3277,7 @@ function show(v) {
   if (v === 'me') refreshInvites();
 }
 function renderHeader() {
-  $('#hAv').innerHTML = avatarHtml(); $('#hName').textContent = P.name;
+  $('#hAv').innerHTML = avatarHtml(); $('#hName').textContent = P.name; renderXP();
   $('#hStreakV').textContent = streakNow(); $('#hPackV').textContent = packCount();
   $('#hCoinsV').textContent = fmtC(P.coins || 0);
   renderWalk(); renderDroneBtn();
@@ -3597,6 +3638,7 @@ function renderMe() {
     <div class="mesec" data-mt="profile"><div class="card mecard"><div class="meTop"><span class="mename">${avatarHtml('mid')}<b>${esc(P.name)}</b></span>${teamBadge()}</div>
     <label class="melbl" for="titleSel">Title</label>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+    <div id="meXp">${xpRow()}</div>
     <div class="mstats">${stat(s.visited, 'chests opened')}${stat(s.ex, 'trades')}${stat(s.dex + '/' + ITEMS.length, 'collected')}${stat(s.hidden, 'hidden')}${stat(Object.keys(P.keys || {}).length, 'keys')}</div>
     <p class="fine" id="meRankLine" style="margin:10px 0 0">🏆 Loading rank…</p></div>
     <div class="card"><b>Invite friends</b>

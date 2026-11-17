@@ -45,7 +45,8 @@
 <!-- GAME -->
 <div id="app" hidden>
   <header class="top">
-    <button class="who" id="hWho"><div class="av" id="hAv">?</div><b id="hName">-</b></button>
+    <span class="hxp" aria-hidden="true"><i id="hXp"></i></span>
+    <button class="who" id="hWho"><span class="avwrap"><div class="av" id="hAv">?</div><i class="lvbadge" id="hLvl">1</i></span><b id="hName">-</b></button>
     <div class="statstrip">
       <span class="offpill" id="hOff" hidden title="No connection">📴</span>
       <button class="s3 coinchip" id="hCoins" title="Trail Coins – open the shop"><i>🪙</i><b id="hCoinsV">0</b></button>
@@ -141,7 +142,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>window.ASSET_V="202611181100"</script>
+<script>window.ASSET_V="202611181200"</script>
 <script src="config.js?v=202611162330"></script>
 <script src="items.js?v=202611162330"></script>
 <script src="relics.js?v=202611162330"></script>
