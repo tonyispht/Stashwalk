@@ -1128,3 +1128,30 @@ body.modal-open .fxb *,body.modal-open .fxf *{animation-play-state:paused}
 .fxb .beam::after{content:"";position:absolute;left:50%;bottom:0;width:5px;height:100%;margin-left:-2.5px;border-radius:3px;background:linear-gradient(to top,#fff,#ffffffaa 50%,transparent)}
 .fxb .halo{width:54px;height:20px;margin-left:-27px}
 .fxf .burst b{width:3px;height:9px;left:-1.5px;top:-4.5px;border-radius:2px}
+
+/* ---- map key & guide ---- */
+.legend{max-width:78%;gap:5px;padding:10px 12px}
+.lghead{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.lgrow{gap:10px}
+.lgpin{position:relative;width:26px;height:30px;flex:none;display:block}
+.lgpin .cm2{position:absolute;left:0;top:0;width:36px;height:44px;transform:scale(.72);transform-origin:0 0;display:block}
+.lgpin .cm2 .pin{animation:none!important}
+.lgm.coin{width:22px;height:22px;background:none;border:0}
+.lgm.coin i{width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3c4,#f2b84b 55%,#a8761f);box-shadow:0 0 6px #f2b84b99;display:block}
+.lgm.fxk{background:#1b2a3a;border-color:#3b9cff;font-size:12px}
+.gdhead{display:flex;align-items:center;justify-content:space-between}
+.gdhead h3{margin:0}
+.guide{display:grid;gap:6px;margin-top:8px}
+.guide details{border:1px solid #234230;border-radius:12px;background:#ffffff06;overflow:hidden}
+.guide summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 12px;font-weight:700}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary::after{content:'›';margin-left:auto;font-size:20px;line-height:1;color:var(--mut,#9fb8aa);transition:transform .15s}
+.guide details[open] summary::after{transform:rotate(90deg)}
+.guide details[open] summary{border-bottom:1px solid #234230;background:#ffffff08}
+.gdic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#ffffff0d;font-size:15px;flex:none}
+.gdbody{padding:4px 14px 10px;font-size:13.5px;line-height:1.5}
+.gdbody ul{margin:6px 0;padding-left:18px}
+.gdbody li{margin:4px 0}
+.gdbody p{margin:8px 0}
+.gtag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;border:1px solid var(--c);color:var(--c);white-space:nowrap}
+.gtag.new{--c:#5dff9a;background:#5dff9a;color:#06240f;font-size:9px;border:0;padding:2px 5px}

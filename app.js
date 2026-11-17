@@ -2087,6 +2087,92 @@ async function fieldKeyAt(lat, lon) { await loadStates(); return stateAt(lat, lo
 const cellKeyScore = (lat, lon) => stateAt(lat, lon) || gridKey(lat, lon);   // sync; states must be loaded
 function fieldName(k) { return STATES && STATES[k] ? STATES[k].n : k[0] === 'g' ? 'Wilds sector ' + k.slice(1).replace('_', '·') : k; }
 
+// ---- map legend (the ❔ button) and the full game guide ----
+function miniPin(cls, badge, extra) {
+  return `<span class="lgpin"><span class="cm cm2 ${cls}"><div class="pin">${CHEST_SVG}</div><b class="kb">${badge || '🌳'}</b>${extra || ''}</span></span>`;
+}
+function renderLegend() {
+  const el = $('#legend'); if (!el) return;
+  const row = (ic, t) => `<div class="lgrow">${ic}<span>${t}</span></div>`;
+  el.innerHTML = `<div class="lghead"><b>Map key</b><button class="locx" id="lgClose">✕</button></div>
+    ${row(miniPin('fresh', '🌳', '<i class="nd"></i>'), 'Chest you haven’t opened yet')}
+    ${row(miniPin('seen', '🥾'), 'Chest you’ve opened')}
+    ${row(miniPin('near fresh', '🏛️'), 'Close enough to open (20 ft)')}
+    ${row(miniPin('pl seen', '📦'), 'Hidden by another player')}
+    ${row(miniPin('rare fresh', '✨'), 'Rare chest – Epic or better inside')}
+    ${row(miniPin('seen', '🌳', `<b class="lvb" style="--lc:${LVLC[4]}">4</b>`), 'Chest level – more explorers, better loot')}
+    ${row('<span class="lgm cluster">3</span>', 'Several chests – zoom in')}
+    ${row('<span class="lgm q">?</span>', 'Undiscovered – it’s somewhere in the circle')}
+    ${row('<span class="lgm coin"><i></i></span>', 'Road coin – walk over it')}
+    ${row('<span class="lgm fxk">🔆</span>', 'Beacon or fireworks from a player')}
+    ${row('<span class="lgm me"></span>', 'You')}
+    <button class="btn sm big" id="lgGuide" style="margin-top:4px">📖 How to play – full guide</button>`;
+  $('#lgClose', el).onclick = () => { el.hidden = true; };
+  $('#lgGuide', el).onclick = () => { el.hidden = true; openGuide(); };
+}
+const GUIDE = () => {
+  const ft = n => n + ' ft', D = C.DRONE_LEVELS || [], dmax = D.length ? D[D.length - 1].ft : 26400;
+  return [
+  ['🧭', 'The basics', `<p>Stashwalk is digital geocaching. Real parks, trails, landmarks and streets hide treasure chests. Walk to them, open them, and swap items with the explorers who were there before you.</p>
+    <ul><li>Turn on GPS and walk. The map follows you.</li><li>Chests start <b>hidden</b>. You'll see a dashed <b>search circle</b>; the chest is somewhere inside it.</li>
+    <li>Get within <b>${ft(C.DISCOVER_FT || 20)}</b> and the chest is found for good. Within <b>${ft(C.UNLOCK_FT)}</b> you can open it.</li>
+    <li>Use the <b>locator</b> (offered when you're close) – it ticks faster as you get warmer.</li></ul>`],
+  ['📦', 'Chests & trading', `<p>Each chest holds ${C.CHEST_SLOTS} items, and can grow to ${C.MAX_CHEST_SLOTS} when players leave gifts.</p>
+    <ul><li><b>Trade:</b> pick one item to take and one of yours to leave. You can trade at the same chest once every ${C.TRADE_COOLDOWN_MIN || 60} minutes.</li>
+    <li><b>Leave an item</b> without taking one to be generous (+${CO.gift} 🪙).</li><li>Items left by players stay until someone swaps them; the rest restock every day.</li>
+    <li>Opening a chest for the first time pays <b>+${CO.chestNew} 🪙</b>. <span class="gtag" style="--c:#b88bff">✨ Rare</span> chests pay +${RARE_BONUS} 🪙 and always hold an Epic or better.</li>
+    <li>Chest types (the small badge): 🌳 park, 🏛️ landmark, ⛺ campsite, 🔭 viewpoint, 🥾 trail, 🚩 street, 📦 player-hidden, and more. Fancier places roll better loot.</li>
+    <li>Spot a bad chest (private property, unsafe)? Tap <b>🚩 Report</b>. It's removed after ${C.FLAGS_TO_REMOVE} reports.</li></ul>`],
+  ['⬆️', 'Chest levels', `<p>Chests grow as more <b>different</b> explorers open them: level 2 at 3 explorers, then 6, 10, 16, 25, 40 and level 8 at 60.</p>
+    <ul><li>The level shows as a coloured number on the pin and in the chest window.</li><li>Higher levels restock with rarer items and give tougher, better-paying glyph hacks.</li>
+    <li>If your visit pushes a chest up a level, you get a coin bonus.</li></ul>`],
+  ['✨', 'Glyph hacking', `<p>Every chest has a <b>✨ Glyph hack</b> button. Watch the pattern light up, then tap it back in the same order.</p>
+    <ul><li>Each chest can be hacked once every <b>30 minutes</b>.</li><li>Success pays bonus coins. A <b>fast solve</b> (under ~0.9 s per point) adds more coins and a chance at a free item.</li>
+    <li>Higher-level chests have longer, quicker patterns with bigger rewards and rarer items.</li>
+    <li>Pick your trade items first, then hack – the trade goes through when the hack ends, win or lose.</li></ul>`],
+  ['🎒', 'Items, merging & the Workshop', `<p>Items come in five rarities: <span class="gtag" style="--c:${RAR[0].c}">Common</span> <span class="gtag" style="--c:${RAR[1].c}">Uncommon</span> <span class="gtag" style="--c:${RAR[2].c}">Rare</span> <span class="gtag" style="--c:${RAR[3].c}">Epic</span> <span class="gtag" style="--c:${RAR[4].c}">Legendary</span></p>
+    <ul><li>A tiny <span class="gtag new">NEW</span> tag means you've never had that item. New items add to your <b>Collection</b> (+${CO.newItem} 🪙).</li>
+    <li><b>Merge:</b> ${C.MERGE_COUNT} identical items make one of the next rarity up (Items → Pack).</li>
+    <li><b>Workshop:</b> combine specific items into crafted-only relics (Shop → Craft). Earning achievements unlocks Workshop levels.</li></ul>`],
+  ['🪙', 'Coins', `<p><b>Earn:</b> walking (${CO.mile} per mile), road coins along streets & trails, new chests, trades, glyph hacks, daily rewards, challenges, achievements and inviting friends.</p>
+    <p><b>Spend:</b> items in the daily shop, the drone and its upgrades, styles and icons, beacons and fireworks.</p>
+    <p class="fine">Driving doesn't count – anything faster than about 14 mph isn't walking.</p>`],
+  ['🎁', 'Daily rewards & challenges', `<ul><li>Claim a reward every day on the <b>Daily</b> tab. Streaks pay more, with big rewards on days 7, 14, 21 and 28. Missing a day never resets your progress.</li>
+    <li><b>Daily and weekly challenges</b> give extra coins – tap Claim when they're done.</li></ul>`],
+  ['🚁', 'The drone', `<p>Buy a drone in the Shop (${C.DRONE_PRICE} 🪙) and open chests without walking all the way.</p>
+    <ul><li>Tap the drone button on the map to launch it, steer with the stick (or arrow keys / WASD).</li>
+    <li>Hover within ${ft(C.DRONE_REACH_FT)} of a found chest and tap <b>📦 Open</b>. The drone hovers while you trade, then keeps flying.</li>
+    <li>It can also discover hidden chests, scoop up road coins and hide chests (🫳 Hide).</li>
+    <li>Upgrades raise its range from ${ft(D[0] ? D[0].ft : 300)} up to ${(dmax / 5280).toFixed(0)} miles. Tap <b>🏠 Return home</b> or ✕ to land.</li></ul>`],
+  ['🫳', 'Hiding your own chests', `<ul><li>Tap <b>🫳 Hide</b> above the chest list to hide a chest where you stand, with one of your items inside. Up to ${C.HIDE_PER_DAY} a day (+${CO.hide} 🪙).</li>
+    <li>They must be at least ${Math.round((C.MIN_CHEST_GAP_M || 20) * 3.28)} ft from other chests. Pick public, safe places.</li>
+    <li>You'll hear when people find and trade at your chests.</li></ul>`],
+  ['⚑', 'Factions & state fields', `<p>Join one of three factions: ${TEAM_IDS.map(t => `<span class="gtag" style="--c:${TEAMS[t].c}">${TEAMS[t].icon} ${TEAMS[t].name}</span>`).join(' ')}. You can switch once a week.</p>
+    <ul><li>Every <b>US state</b> is a field. Each first-time chest you open scores a point for your faction in that state (outside the US, large map sectors count instead).</li>
+    <li>The faction with the most points holds the state; ties hold for nobody.</li>
+    <li>See standings on the <b>Me</b> tab, or open the <b>🌎 Global control map</b> to see the whole country.</li></ul>`],
+  ['🎆', 'Beacons & fireworks', `<p>Tap <b>🎆 Celebrate</b> in a chest to light it up for everyone's map: a <b>🔆 Beacon</b> in your faction colour (1 hour, 80 🪙) or <b>🎆 Fireworks</b> (30 min, 50 🪙). One effect per chest at a time.</p>`],
+  ['🗺️', 'Map buttons & layers', `<ul><li>📍 centre on you · 🔄 refresh chests · 🏆 leaderboards · <b>layers</b> · ❔ this key.</li>
+    <li><b>Layers</b> toggles road coins, faction fields and the standings bar, and opens the global control map.</li>
+    <li>Drag the handle on the chest list to give the map more room.</li></ul>`],
+  ['🏆', 'Leaderboards, achievements & style', `<ul><li>Compete on all-time and weekly leaderboards (Me tab). You can hide yourself in Settings.</li>
+    <li>Earn achievements for exploring, trading, collecting and more (+${CO.achievement} 🪙 each), and equip titles.</li>
+    <li>The <b>Style</b> shop has player and drone icons, map themes, colours and more.</li></ul>`],
+  ['💌', 'Friends', `<p>Share your invite link (Me tab). Friends start with a bonus item, and you earn ${CO.referral} 🪙 plus rare items when they open their first chest.</p>`],
+  ['🦺', 'Play safe', `<ul><li>Stay aware of traffic and your surroundings – don't play while driving.</li><li>Respect private property and park hours. Never hide a chest somewhere unsafe.</li></ul>`]
+  ];
+};
+function openGuide(at) {
+  const secs = GUIDE();
+  modal(`<div class="gdhead"><h3>📖 How to play</h3><button class="locx" id="gdClose">✕</button></div>
+    <p class="sub" style="margin-top:0">Tap a topic to open it.</p>
+    <div class="guide">${secs.map(([ic, t, body], i) => `<details ${i === (at || 0) ? 'open' : ''}><summary><span class="gdic">${ic}</span>${t}</summary><div class="gdbody">${body}</div></details>`).join('')}</div>
+    <button class="btn big" id="gdOk" style="margin-top:12px">Got it</button>`, m => {
+    $('#gdClose', m).onclick = closeModal; $('#gdOk', m).onclick = closeModal;
+    $$('details', m).forEach(d => d.addEventListener('toggle', () => { if (d.open) $$('details', m).forEach(o => { if (o !== d) o.open = false; }); }));
+  });
+}
+
 // ---- beacons & fireworks: short-lived effects at a chest that every player can see ----
 const FX_TYPES = {
   beacon: { icon: '🔆', name: 'Beacon', cost: 80, mins: 60, sub: 'A pillar of light in your faction colour for 1 hour' },
@@ -2730,6 +2816,7 @@ function renderMe() {
     <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
     <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator is running</span></label>
     <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
+    <button class="btn ghost big" id="guideBtn" style="margin:4px 0 8px">📖 How to play</button>
     ${window.Notification ? `<label class="tg"><input type="checkbox" id="setNotif" ${notifOn() ? 'checked' : ''}><span>🔔 Daily reminder &amp; alerts</span></label>` : ''}
     ${DB.remote ? `<label class="tg"><input type="checkbox" id="setLb" ${lbOn() ? 'checked' : ''}><span>🏆 Appear on leaderboards</span></label>` : ''}
     ${DB.remote ? `<p class="fine">📍 Your approximate location is shared with the server and admin team for further development.</p>` : ''}
@@ -2771,6 +2858,7 @@ function renderMe() {
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
   $('#setMap').onchange = e => { FX.set('darkmap', e.target.checked); applyBasemap(); toast(e.target.checked ? 'Dark map on' : 'Standard map on'); };
+  const gbtn = $('#guideBtn'); if (gbtn) gbtn.onclick = () => openGuide();
   const sn = $('#setNotif'); if (sn) sn.onchange = async e => { const ok = await enableNotif(e.target.checked); e.target.checked = ok; };
   const slb = $('#setLb'); if (slb) slb.onchange = e => { try { localStorage.setItem('sw_lb', e.target.checked ? '1' : '0'); } catch (er) {} if (e.target.checked) submitLB(true); toast(e.target.checked ? 'You are on the leaderboards' : 'Hidden from leaderboards'); renderMe(); };
   const sf = $('#setFs'); if (sf) sf.onchange = e => { if (e.target.checked) { FX.set('fs', true); FX.enterFs(); } else { FX.set('fs', false); FX.exitFs(); } };
@@ -3933,7 +4021,7 @@ function wire() {
   $('#gpsBtn').onclick = () => startGPS();
   $('#admBarStop').onclick = () => adminPlaceMode(false);
   $('#locateBtn').onclick = () => { if (pos && map) map.setView([pos.lat, pos.lon], 16); else startGPS(); };
-  $('#legendBtn').onclick = () => { const l = $('#legend'); if (l) l.hidden = !l.hidden; };
+  $('#legendBtn').onclick = () => { const l = $('#legend'); if (!l) return; if (l.hidden) renderLegend(); l.hidden = !l.hidden; };
   $('#lbBtn').onclick = openLeaderboard;
   $('#facBar').onclick = openStandings;
   $('#layersBtn').onclick = layersMenu; setTimeout(applyLayers, 1500);
@@ -3967,7 +4055,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
