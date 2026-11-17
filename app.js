@@ -2310,11 +2310,15 @@ async function renderLB() {
     const d = await DB.lbFetch(m, lbPeriod, WK());
     const fmt = v => (lbPeriod === 'all' && lbMetric === 'miles') ? (+v).toFixed(1) + ' mi' : fmtC(v);
     const row = r => `<div class="${r.me ? 'meRow' : ''}"><span class="rk">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</span><span class="nm">${esc(r.name)}</span><b>${fmt(r.v)}</b></div>`;
-    let h = d.top.length ? '<div class="lblist">' + d.top.map(row).join('') + '</div>' : '<p class="fine">No scores yet — be the first!</p>';
+    const top = lbAll ? d.top : d.top.slice(0, 10);
+    let h = d.top.length ? '<div class="lblist">' + top.map(row).join('') + '</div>' : '<p class="fine">No scores yet — be the first!</p>';
+    if (d.top.length > 10) h += `<button class="btn sm ghost lbmore" id="lbMore">${lbAll ? 'Show top 10' : `Show all ${d.top.length}`}</button>`;
     if (d.you && !d.top.some(r => r.me)) h += `<div class="lblist" style="margin-top:6px">${row({ rank: d.you.rank, name: 'You', v: d.you.v, me: true })}</div>`;
     el.innerHTML = h;
+    const mb = $('#lbMore', el); if (mb) mb.onclick = () => { lbAll = !lbAll; renderLB(); };
   } catch (e) { el.innerHTML = `<p class="fine" style="color:var(--bad)">${esc(e.message)}</p>`; }
 }
+let lbAll = false;
 // ---------------- factions / teams ----------------
 const TEAMS = {
   ember: { name: 'Embers', icon: '🔥', c: '#ff6b4a', c2: '#ffb199', blurb: 'Bold and relentless.' },
@@ -2404,7 +2408,7 @@ async function fillStandings(force) {
   el.innerHTML = d.cellsTotal ? standRows(d) + `<p class="fine" style="margin:8px 0 0">Each US state is a field. It goes to the faction with the most first-opens there; ties hold for nobody.</p>`
     : '<p class="fine">No states claimed yet. Open a new chest to claim your state for your faction.</p>';
 }
-function openStandings() { show('me'); setTimeout(() => { const c = $('#factionCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); fillStandings(true); }, 320); }
+function openStandings() { meTab = 'ranks'; show('me'); setTimeout(() => { const c = $('#factionCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); fillStandings(true); }, 320); }
 
 // ---------------- control fields (one per US state) ----------------
 // Each US state is its own field. Outside the US, a coarse ~5° grid stands in. State shapes
@@ -2855,7 +2859,7 @@ function runGlyph(id, after, lvl, hard) {
 }
 
 // Quick access from the map: jump to the Me tab and scroll to the leaderboard.
-function openLeaderboard() { show('me'); setTimeout(() => { const c = $('#lbCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 320); }
+function openLeaderboard() { meTab = 'ranks'; show('me'); setTimeout(() => { const c = $('#lbCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 320); }
 // Player's all-time coins rank, shown in the profile card.
 async function fillMeRank() {
   const el = $('#meRankLine'); if (!el) return;
@@ -3233,23 +3237,28 @@ function appCard() {
     <p class="fine">${OFFLINE ? '📴 <b>Offline right now.</b>' : '📶 Connected.'} Map and park data stored on this device.</p></div>`;
 }
 
+let meTab = 'profile';
 function renderMe() {
   const s = statView(), unlocked = ACH.filter(a => P.ach[a.id]);
   const titles = ['Newcomer'].concat(unlocked.map(a => a.t));
   const link = location.origin + location.pathname.replace(/index\.html$/, '') + '?ref=' + encodeURIComponent(P.name);
-  let h = adminCardShell() + `<div class="card"><div class="meTop"><span class="mename">${avatarHtml('mid')}<b>${esc(P.name)}</b></span>${teamBadge()}</div><small class="fine">Equipped title</small>
+  if (meTab === 'admin' && !isAdmin()) meTab = 'profile';
+  const mtabs = [['profile', '🧍 Profile'], ['ranks', '🏆 Rankings'], ['settings', '⚙️ Settings']].concat(isAdmin() ? [['admin', '🛡️ Admin']] : []);
+  const stat = (n, l) => `<div class="mstat"><b>${typeof n === 'number' ? fmtC(n) : n}</b><span>${l}</span></div>`;
+  let h = `<div class="seg subseg metabs" id="meTabs">${mtabs.map(([k, l]) => `<button data-mt="${k}" class="${meTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="mesec" data-mt="admin">${adminCardShell()}</div>
+    <div class="mesec" data-mt="profile"><div class="card mecard"><div class="meTop"><span class="mename">${avatarHtml('mid')}<b>${esc(P.name)}</b></span>${teamBadge()}</div>
+    <label class="melbl" for="titleSel">Title</label>
     <select id="titleSel">${[...new Set(titles)].map(t => `<option ${t === P.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-    <p class="fine" style="margin-bottom:0">${s.visited} chests opened · ${s.ex} trades · ${s.dex}/${ITEMS.length} collected · ${s.hidden} hidden · ${s.invites} invited</p>
-    <p class="fine" id="meRankLine" style="margin:6px 0 0">🏆 Loading rank…</p></div>
+    <div class="mstats">${stat(s.visited, 'chests opened')}${stat(s.ex, 'trades')}${stat(s.dex + '/' + ITEMS.length, 'collected')}${stat(s.hidden, 'hidden')}${stat(Object.keys(P.keys || {}).length, 'keys')}</div>
+    <p class="fine" id="meRankLine" style="margin:10px 0 0">🏆 Loading rank…</p></div>
     <div class="card"><b>Invite friends</b>
-    <p class="fine">Share this link or let them scan the code. They start with a bonus item, and you get a Rare
-    once they open their first chest - plus an Epic at 5 friends and a Legendary at 10.</p>
-    <p class="fine"><b style="color:var(--acc2)">${s.invites} friend${s.invites === 1 ? '' : 's'} joined</b>${s.invites ? ` \u00b7 ${P.refPaid || 0} rewarded` : ''}
+    <p class="fine">Friends who join with your link start with a bonus item. When they open their first chest you get a Rare, plus an Epic at 5 friends and a Legendary at 10.</p>
+    <p class="fine"><b style="color:var(--acc2)">${s.invites} friend${s.invites === 1 ? '' : 's'} joined</b>${s.invites ? ` · ${P.refPaid || 0} rewarded` : ''}
       <button class="btn sm ghost" id="refBtn" style="margin-left:6px">Check</button></p>
-    <div id="qr"></div><div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
-    ${navigator.share ? '<button class="btn ghost big" id="shareBtn" style="margin-top:8px">Share…</button>' : ''}</div>
-    ${standingsCard()}
-    ${lbCard()}
+    <div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
+    <div class="row2" style="padding:0;margin-top:8px">${navigator.share ? '<button class="btn ghost sm" id="shareBtn">Share…</button>' : ''}<button class="btn ghost sm" id="qrBtn">Show QR code</button></div>
+    <div id="qr" hidden></div></div>
     <h2 class="sec" id="achSec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2>
     <p class="fine pad" style="margin-top:-2px">Closest to earning first · completed at the bottom.</p><div style="padding:0 14px">`;
   // closest-to-done first, then the ones already earned (most recent first)
@@ -3265,7 +3274,28 @@ function renderMe() {
       <div class="achbar"><span class="bar"><i style="width:${got ? 100 : pct}%" class="${got ? 'done' : ''}"></i></span>
         <u>${got ? '✓ earned' : v + ' / ' + a.goal}</u></div></div></div>`;
   });
-  h += `</div>${recoveryCard()}${appCard()}<div class="card"><b>This build</b>
+  h += `</div></div>
+    <div class="mesec" data-mt="ranks">${standingsCard()}${lbCard()}</div>
+    <div class="mesec" data-mt="settings">
+    <button class="card guidecard" id="guideBtn"><span class="gcic">📖</span><span><b>How to play</b><small>Every feature explained, topic by topic</small></span></button>
+    <div class="card"><b>Sound &amp; effects</b>
+    <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
+    <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
+    <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator runs</span></label></div>
+    <div class="card"><b>Map &amp; display</b>
+    <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
+    <label class="tg"><input type="checkbox" id="setZoomMem" ${zoomMemOn() ? 'checked' : ''}><span>🔍 Remember map &amp; drone zoom</span></label>
+    ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
+    <div class="card"><b>Notifications &amp; privacy</b>
+    ${window.Notification ? `<label class="tg"><input type="checkbox" id="setNotif" ${notifOn() ? 'checked' : ''}><span>🔔 Daily reminder &amp; alerts</span></label>` : ''}
+    ${DB.remote ? `<label class="tg"><input type="checkbox" id="setLb" ${lbOn() ? 'checked' : ''}><span>🏆 Appear on leaderboards</span></label>` : ''}
+    ${DB.remote ? `<p class="fine" style="margin-bottom:0">📍 Your approximate location is shared with the server and admin team for further development.</p>` : ''}</div>
+    <div class="card"><b>Your account</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
+    <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
+    <button class="btn sm ghost danger" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>
+    ${recoveryCard()}${appCard()}
+    <details class="card trouble"><summary><b>Troubleshooting</b><small>Updates, screen fit, place list</small></summary>
+    <div class="card" style="margin:10px 0 0;padding:0;background:none;border:0"><b>This build</b>
     <p class="fine">Version <b>${esc(String(window.ASSET_V || 'unknown'))}</b>. Use this if an update does not seem to have arrived -
     it reloads everything from scratch without touching your sign-in or settings.</p>
     <button class="btn sm" id="reloadBtn">Hard refresh</button>
@@ -3278,23 +3308,13 @@ function renderMe() {
       <button class="btn sm ghost" id="insetAuto">Auto</button>
     </div>
     <pre id="layoutOut" class="diag" style="margin-top:10px"></pre></div>
-    <div class="card"><b>Place list</b><p class="fine">Chest locations ship with the game - no internet service is needed to find them.</p>
-    <button class="btn sm ghost" id="diagBtn">Show details</button><pre id="diagOut" class="diag" hidden></pre></div>
-    <div class="card"><b>Settings</b>
-    <label class="tg"><input type="checkbox" id="setSnd" ${FX.prefs.snd ? 'checked' : ''}><span>🔊 Sound effects</span></label>
-    <label class="tg"><input type="checkbox" id="setFx" ${FX.prefs.fx ? 'checked' : ''}><span>✨ Visual effects &amp; vibration</span></label>
-    <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator is running</span></label>
-    <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
-    <button class="btn ghost big" id="guideBtn" style="margin:4px 0 8px">📖 How to play</button>
-    <label class="tg"><input type="checkbox" id="setZoomMem" ${zoomMemOn() ? 'checked' : ''}><span>🔍 Remember map & drone zoom</span></label>
-    ${window.Notification ? `<label class="tg"><input type="checkbox" id="setNotif" ${notifOn() ? 'checked' : ''}><span>🔔 Daily reminder &amp; alerts</span></label>` : ''}
-    ${DB.remote ? `<label class="tg"><input type="checkbox" id="setLb" ${lbOn() ? 'checked' : ''}><span>🏆 Appear on leaderboards</span></label>` : ''}
-    ${DB.remote ? `<p class="fine">📍 Your approximate location is shared with the server and admin team for further development.</p>` : ''}
-    ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
-    <div class="card"><b>Your data</b><p class="fine">${DB.remote ? 'Shared world: chests and trades are visible to every player.' : 'Local mode: saved in this browser only. Export a backup file to move devices.'}</p>
-    <div class="row2" style="padding:0"><button class="btn sm ghost" id="expBtn">Export save file</button><button class="btn sm ghost" id="impBtn">Import save file</button>
-    <button class="btn sm ghost" id="outBtn">Log out</button></div><input type="file" id="impFile" accept="application/json" hidden></div>`;
-  $('#meBox').innerHTML = h;
+    <div style="margin-top:14px"><b>Place list</b><p class="fine">Chest locations ship with the game - no internet service is needed to find them.</p>
+    <button class="btn sm ghost" id="diagBtn">Show details</button><pre id="diagOut" class="diag" hidden></pre></div></details>
+    </div>`;
+  $('#meBox').innerHTML = h; $('#meBox').dataset.mt = meTab;
+  $('#meTabs').onclick = e => { const b = e.target.closest('[data-mt]'); if (!b) return; meTab = b.dataset.mt; $('#meBox').dataset.mt = meTab;
+    $$('#meTabs button').forEach(x => x.classList.toggle('on', x === b)); FX.sfx('tap'); const v = $('#v-me'); if (v) v.scrollTop = 0; if (meTab === 'ranks') { renderLB(); fillStandings(); } };
+  $('#qrBtn').onclick = () => { const q = $('#qr'); q.hidden = !q.hidden; $('#qrBtn').textContent = q.hidden ? 'Show QR code' : 'Hide QR code'; };
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
   wireLB(); fillMeRank();
   if ($('#standRefresh')) $('#standRefresh').onclick = () => fillStandings(true);
@@ -4113,24 +4133,24 @@ function showChest(meta, chest, canGlyph) {
   if (!slots.length) return toast('That chest looks empty - tap Refresh chests and try again', 'bad');
   let selGet = null, selGive = null;
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
-  modal(`<div class="chestopen still lit" id="chestfx"><i class="cbeam"></i><i class="clid"></i><i class="cbox"></i></div>
-    <h3 style="text-align:center">${isRare(meta) ? '✨ ' : ''}${esc(meta.name)}</h3>
-    <p class="chestby">${isRare(meta) ? '✨ Rare cache – guaranteed Epic or better' : chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at }))}</p>
+  const sub = isRare(meta) ? '✨ Rare cache · Epic or better inside' : meta.src === 'player' || meta.kind === 'player' ? chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at })) : kindInfo(meta.kind)[0];
+  const tileBtn = (id, ic, label, note, cls, dis) => `<button class="actile ${cls || ''}" id="${id}" ${dis ? 'disabled' : ''}><span class="ati">${ic}</span><b>${label}</b><small>${note}</small></button>`;
+  const glyphNote = gLeft ? `ready in ${Math.ceil(gLeft / 60000)} min` : 'bonus coins';
+  modal(`<button class="shclose" id="cancelBtn" aria-label="Close">✕</button>
+    <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic cm2${meta.kind === 'player' ? ' pl' : ''}${isRare(meta) ? ' rare' : ''}"><span class="pin">${CHEST_SVG}</span></span>
+      <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}</p></div></div>
     ${lvlChip(chest)}
-    <p class="sub">${done ? `You traded here recently – you can look, and swap again in ${fmtWait(wait)}.` : `Pick one item to take, then one of yours to leave behind. One trade per chest every ${fmtWait(TRADE_MS())}.`}</p>
-    <div class="lbl">Inside the chest</div>
+    <h4 class="chsec">Inside the chest</h4>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '' }) : ''; }).join('')}</div>
-    ${done ? '' : `<div class="lbl">Your pack</div><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
-    <div class="trade"><button class="btn ghost" id="cancelBtn">Close</button><button class="btn" id="swapBtn" disabled>Choose items</button></div>`}
-    ${done ? '<div class="trade"><button class="btn ghost" id="cancelBtn">Close</button></div>' : ''}
-    <div class="chestfoot">
-      ${gLeft ? `<button class="btn sm ghost" id="glyphBtn" disabled title="Each chest can be glyph hacked once every 30 minutes">\u{2728} Glyph ready in ${Math.ceil(gLeft / 60000)} min</button>`
-        : `<button class="btn sm" id="glyphBtn">\u{2728} Glyph hack – bonus</button>`}
-      ${DB.remote ? `<button class="btn sm ghost" id="linkBtn">\u{1F517} Link</button>` : ''}
-      ${DB.remote ? `<button class="btn sm ghost" id="fxBtn">\u{1F386} Celebrate</button>` : ''}
-      ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? `<button class="btn sm ghost" id="giveBtn">\u{1F381} Leave an item (no swap)</button>` : ''}
-      <button class="btn sm ghost danger" id="flagBtn">\u{1F6A9} Report</button>
-    </div>${isAdmin() ? `<div class="admrow"><span>🛡️ Admin</span><button class="btn sm ghost" id="admRen">✏️ Rename</button><button class="btn sm ghost danger" id="admRm">🗑️ Remove</button></div>` : ''}`, m => {
+    ${done ? `<p class="chnote">You traded here recently. You can swap again in ${fmtWait(wait)}.</p>` : `<h4 class="chsec">Your pack <small>pick one to leave behind</small></h4><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
+    <button class="btn big chswap" id="swapBtn" disabled>Pick an item from each row to trade</button>`}
+    <div class="actiles">
+      ${tileBtn('glyphBtn', '✨', 'Glyph hack', glyphNote, gLeft ? 'wait' : 'hot', !!gLeft)}
+      ${DB.remote ? tileBtn('linkBtn', '🔗', 'Link', P.team ? Object.keys(P.keys || {}).filter(k => k !== meta.id).length + ' keys' : 'join a faction') : ''}
+      ${DB.remote ? tileBtn('fxBtn', '🎆', 'Celebrate', 'light it up') : ''}
+      ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? tileBtn('giveBtn', '🎁', 'Gift', 'leave an item') : ''}
+    </div>
+    <div class="chfoot"><button class="linkbtn" id="flagBtn">🚩 Report a problem</button>${isAdmin() ? `<span class="admmini">🛡️ <button class="linkbtn" id="admRen">Rename</button> · <button class="linkbtn danger" id="admRm">Remove</button></span>` : ''}</div>`, m => {
     $('#cancelBtn', m).onclick = closeModal;
     const gb = $('#giveBtn', m); if (gb) gb.onclick = () => donateDialog(meta, chest);
     $('#flagBtn', m).onclick = () => flagDialog(meta);
@@ -4155,8 +4175,9 @@ function showChest(meta, chest, canGlyph) {
 
     if (done) return;
     const swap = $('#swapBtn', m);
-    const upd = () => { swap.disabled = !(selGet && selGive); swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} → ${BY_ID[chest.items[selGet].id].n}` : 'Choose items';
-      if (gy && !gy.disabled) gy.textContent = selGet && selGive ? '\u{2728} Glyph hack + trade' : '\u{2728} Glyph hack – bonus'; };
+    const upd = () => { swap.disabled = !(selGet && selGive);
+      swap.textContent = selGet && selGive ? `Trade ${BY_ID[selGive].n} for ${BY_ID[chest.items[selGet].id].n}` : selGet ? 'Now pick one of yours to leave' : selGive ? 'Now pick an item to take' : 'Pick an item from each row to trade';
+      const gs = gy && !gy.disabled && $('small', gy); if (gs) gs.textContent = selGet && selGive ? 'then trade' : 'bonus coins'; };
     $('#chestGrid', m).onclick = e => { const t = e.target.closest('.tile'); if (!t) return; selGet = t.dataset.slot; $$('#chestGrid .tile', m).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     $('#giveGrid', m).onclick = e => { const t = e.target.closest('.tile'); if (!t) return; selGive = t.dataset.id; $$('#giveGrid .tile', m).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     swap.onclick = () => doTrade(meta, selGet, chest.items[selGet].id, selGive);
