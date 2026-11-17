@@ -1487,3 +1487,10 @@ body.linkpick .towermark{display:none!important}
 @keyframes flame{0%,100%{transform:scale(1) rotate(-3deg);filter:drop-shadow(0 0 2px #ff8a2a)}50%{transform:scale(1.12) rotate(3deg);filter:drop-shadow(0 0 6px #ffb02e)}}
 body.modal-open #hStreak.lit i{animation:none}
 @media (prefers-reduced-motion:reduce){.lvrays,#hStreak.lit i,.achban::after,.hxp.gain i{animation:none}}
+/* road coins fly up into the counter */
+.rcfly.up{position:fixed;z-index:1300;box-shadow:0 0 10px #ffcf5a,0 0 3px #fff}
+.coinchip{transition:box-shadow .25s,background-color .25s}
+.coinchip.glow{box-shadow:0 0 0 2px #f2b84b,0 0 18px #ffcf5acc;background-color:#3a2a08}
+.coinchip.glow #hCoinsV{color:#fff3c4;text-shadow:0 0 8px #ffcf5a}
+.coinchip.flash{animation:coinFlash .5s ease-out}
+@keyframes coinFlash{0%{box-shadow:0 0 0 2px #fff,0 0 34px #fff}100%{box-shadow:0 0 0 2px #f2b84b,0 0 18px #ffcf5acc}}

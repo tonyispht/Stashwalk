@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181400';
+const APP_BUILD = '202611181415';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -487,6 +487,13 @@ function achNext() {
   el.onclick = () => done();
   const t = setTimeout(() => done(), 3400);
   function done() { clearTimeout(t); if (!el.isConnected) return; el.classList.add('out'); setTimeout(() => { el.remove(); achQ.shift(); achNext(); }, 380); }
+}
+// the coin counter glows for as long as coins keep landing in it
+let glowT = 0;
+function coinGlow(big) {
+  const d = $('#hCoins'); if (!d) return;
+  d.classList.add('glow'); if (big) { d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); }
+  clearTimeout(glowT); glowT = setTimeout(() => d.classList.remove('glow', 'flash'), 700);
 }
 // streak combos while scooping road coins
 function comboPop(n) {
@@ -1652,14 +1659,18 @@ function rcCollect(at, byDrone) {
   });
 }
 function rcFlyIn(m, byDrone) {
-  const c = m.coin, host = $('#maprow');
+  const c = m.coin, host = $('#maprow'), hr = host.getBoundingClientRect();
   const start = map.latLngToContainerPoint([c.lat, c.lon]);
   if (RC.layer) RC.layer.removeLayer(m); RC.marks.delete(c.id);
   const el = document.createElement('i');
-  el.className = 'rcfly' + (c.stack ? ' stack' : '');
-  host.appendChild(el);
-  const t0 = performance.now(), dur = 520 + Math.random() * 120, side = Math.random() < .5 ? -1 : 1;
+  el.className = 'rcfly up' + (c.stack ? ' stack' : '');
+  el.style.left = hr.left + 'px'; el.style.top = hr.top + 'px';
+  document.body.appendChild(el);
+  const t0 = performance.now(), dur = 700 + Math.random() * 160, side = Math.random() < .5 ? -1 : 1;
+  // coins head for the coin counter at the top (map coordinates, so the same maths keeps working)
   const target = () => {
+    const d = $('#hCoins');
+    if (d) { const r = d.getBoundingClientRect(); return { x: r.left + 16 - hr.left, y: r.top + r.height / 2 - hr.top }; }
     const ll = byDrone && fly ? [fly.ll.lat, fly.ll.lon] : [pos.lat, pos.lon];
     return map.latLngToContainerPoint(ll);
   };
@@ -1667,17 +1678,18 @@ function rcFlyIn(m, byDrone) {
     const k = Math.min(1, (now - t0) / dur), e = k * k * (3 - 2 * k), pull = k * k;   // slow lift, then snapped in
     const tp = target();
     const x = start.x + (tp.x - start.x) * pull, y = start.y + (tp.y - start.y) * pull;
-    const arc = Math.sin(e * Math.PI) * 26;
-    el.style.transform = `translate(${x + side * arc * .6}px, ${y - arc}px) scale(${1 + Math.sin(k * Math.PI) * .35 - k * .45})`;
-    el.style.opacity = k > .9 ? (1 - k) * 10 : 1;
+    const arc = Math.sin(e * Math.PI) * 40;
+    el.style.transform = `translate(${x + side * arc}px, ${y - arc * .4}px) scale(${1 + Math.sin(k * Math.PI) * .5 - k * .35})`;
+    el.style.opacity = k > .94 ? (1 - k) * 16 : 1;
     if (k < 1) requestAnimationFrame(step);
     else {
       el.remove();
       const now2 = performance.now();
       RC.combo = now2 - RC.comboT < 1400 ? RC.combo + 1 : 0; RC.comboT = now2; comboPop(RC.combo);
       FX.sfx('pickup', RC.combo);
-      if (c.stack) { FX.sfx('coin'); const p = FX.centerOf(byDrone && fly && fly.marker.getElement ? fly.marker.getElement() : document.querySelector('.me-dot')); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#fff'], 18); }
+      if (c.stack) { FX.sfx('coin'); const p = FX.centerOf($('#hCoins')); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#fff'], 18); }
       FX.vibe(c.stack ? [20, 30, 20] : 12);
+      coinGlow(c.stack);
       P.stats.roadCoins = (P.stats.roadCoins || 0) + 1; gainXP(c.stack ? 10 : 1);
       earn(c.v, c.stack ? 'Gold stack!' : 'Road coins');
       clearTimeout(RC.saveT); RC.saveT = setTimeout(() => { checkAch(); save(); }, 900);
