@@ -2650,20 +2650,56 @@ async function backToChest(meta, chest) {
   let fresh = null; try { fresh = await DB.get('chests/' + meta.id); } catch (e) {}
   showChest(meta, fresh && fresh.items ? fresh : chest);
 }
+// Same crossing test as the server: segments in a lon*cos(lat) / lat plane, shared ends allowed.
+function linkCrosses(p1, p2, l) {
+  const rad = Math.PI / 180, X = p => [p.lon * Math.cos(p.lat * rad), p.lat];
+  const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const a1 = X(p1), a2 = X(p2), b1 = X({ lat: l.alat, lon: l.alon }), b2 = X({ lat: l.blat, lon: l.blon });
+  const d1 = d(b1, b2, a1), d2 = d(b1, b2, a2), d3 = d(a1, a2, b1), d4 = d(a1, a2, b2);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && d1 && d2 && d3 && d4;
+}
+// For each key: can a link from here reach it without crossing anything?
+function linkStatus(meta, k, links) {
+  if (links.some(l => (l.a === meta.id && l.b === k.id) || (l.b === meta.id && l.a === k.id))) return { s: 'dup' };
+  for (const l of links) {
+    if (l.a === meta.id || l.b === meta.id || l.a === k.id || l.b === k.id) continue;
+    if (linkCrosses(meta, k, l)) return { s: 'block', team: l.team };
+  }
+  return { s: 'ok' };
+}
 function linkDialog(meta, chest) {
   if (!P.team) return chooseTeamDialog(false);
   const lvl = chestLevel(chestXP(chest)), R = lvl * LINK_PER_LVL;
   const ks = Object.entries(P.keys).filter(([id]) => id !== meta.id).map(([id, k]) => Object.assign({ id, d: dist(meta, k) }, k)).sort((a, b) => a.d - b.d);
   const inR = ks.filter(k => k.d <= R), out = ks.filter(k => k.d > R);
   const T = TEAMS[P.team];
+  const row = (k, st) => {
+    const tag = !st ? '<span class="lkst wait">checking…</span>'
+      : st.s === 'ok' ? '<span class="lkst ok">✅ Clear</span>'
+      : st.s === 'dup' ? '<span class="lkst dup">🔗 Already linked</span>'
+      : `<span class="lkst block">⛔ Crosses ${TEAMS[st.team] ? TEAMS[st.team].icon + ' ' + TEAMS[st.team].name : 'a'} link</span>`;
+    const can = !st || st.s === 'ok';
+    return `<button class="keyrow pick${st && st.s !== 'ok' ? ' off' : ''}" data-lk="${esc(k.id)}" ${can ? '' : 'disabled'}><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)} ${tag}</small></span>${can ? '<span class="kgo">Link →</span>' : ''}</button>`;
+  };
   modal(`<h3>🔗 Link from ${esc(meta.name)}</h3>
     <p class="sub">Lv ${lvl} chest – links reach <b>${fmtDist(R)}</b>. Pick a key; it's used up. Links can't cross other links. Close a triangle of three chests to make a ${T.icon} field.</p>
-    <div class="keylist">${inR.map(k => `<button class="keyrow pick" data-lk="${esc(k.id)}"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span><span class="kgo">Link →</span></button>`).join('')
-      || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}
-      ${out.length ? `<p class="fine" style="margin:8px 2px 4px">Out of range (${out.length})</p>` + out.slice(0, 8).map(k => `<div class="keyrow off"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span></div>`).join('') : ''}</div>
+    <div class="keylist" id="lkList">${inR.map(k => row(k, null)).join('')
+      || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}</div>
+    ${out.length ? `<p class="fine" style="margin:8px 2px 4px">Out of range (${out.length})</p><div class="keylist">` + out.slice(0, 8).map(k => `<div class="keyrow off"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span></div>`).join('') + '</div>' : ''}
     <div class="trade"><button class="btn ghost" id="cancelBtn">Back to chest</button></div>`, m => {
     $('#cancelBtn', m).onclick = () => backToChest(meta, chest);
-    $$('[data-lk]', m).forEach(b => b.onclick = async () => {
+    // look up every link that could be in the way (origin ± range) and mark each key
+    if (inR.length) (async () => {
+      const dLat = R / 111320, dLon = R / (111320 * Math.max(0.2, Math.cos(meta.lat * Math.PI / 180)));
+      const got = await DB.links(meta.lat - dLat, meta.lon - dLon, meta.lat + dLat, meta.lon + dLon);
+      const list = $('#lkList', m); if (!list || !document.body.contains(list)) return;
+      const ranked = inR.map(k => ({ k, st: linkStatus(meta, k, got.links || []) }))
+        .sort((x, y) => (x.st.s === 'ok' ? 0 : 1) - (y.st.s === 'ok' ? 0 : 1) || x.k.d - y.k.d);
+      const nOk = ranked.filter(r => r.st.s === 'ok').length;
+      list.innerHTML = `<p class="fine" style="margin:0 2px 2px">${nOk} of ${ranked.length} key${ranked.length === 1 ? '' : 's'} in range can link without crossing anything.</p>` + ranked.map(r => row(r.k, r.st)).join('');
+      wire();
+    })();
+    const wire = () => $$('[data-lk]', m).forEach(b => b.onclick = async () => {
       const k = P.keys[b.dataset.lk]; if (!k) return;
       $$('[data-lk]', m).forEach(x => x.disabled = true);
       try {
@@ -2678,11 +2714,12 @@ function linkDialog(meta, chest) {
         toast(r.fields && r.fields.length ? `🔺 Field created for ${T.name}! +${15 + fc} 🪙` : `🔗 Linked to ${k.n}! +15 🪙`, 'gold');
         loadLinks(true); fillStandings(true);
       } catch (e) {
-        $$('[data-lk]', m).forEach(x => x.disabled = false);
+        $$('[data-lk]', m).forEach(x => { if (!x.classList.contains('off')) x.disabled = false; });
         const d = e.data || {};
         toast(d.error === 'crosses a link' ? `That link would cross a ${TEAMS[d.team] ? TEAMS[d.team].name + ' ' : ''}link` : d.error === 'too far' ? `Too far – this chest's links reach ${fmtDist(d.max)}` : d.error === 'already linked' ? 'Those chests are already linked' : 'Could not link: ' + e.message, 'bad');
       }
     });
+    wire();
   });
 }
 let linkLayer = null, linkTimer = null, linkData = { links: [], fields: [] };

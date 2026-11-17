@@ -1330,3 +1330,9 @@ body.flying .mapacts{display:none}
 .lbl{text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink)}
 /* the action cluster rides above the locator card when it's showing */
 .mapacts{bottom:calc(30px + var(--locH, 0px));transition:bottom .2s ease-out}
+.lkst{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;white-space:nowrap}
+.lkst.ok{background:#49d17a22;color:#7fe6a2}
+.lkst.block{background:#ff7a6b22;color:#ff9e93}
+.lkst.dup{background:#ffffff12;color:var(--mut)}
+.lkst.wait{color:var(--mut);font-weight:400}
+.keyrow.pick:disabled{cursor:default}
