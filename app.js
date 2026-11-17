@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181330';
+const APP_BUILD = '202611181345';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -1522,7 +1522,10 @@ function rcDraw(force) {
   const show = map.getZoom() >= 15;
   const want = show ? rcCoinsNear(at, 900).sort((a, b) => dist(at, a) - dist(at, b)).slice(0, 160) : [];
   const keep = new Set(want.map(c => c.id));
-  RC.marks.forEach((m, id) => { if (!keep.has(id)) { m.remove(); RC.marks.delete(id); } });
+  RC.marks.forEach((m, id) => { if (!keep.has(id)) { RC.layer.removeLayer(m); RC.marks.delete(id); } });
+  // anything in the layer that is no longer tracked (a coin already picked up) goes for good
+  const live = new Set(RC.marks.values());
+  RC.layer.eachLayer(m => { if (!live.has(m)) RC.layer.removeLayer(m); });
   for (const c of want) {
     if (RC.marks.has(c.id)) continue;
     const m = L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'rcm' + (c.stack ? ' stack' : ''), html: '<i></i>', iconSize: c.stack ? [19, 19] : [12, 12] }),
@@ -1556,7 +1559,7 @@ function rcCollect(at, byDrone) {
 function rcFlyIn(m, byDrone) {
   const c = m.coin, host = $('#maprow');
   const start = map.latLngToContainerPoint([c.lat, c.lon]);
-  m.remove(); RC.marks.delete(c.id);
+  if (RC.layer) RC.layer.removeLayer(m); RC.marks.delete(c.id);
   const el = document.createElement('i');
   el.className = 'rcfly' + (c.stack ? ' stack' : '');
   host.appendChild(el);
@@ -2995,6 +2998,7 @@ function endLinkPick() {
   if (!lkPick) return;
   try { lkPick.layer.remove(); } catch (e) {}
   (lkPick.hid || []).forEach(l => { try { l.addTo(map); } catch (e) {} });
+  try { rcDraw(true); } catch (e) {}
   const bn = $('#lkBanner'); if (bn) bn.remove();
   const tr = $('#lkTray'); if (tr) tr.remove();
   document.body.classList.remove('linkpick');
@@ -3093,7 +3097,7 @@ function setLayer(k, on) {
   applyLayers();
 }
 function applyLayers() {
-  if (map && RC.layer) { if (LAYERS.coins) { if (!map.hasLayer(RC.layer)) RC.layer.addTo(map); } else map.removeLayer(RC.layer); }
+  if (map && RC.layer) { if (LAYERS.coins) { if (!map.hasLayer(RC.layer)) { RC.layer.addTo(map); rcDraw(true); } } else map.removeLayer(RC.layer); }
   if (!LAYERS.fields && cellLayer) { cellLayer.clearLayers(); }
   if (LAYERS.fields) drawCells(true);
   if (LAYERS.links) loadLinks(true); else if (linkLayer) linkLayer.clearLayers();
@@ -5075,5 +5079,5 @@ document.addEventListener('DOMContentLoaded', async () => { wire(); await resume
 // exposed for tests
 window.__sw = { fieldReveal, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
-  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
+  isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
