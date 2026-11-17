@@ -841,7 +841,10 @@ const droneRangeM = lvl => (DL[Math.max(0, Math.min(DRONE_MAX, lvl) - 1)] || DL[
 const DRONE_REACH = () => (C.DRONE_REACH_FT || 50) * 0.3048;
 const DRONE_LISTEN = () => (C.DRONE_LISTEN_FT || 400) * 0.3048;
 const fmtFt = m => { const ft = m * FT; return ft >= 1000 ? (ft / 5280).toFixed(2) + ' mi' : Math.round(ft) + ' ft'; };
-const droneTop = lvl => Math.max(C.DRONE_SPEED_MPS || 45, droneRangeM(lvl) / (C.DRONE_EDGE_S || 30));
+// top speed rises with every drone level (m/s)
+const DRONE_MPH = C.DRONE_SPEED_MPH || [60, 75, 90, 110, 135, 180, 330, 600];
+const droneTop = lvl => DRONE_MPH[Math.max(0, Math.min(DRONE_MPH.length - 1, (lvl || 1) - 1))] * 0.44704;
+const droneMph = lvl => DRONE_MPH[Math.max(0, Math.min(DRONE_MPH.length - 1, (lvl || 1) - 1))];
 
 function droneState() {
   if (!P.drone || typeof P.drone !== 'object') P.drone = { lvl: 0 };
@@ -868,7 +871,7 @@ function upgradeDrone() {
   if (!spend(cost)) return toast('Not enough coins', 'bad');
   d.lvl++;
   save(); checkAch(); renderAll(); FX.sfx('ach'); FX.vibe([20, 30, 20]);
-  toast(`🛸 Drone level ${d.lvl} – range ${fmtFt(droneRangeM(d.lvl))}`, 'gold');
+  toast(`🚁 Drone level ${d.lvl} – range ${fmtFt(droneRangeM(d.lvl))}, top speed ${droneMph(d.lvl)} mph`, 'gold');
 }
 function droneSVG(cls) {
   // top-down quadcopter: X frame, motor pods with spinning two-blade props, a shell body in the
@@ -1051,7 +1054,7 @@ function renderDroneHud(build) {
   const d = droneState(), R = droneRangeM(d.lvl), out = dist(pos, fly.ll);
   if (build || !hud.firstChild) {
     hud.hidden = false;
-    hud.innerHTML = `<div class="dhead"><i class="dhic">${droneSVG('mini')}</i><b>Drone · Lv ${d.lvl}</b>
+    hud.innerHTML = `<div class="dhead"><i class="dhic">${droneSVG('mini')}</i><b>Drone · Lv ${d.lvl} <small class="dmph">${droneMph(d.lvl)} mph</small></b>
         <button class="dhide" id="dronePark" title="Leave the drone here">📌 Park</button>
         <button class="dhide" id="droneHide" title="Hide a chest where the drone is">🫳 Hide</button>
         <button class="locx" id="droneHome" title="Bring it home">✕</button></div>
@@ -1230,9 +1233,9 @@ function droneCard() {
   const pips = Array.from({ length: DRONE_MAX }, (_, i) => `<u class="${i < d.lvl ? 'on' : ''}"></u>`).join('');
   return `<div class="card dronecard"><div class="dtop">${droneSVG('shop')}<div><b>Scout drone · level ${d.lvl}</b>
       <span class="dlv">${pips}</span>
-      <small>Range ${fmtFt(droneRangeM(d.lvl))}${next ? ` · level ${d.lvl + 1} reaches ${fmtFt(next.ft * 0.3048)}` : ''}</small></div></div>
-    ${next ? `<button class="btn big" id="upDrone" ${can(next.cost) ? '' : 'disabled'}>Upgrade to level ${d.lvl + 1} – range ${fmtFt(next.ft * 0.3048)} · 🪙 ${fmtC(next.cost)}</button>`
-           : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – ${fmtFt(droneRangeM(DRONE_MAX))} of range.</p>`}</div>`;
+      <small>Range ${fmtFt(droneRangeM(d.lvl))} · top speed ${droneMph(d.lvl)} mph${next ? `<br>Level ${d.lvl + 1}: ${fmtFt(next.ft * 0.3048)} range · ${droneMph(d.lvl + 1)} mph` : ''}</small></div></div>
+    ${next ? `<button class="btn big" id="upDrone" ${can(next.cost) ? '' : 'disabled'}>Upgrade to level ${d.lvl + 1} – faster &amp; farther · 🪙 ${fmtC(next.cost)}</button>`
+           : `<p class="fine" style="margin:4px 0 0;color:var(--acc2);text-align:center"><b>Max level</b> – ${fmtFt(droneRangeM(DRONE_MAX))} of range at ${droneMph(DRONE_MAX)} mph.</p>`}</div>`;
 }
 
 // ---------------- road coins ----------------
@@ -2491,7 +2494,7 @@ const GUIDE = () => {
     <li>It can also discover hidden chests, scoop up road coins and hide chests (🫳 Hide).</li>
     <li>Tap <b>📌 Park</b> to leave it hovering where it is – even if you close the app. Tap the drone button later to fly on from there (if it's in range) or call it home.</li>
     <li>Other players near you see your drone on their map, flying or parked – they can't touch it, and you can't touch theirs.</li>
-    <li>Upgrades raise its range from ${ft(D[0] ? D[0].ft : 300)} up to ${(dmax / 5280).toFixed(0)} miles. Tap <b>🏠 Return home</b> or ✕ to land.</li></ul>`],
+    <li>Upgrades raise its range from ${ft(D[0] ? D[0].ft : 300)} up to ${(dmax / 5280).toFixed(0)} miles, and its top speed from ${DRONE_MPH[0]} to ${DRONE_MPH[DRONE_MPH.length - 1]} mph. Tap <b>🏠 Return home</b> or ✕ to land.</li></ul>`],
   ['🫳', 'Hiding your own chests', `<ul><li>Tap <b>🫳</b> on the map (or 🫳 Hide above the chest list) to hide a chest where you stand, with one of your items inside. Up to ${C.HIDE_PER_DAY} a day (+${CO.hide} 🪙).</li>
     <li>They must be at least ${Math.round((C.MIN_CHEST_GAP_M || 20) * 3.28)} ft from other chests. Pick public, safe places.</li>
     <li>You'll hear when people find and trade at your chests.</li></ul>`],

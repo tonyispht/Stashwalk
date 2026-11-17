@@ -1336,3 +1336,4 @@ body.flying .mapacts{display:none}
 .lkst.dup{background:#ffffff12;color:var(--mut)}
 .lkst.wait{color:var(--mut);font-weight:400}
 .keyrow.pick:disabled{cursor:default}
+.dhead .dmph{font-weight:500;font-size:11px;color:#9fdfe6;margin-left:4px}

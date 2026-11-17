@@ -69,8 +69,7 @@ window.GEO_CONFIG = {
     { ft: 26400, cost: 2300 }    // level 8 - five miles
   ],
   DRONE_REACH_FT: 50,      // how close the drone has to hover to open a chest
-  DRONE_SPEED_MPS: 45,     // slowest top speed (about 100 mph); bigger ranges fly faster...
-  DRONE_EDGE_S: 30,        // ...so the edge of its range is about this many seconds away at full stick
+  DRONE_SPEED_MPH: [60, 75, 90, 110, 135, 180, 330, 600],   // top speed at each drone level (full stick)
   DRONE_LISTEN_FT: 400,    // the locator's hot/cold scale while flying
   DRONE_HIDES_PER_DAY: 2,  // chests the drone can hide in a day (these count toward HIDE_PER_DAY too)
   DRONE_HIDE_NEAR_M: 0,    // 0 = the drone can hide a chest anywhere; set metres to require a nearby park or public place
