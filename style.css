@@ -1494,3 +1494,10 @@ body.modal-open #hStreak.lit i{animation:none}
 .coinchip.glow #hCoinsV{color:#fff3c4;text-shadow:0 0 8px #ffcf5a}
 .coinchip.flash{animation:coinFlash .5s ease-out}
 @keyframes coinFlash{0%{box-shadow:0 0 0 2px #fff,0 0 34px #fff}100%{box-shadow:0 0 0 2px #f2b84b,0 0 18px #ffcf5acc}}
+/* unbroken daily run */
+.perfect{color:#bff8ff;font-weight:700;text-shadow:0 0 8px #7ff0ff66}
+#hStreak.perfect{box-shadow:0 0 0 1px #ffb02e88,0 0 10px #ff8a2a55}
+/* speed lock */
+.fastpill{position:absolute;left:50%;bottom:calc(30px + var(--locH,0px));transform:translateX(-50%);z-index:640;padding:8px 14px;border-radius:99px;
+  background:#3a1410f2;border:1px solid #ff7a5a;color:#ffd9cf;font-size:13px;white-space:nowrap;box-shadow:0 6px 18px #000a;pointer-events:none}
+body.toofast .rcm{opacity:.35;filter:grayscale(.7)}

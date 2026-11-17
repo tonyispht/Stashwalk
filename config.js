@@ -53,7 +53,8 @@ window.GEO_CONFIG = {
     referral: 200          // per invited friend who opens their first chest
   },
   PRICES: [40, 110, 280, 700, 1800],  // shop price by rarity: Common ... Legendary
-  MAX_WALK_MPS: 6.5,       // faster than this (about 14.5 mph) counts as a vehicle, not walking
+  MAX_WALK_MPS: 6.7,       // faster than this (15 mph) counts as a vehicle, not walking
+  MAX_COLLECT_MPH: 15,     // above this, coins and chests can't be collected (stays paused until 20 s slower)
 
   // ---- Drone ----
   DRONE_PRICE: 500,

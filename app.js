@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181415';
+const APP_BUILD = '202611181430';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -529,6 +529,41 @@ function showCoinIntro(amt, tries) {
 // counts once it beats both a floor and the reported uncertainty, and anything faster than
 // a run is treated as a vehicle and ignored.
 const MI = 1609.344, WALK_STEP = MI / 10;
+// ---- speed lock: no collecting while moving faster than 15 mph (in a car, on a bus...) ----
+// Uses the phone's own speed reading when it gives one, otherwise distance over time between
+// fixes. Once tripped it stays on until you have been slow for 20 seconds, so stopping at a
+// red light does not open a window to grab things from the road.
+const FAST_MPS = (C.MAX_COLLECT_MPH || 15) * 0.44704, FAST_HOLD_MS = 20000;
+const SPD = { fast: false, slowSince: 0, last: null, mps: 0 };
+function trackSpeed(lat, lon, acc, gpsSpeed, manual) {
+  if (manual || DEV) { SPD.fast = false; SPD.last = null; return; }
+  const now = Date.now();
+  let v = null;
+  if (gpsSpeed != null && gpsSpeed >= 0 && acc <= 50) v = gpsSpeed;
+  else if (SPD.last && acc <= 50) {
+    const dt = (now - SPD.last.t) / 1000;
+    if (dt >= 3) { v = dist(SPD.last, { lat, lon }) / dt; SPD.last = { lat, lon, t: now }; }
+  } else SPD.last = { lat, lon, t: now };
+  if (!SPD.last) SPD.last = { lat, lon, t: now };
+  if (v == null) return;
+  SPD.mps = v;
+  const was = SPD.fast;
+  if (v > FAST_MPS) { SPD.fast = true; SPD.slowSince = 0; }
+  else if (SPD.fast) { if (!SPD.slowSince) SPD.slowSince = now; else if (now - SPD.slowSince >= FAST_HOLD_MS) SPD.fast = false; }
+  if (SPD.fast !== was) {
+    document.body.classList.toggle('toofast', SPD.fast);
+    if (SPD.fast) toast('🚗 Moving faster than 15 mph – collecting is paused until you slow down');
+    else toast('🚶 Collecting is back on');
+    renderSpeedPill();
+  }
+}
+const tooFast = () => SPD.fast;
+function renderSpeedPill() {
+  let el = $('#fastPill');
+  if (!SPD.fast) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'fastPill'; el.className = 'fastpill'; const h = $('#maprow'); if (h) h.appendChild(el); }
+  el.innerHTML = '🚗 <b>Over 15 mph</b> – coins and chests are paused';
+}
 let walkLast = null;
 function trackWalk(lat, lon, acc, manual) {
   if (manual || DEV || !P) { walkLast = null; return; }
@@ -539,7 +574,7 @@ function trackWalk(lat, lon, acc, manual) {
   if (d < Math.max(10, (acc + walkLast.acc) * 0.6)) return;     // still within the wobble: keep the anchor
   const speed = d / Math.max(1, (now - walkLast.t) / 1000);
   walkLast = { lat, lon, t: now, acc };
-  if (speed > (C.MAX_WALK_MPS || 6.5)) return;                  // driving, or a GPS jump
+  if (speed > (C.MAX_WALK_MPS || 6.7) || tooFast()) return;      // driving, or a GPS jump
   addWalk(d);
 }
 function addWalk(m) {
@@ -1643,7 +1678,7 @@ function rcHintOnce() {
 
 // --- pick-up: coins inside the magnet radius fly into whoever pulled them ---
 function rcCollect(at, byDrone) {
-  if (!RCF.on || !P || !map || OFFLINE) return;
+  if (!RCF.on || !P || !map || OFFLINE || tooFast()) return;
   const R = (byDrone ? RCF.droneMagnetFt : RCF.magnetFt) * 0.3048;
   const g = rcGot();
   RC.marks.forEach((m, id) => {
@@ -2074,8 +2109,10 @@ ach('login7', 'Week Wanderer', 'Trail Regular', 'Claim 7 daily rewards', s => s.
 ach('login14', 'Fortnight Finder', 'Camp Veteran', 'Claim 14 daily rewards', s => s.logins, 14, '🏕️');
 ach('login28', 'Full Moon Cycle', 'Keeper of the Calendar', 'Claim 28 daily rewards', s => s.logins, 28, '🌕');
 ach('login60', 'Devoted Drifter', 'Old Faithful', 'Claim 60 daily rewards', s => s.logins, 60, '⛲');
-ach('streak7', 'Seven Straight', 'Streaker', 'Log in 7 days in a row', s => s.streak, 7, '🔥');
-ach('streak30', 'Unbroken', 'Ironwalker', 'Log in 30 days in a row', s => s.streak, 30, '🌋');
+ach('streak7', 'Seven Straight', 'Streaker', 'Reach a 7-day streak', s => s.streak, 7, '🔥');
+ach('streak30', 'Thirty Strong', 'Ironwalker', 'Reach a 30-day streak', s => s.streak, 30, '🌋');
+ach('perfect7', 'Perfect Week', 'Clockwork', 'Claim 7 days in a row without missing one', s => s.maxRun, 7, '✨');
+ach('perfect30', 'Unbroken', 'Unbreakable', 'Claim 30 days in a row without missing one', s => s.maxRun, 30, '💎');
 ach('visit1', 'Treasure Spotted', 'Scout', 'Open your first chest', s => s.visited, 1, '📦');
 ach('visit5', 'Getting Around', 'Trailblazer', 'Open 5 different chests', s => s.visited, 5, '🥾');
 ach('visit15', 'Regional Rambler', 'Pathfinder', 'Open 15 different chests', s => s.visited, 15, '🧭');
@@ -2187,7 +2224,7 @@ function renderNextAch() {
 
 function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
-  return { logins: P.daily.n, streak: P.daily.max || 0, visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
+  return { logins: P.daily.n, streak: P.daily.max || 0, maxRun: Math.max(P.daily.maxRun || 0, P.daily.run == null ? (P.daily.streak || 0) : 0), visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
            given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
            miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0,
@@ -2702,7 +2739,7 @@ const GUIDE = () => {
     <li><b>Workshop:</b> combine specific items into crafted-only relics (Shop → Craft). Earning achievements unlocks Workshop levels.</li></ul>`],
   ['🪙', 'Coins', `<p><b>Earn:</b> walking (${CO.mile} per mile), road coins along streets & trails, new chests, trades, glyph hacks, daily rewards, challenges, achievements and inviting friends.</p>
     <p><b>Spend:</b> items in the daily shop, the drone and its upgrades, styles and icons, beacons and fireworks.</p>
-    <p class="fine">Driving doesn't count – anything faster than about 14 mph isn't walking.</p>`],
+    <p class="fine">Driving doesn't count – above 15 mph walking stops counting and coins and chests can't be collected until you've been slower for 20 seconds.</p>`],
   ['🎁', 'Daily rewards & challenges', `<ul><li>Claim a reward every day on the <b>Daily</b> tab. Streaks pay more, with big rewards on days 7, 14, 21 and 28. Missing a day never resets your progress.</li>
     <li><b>Daily and weekly challenges</b> give extra coins – tap Claim when they're done.</li></ul>`],
   ['🚁', 'The drone', `<p>Buy a drone in the Shop (${C.DRONE_PRICE} 🪙) and open chests without walking all the way.</p>
@@ -3429,12 +3466,18 @@ function show(v) {
 }
 function renderHeader() {
   $('#hAv').innerHTML = avatarHtml(); $('#hName').textContent = P.name; renderXP();
-  $('#hStreakV').textContent = streakNow(); $('#hStreak').classList.toggle('lit', streakNow() > 0); $('#hPackV').textContent = packCount();
+  $('#hStreakV').textContent = streakNow(); $('#hStreak').classList.toggle('lit', streakNow() > 0); $('#hStreak').classList.toggle('perfect', runNow() > 1); $('#hPackV').textContent = packCount();
   { const v = $('#hCoinsV'); if (!v.dataset.n) { v.textContent = fmtC(P.coins || 0); v.dataset.n = P.coins || 0; } else rollTo(v, P.coins || 0); }
   renderWalk(); renderDroneBtn();
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
-function streakNow() { return P.daily.last && daysBetween(P.daily.last, dayKey()) <= 1 ? P.daily.streak : 0; }
+// The streak never breaks: a missed day just pauses it. "run" counts days in a row without a gap,
+// and an unbroken run makes each daily reward bigger.
+function streakNow() { return P.daily.streak || 0; }
+function runAlive() { return !!P.daily.last && daysBetween(P.daily.last, dayKey()) <= 1; }
+function runNow() { if (P.daily.run == null) P.daily.run = P.daily.streak || 0; return runAlive() ? P.daily.run : 0; }
+const PERFECT_MAX = 1;                              // up to +100% coins for an unbroken run
+const perfectBonus = run => Math.min(PERFECT_MAX, Math.max(0, run - 1) * 0.1);
 function renderAll() {
   if (!P) return; renderHeader();
   renderNextAch();
@@ -3499,7 +3542,7 @@ function showStats() {
       ${row('Items collected', s.dex + ' / ' + ITEMS.length)}${row('Relics crafted', s.relics + ' / ' + (RELICS.length || 0))}
       ${row('Items merged', s.merges)}${row('Gifts left', s.given)}
       ${row('Chests hidden', s.hidden)}${row('Friends invited', s.invites)}
-      ${row('Daily rewards', s.logins)}${row('Best streak', s.streak)}
+      ${row('Daily rewards', s.logins)}${row('Streak', s.streak)}
       ${row('Legendaries', s.byR[4])}${row('Achievements', got.length + ' / ' + ACH.length)}
       ${row('Miles walked', milesOf().toFixed(2))}${row('Coins earned', fmtC(s.coinsEarned))}
     </div>
@@ -3635,24 +3678,25 @@ function renderDex() {
 // ---- daily ----
 const TIERS = [0,0,1,0,1,0,2, 0,1,1,0,1,0,3, 1,0,2,1,0,1,3, 1,1,2,1,2,1,4];
 const TIER_ICON = ['🎁', '🎁', '💙', '💜', '🌟'];
-const dailyCoins = (streak, day) => CO.daily + CO.dailyStreak * Math.min(Math.max(0, streak - 1), 6) + (day % 7 === 0 ? CO.dailyBig : 0);
+const dailyCoins = (streak, day, run) => Math.round((CO.daily + CO.dailyStreak * Math.min(Math.max(0, streak - 1), 6) + (day % 7 === 0 ? CO.dailyBig : 0)) * (1 + perfectBonus(run || 0)));
 function renderDaily() {
   const n = P.daily.n, claimed = P.daily.last === dayKey(), cycleDay = (n % 28) + 1, cycle = Math.floor(n / 28) + 1;
-  let h = `<div class="claim"><div style="font-size:13px;color:var(--mut)">Cycle ${cycle} · Streak 🔥 ${streakNow()}</div>`;
+  const rn = runNow(), nextRun = claimed ? rn : (runAlive() ? rn + 1 : 1), pb = Math.round(perfectBonus(nextRun) * 100);
+  let h = `<div class="claim"><div style="font-size:13px;color:var(--mut)">Cycle ${cycle} · Streak 🔥 ${streakNow()}${rn > 1 ? ` · <span class="perfect">✨ ${rn} days unbroken</span>` : ''}</div>`;
   if (claimed) h += `<h3 style="margin:6px 0">Come back tomorrow!</h3><p class="fine" style="margin:0">Next up: Day ${cycleDay} – ${RAR[TIERS[cycleDay - 1]].n} reward.</p>`;
   else {
-    const nextStreak = P.daily.last && daysBetween(P.daily.last, dayKey()) === 1 ? P.daily.streak + 1 : 1;
-    h += `<h3 style="margin:6px 0">Day ${cycleDay} reward is ready</h3><p class="fine">${RAR[TIERS[cycleDay - 1]].n} item + ${fmtC(dailyCoins(nextStreak, cycleDay))} 🪙</p><button class="btn big" id="claimBtn">Claim reward</button>`;
+    const nextStreak = (P.daily.streak || 0) + 1;
+    h += `<h3 style="margin:6px 0">Day ${cycleDay} reward is ready</h3><p class="fine">${RAR[TIERS[cycleDay - 1]].n} item + ${fmtC(dailyCoins(nextStreak, cycleDay, nextRun))} 🪙${pb ? ` <span class="perfect">(+${pb}% unbroken bonus)</span>` : ''}${nextRun > 1 && nextRun % 7 === 0 ? '<br><span class="perfect">✨ Perfect week – a bonus rare item today</span>' : ''}</p>${!runAlive() && P.daily.last ? '<p class="fine" style="margin:0 0 8px">Welcome back! Your streak picks up right where you left it.</p>' : ''}<button class="btn big" id="claimBtn">Claim reward</button>`;
   }
   h += '</div><div class="cal">';
   // coins shown on each day assume the streak keeps going from today
-  const baseStreak = claimed ? P.daily.streak : (P.daily.last && daysBetween(P.daily.last, dayKey()) === 1 ? P.daily.streak : 0);
+  const baseStreak = P.daily.streak || 0, baseRun = claimed ? rn : (runAlive() ? rn : 0);
   for (let d = 1; d <= 28; d++) {
     const t = TIERS[d - 1], done = d < cycleDay || (d === cycleDay && claimed && false), now = d === cycleDay && !claimed;
-    const calStreak = baseStreak + (d - cycleDay) + 1;
-    h += `<div class="day t${t}${d < cycleDay ? ' done' : ''}${now ? ' now' : ''}"><b>Day ${d}</b><span>${TIER_ICON[t]}</span><small style="color:${RAR[t].c}">${t >= 2 ? RAR[t].n : ''}</small>${d >= cycleDay ? `<em>+${dailyCoins(calStreak, d)}🪙</em>` : ''}</div>`;
+    const calStreak = baseStreak + (d - cycleDay) + (claimed ? 0 : 1), calRun = baseRun + (d - cycleDay) + (claimed ? 0 : 1);
+    h += `<div class="day t${t}${d < cycleDay ? ' done' : ''}${now ? ' now' : ''}"><b>Day ${d}</b><span>${TIER_ICON[t]}</span><small style="color:${RAR[t].c}">${t >= 2 ? RAR[t].n : ''}</small>${d >= cycleDay ? `<em>+${dailyCoins(calStreak, d, calRun)}🪙</em>` : ''}</div>`;
   }
-  h += `</div><p class="fine pad">Missing a day never resets your progress – just claim the next reward when you're back. Every day pays coins too – more for each day in a row (up to +${CO.dailyStreak * 6}), and a +${CO.dailyBig} bonus on days 7, 14, 21 and 28.</p>`;
+  h += `</div><p class="fine pad">Missing a day never resets your streak – it picks up where you left off. Every claim pays coins (more as your streak grows, up to +${CO.dailyStreak * 6}, and +${CO.dailyBig} on days 7, 14, 21 and 28). Claim without missing a day and it gets better: +10% coins for each unbroken day, up to double, plus a bonus rare item every 7 unbroken days.</p>`;
   h += renderChallenges();
   $('#dailyBox').innerHTML = h;
   const b = $('#claimBtn'); if (b) b.onclick = claimDaily;
@@ -3722,15 +3766,23 @@ function claimDaily() {
   if (needNet('Claiming your reward')) return;
   const today = dayKey(); if (P.daily.last === today) return;
   const day = (P.daily.n % 28) + 1, it = rollItem(Math.random, 1, TIERS[day - 1]);
-  P.daily.streak = P.daily.last && daysBetween(P.daily.last, today) === 1 ? P.daily.streak + 1 : 1;
-  P.daily.max = Math.max(P.daily.max || 0, P.daily.streak); P.daily.n++; P.daily.last = today;
-  const coins = dailyCoins(P.daily.streak, day);
-  const isNew = addItem(it.id); earn(coins, 'Daily reward'); act('daily'); save(); checkAch(); renderAll();
+  if (P.daily.run == null) P.daily.run = P.daily.streak || 0;
+  const unbroken = !!P.daily.last && daysBetween(P.daily.last, today) === 1;
+  P.daily.run = unbroken ? P.daily.run + 1 : 1;
+  P.daily.streak = (P.daily.streak || 0) + 1;
+  P.daily.max = Math.max(P.daily.max || 0, P.daily.streak); P.daily.maxRun = Math.max(P.daily.maxRun || 0, P.daily.run);
+  P.daily.n++; P.daily.last = today;
+  const coins = dailyCoins(P.daily.streak, day, P.daily.run), pb = Math.round(perfectBonus(P.daily.run) * 100);
+  const bonus = P.daily.run > 1 && P.daily.run % 7 === 0 ? rollItem(Math.random, 1, Math.min(4, 2 + Math.floor(P.daily.run / 28))) : null;
+  if (bonus) addItem(bonus.id);
+  const isNew = addItem(it.id); earn(coins, pb ? 'Daily reward + unbroken bonus' : 'Daily reward'); act('daily'); save(); checkAch(); renderAll();
   if (notifOn()) scheduleDailyReminder();
   FX.sfx('daily');
   modal(`<div style="text-align:center"><p class="sub">Day ${day} reward</p>${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px">${isNew ? '✨ New for your shelf!' : 'Added to your pack.'}</p>
     <p class="coinline">+${fmtC(coins)} 🪙${P.daily.streak > 1 ? ` <small>streak ${P.daily.streak}</small>` : ''}</p>
+    ${P.daily.run > 1 ? `<p class="perfect" style="margin:4px 0 0">✨ ${P.daily.run} days unbroken · +${pb}% coins</p>` : ''}
+    ${bonus ? `<p class="sub" style="margin-top:8px">Perfect-week bonus: <b style="color:${RAR[bonus.r].c}">${esc(bonus.n)}</b></p>` : ''}
     <button class="btn big" id="okBtn">Nice!</button></div>`, m => { $('#okBtn', m).onclick = closeModal; FX.reveal(it.r, $('.tile.big', m), true); });
 }
 
@@ -4110,7 +4162,7 @@ function startGPS(quiet) {
   if (!navigator.geolocation) { gpsMsg('This browser has no GPS support', 'bad'); return; }
   if (watchId != null) navigator.geolocation.clearWatch(watchId);
   gpsMsg('Finding your location…');
-  watchId = navigator.geolocation.watchPosition(p => setPos(p.coords.latitude, p.coords.longitude, p.coords.accuracy, false),
+  watchId = navigator.geolocation.watchPosition(p => { trackSpeed(p.coords.latitude, p.coords.longitude, p.coords.accuracy, p.coords.speed, false); setPos(p.coords.latitude, p.coords.longitude, p.coords.accuracy, false); },
     err => gpsMsg(err.code === 1 ? 'Location blocked – allow it in your browser settings (HTTPS required)' : 'Can\'t get a GPS fix yet…', 'bad'),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
@@ -4634,6 +4686,7 @@ function chestCinematic(name) {
 async function openChest(id, byDrone) {
   if (needNet('Opening a chest')) return;
   const meta = chests.find(c => c.id === id); if (!meta || !pos) return;
+  if (tooFast()) return toast('🚗 Slow down – chests can\'t be opened while moving faster than 15 mph', 'bad');
   if (!byDrone && dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
   // Start the opening straight away: it is the reward for the walk, and it hides the
   // round trip to the server behind something worth watching.
@@ -5184,7 +5237,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
