@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181345';
+const APP_BUILD = '202611181400';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -379,7 +379,7 @@ function spend(n) {
 }
 function renderCoins() {
   const c = $('#hCoins'), v = $('#hCoinsV'); if (!c || !P) return;
-  if (v) v.textContent = fmtC(P.coins || 0);
+  if (v) rollTo(v, P.coins || 0);
   c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump');
   if (view === 'shop' && shopSub === 'shop') renderShopHead();
 }
@@ -401,6 +401,101 @@ function flushPop() {
   el.innerHTML = `<b>+${fmtC(a.n)} 🪙</b>${a.why.length ? `<small>${esc(a.why.slice(0, 2).join(' · '))}</small>` : ''}`;
   host.appendChild(el);
   setTimeout(() => el.remove(), 2300);
+  if (a.why.some(w => w !== 'Road coins' && w !== 'Gold stack!')) coinShower(a.n);   // road coins already fly in on the map
+}
+
+// ---------------- juice: small rewards that feel good ----------------
+const juicy = () => FX.prefs.fx && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+// where the player last touched - rewards fly out from there
+let lastTap = null;
+addEventListener('pointerdown', e => { lastTap = { x: e.clientX, y: e.clientY, t: Date.now() }; }, { passive: true, capture: true });
+const tapOrigin = () => lastTap && Date.now() - lastTap.t < 5000 ? lastTap : { x: innerWidth / 2, y: innerHeight * .55 };
+// number counters roll up (or down) instead of jumping
+function rollTo(el, to) {
+  const from = +el.dataset.n || 0; el.dataset.n = to;
+  cancelAnimationFrame(el._roll);
+  if (!juicy() || from === to || !el.isConnected || Math.abs(to - from) > 1e6) { el.textContent = fmtC(to); return; }
+  const t0 = performance.now(), dur = Math.min(1100, 380 + Math.abs(to - from) * 6);
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmtC(Math.round(from + (to - from) * e));
+    if (k < 1) el._roll = requestAnimationFrame(step);
+  };
+  el._roll = requestAnimationFrame(step);
+}
+// a handful of coins arc from the action into the coin counter
+function coinShower(n) {
+  if (!juicy() || document.hidden) return;
+  const dst = $('#hCoins'); if (!dst) return;
+  const o = tapOrigin(), d = dst.getBoundingClientRect(), tx = d.left + 18, ty = d.top + d.height / 2;
+  const count = Math.min(12, 3 + Math.round(Math.log2(n + 1)));
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('i'); c.className = 'cshow'; document.body.appendChild(c);
+    const sx = o.x + (Math.random() - .5) * 60, sy = o.y + (Math.random() - .5) * 40;
+    const lift = 60 + Math.random() * 70, side = (Math.random() - .5) * 120, dur = 650 + Math.random() * 250, delay = i * 45;
+    const t0 = performance.now() + delay;
+    const step = now => {
+      const k = Math.max(0, Math.min(1, (now - t0) / dur));
+      const e = k * k, x = sx + (tx - sx) * e + side * Math.sin(k * Math.PI) * (1 - k);
+      const y = sy + (ty - sy) * e - lift * Math.sin(k * Math.PI);
+      c.style.transform = `translate(${x - 9}px,${y - 9}px) rotate(${k * 540}deg) scale(${1.1 - k * .5})`;
+      if (k < 1) requestAnimationFrame(step);
+      else { c.remove(); dst.classList.remove('bump'); void dst.offsetWidth; dst.classList.add('bump'); if (i % 3 === 0) FX.sfx('pickup', i); }
+    };
+    requestAnimationFrame(step);
+  }
+}
+// "+12 XP" sparks off the level badge; small gains are pooled so walking does not spam
+let xpAcc = 0, xpT = 0;
+function xpPop(n) {
+  xpAcc += n; clearTimeout(xpT);
+  xpT = setTimeout(() => {
+    const v = xpAcc; xpAcc = 0; if (v < 5 || !juicy()) return;
+    const b = $('#hLvl'); if (!b) return; const r = b.getBoundingClientRect();
+    const el = document.createElement('div'); el.className = 'xppop'; el.textContent = '+' + fmtC(v) + ' XP';
+    el.style.left = (r.left + r.width / 2) + 'px'; el.style.top = (r.bottom + 4) + 'px';
+    document.body.appendChild(el); setTimeout(() => el.remove(), 1500);
+    const bar = $('.hxp'); if (bar) { bar.classList.remove('gain'); void bar.offsetWidth; bar.classList.add('gain'); }
+    b.classList.remove('ping'); void b.offsetWidth; b.classList.add('ping');
+  }, 450);
+}
+// full-screen moment for a new level
+function levelUpShow(lvl, coins) {
+  if (document.querySelector('.cine')) return setTimeout(() => levelUpShow(lvl, coins), 700);
+  FX.sfx('ach'); FX.vibe([40, 50, 40, 50, 80]);
+  if (!juicy()) { toast(`🎉 Level ${lvl}! +${coins} 🪙`, 'gold'); return; }
+  const el = document.createElement('div'); el.className = 'lvup';
+  el.innerHTML = `<div class="lvrays"></div><div class="lvin"><small>Level up</small><b>${lvl}</b><span>+${fmtC(coins)} 🪙 reward</span></div>`;
+  document.body.appendChild(el);
+  setTimeout(() => { FX.confetti(['#7ff0ff', '#ffd98a', '#ffffff'], 110); FX.flash('#7ff0ff'); }, 250);
+  setTimeout(() => FX.burst(innerWidth / 2, innerHeight * .42, ['#7ff0ff', '#fff', '#ffd98a'], 40), 450);
+  const end = () => { if (!el.isConnected) return; el.classList.add('out'); setTimeout(() => el.remove(), 400); };
+  el.onclick = end; setTimeout(end, 2800);
+}
+// achievement unlocked: a medal card drops in from the top with a shine across it
+const achQ = [];
+function achBanner(a) {
+  achQ.push(a); if (achQ.length === 1) achNext();
+}
+function achNext() {
+  const a = achQ[0]; if (!a) return;
+  FX.sfx('ach'); FX.vibe([30, 40, 30]);
+  const el = document.createElement('div'); el.className = 'achban';
+  el.innerHTML = `<i>${a.icon || '🏅'}</i><span><small>Achievement unlocked</small><b>${esc(a.n)}</b><em>New title: ${esc(a.t)} · +${CO.achievement} 🪙</em></span>`;
+  document.body.appendChild(el);
+  if (juicy()) setTimeout(() => { const r = el.getBoundingClientRect(); FX.burst(r.left + 34, r.top + r.height / 2, ['#ffb02e', '#ffd98a', '#fff'], 26); }, 380);
+  el.onclick = () => done();
+  const t = setTimeout(() => done(), 3400);
+  function done() { clearTimeout(t); if (!el.isConnected) return; el.classList.add('out'); setTimeout(() => { el.remove(); achQ.shift(); achNext(); }, 380); }
+}
+// streak combos while scooping road coins
+function comboPop(n) {
+  if (!juicy() || n < 2) return;
+  const me = fly && fly.marker && fly.marker.getElement ? fly.marker.getElement() : document.querySelector('.me-dot'); const p = FX.centerOf(me);
+  const el = document.createElement('div'); el.className = 'combo' + (n >= 10 ? ' hot' : n >= 5 ? ' warm' : '');
+  el.textContent = '×' + (n + 1); el.style.left = p.x + 'px'; el.style.top = (p.y - 34) + 'px';
+  el.style.setProperty('--s', Math.min(1.9, 1 + n * .06));
+  document.body.appendChild(el); setTimeout(() => el.remove(), 900);
 }
 
 // What everyone who played before coins existed has already earned, paid once.
@@ -1579,7 +1674,7 @@ function rcFlyIn(m, byDrone) {
     else {
       el.remove();
       const now2 = performance.now();
-      RC.combo = now2 - RC.comboT < 1400 ? RC.combo + 1 : 0; RC.comboT = now2;
+      RC.combo = now2 - RC.comboT < 1400 ? RC.combo + 1 : 0; RC.comboT = now2; comboPop(RC.combo);
       FX.sfx('pickup', RC.combo);
       if (c.stack) { FX.sfx('coin'); const p = FX.centerOf(byDrone && fly && fly.marker.getElement ? fly.marker.getElement() : document.querySelector('.me-dot')); FX.burst(p.x, p.y, ['#ffd98a', '#f2b84b', '#fff'], 18); }
       FX.vibe(c.stack ? [20, 30, 20] : 12);
@@ -1682,11 +1777,11 @@ function gainXP(n) {
   if (!P || !(n > 0)) return;
   seedXP();
   const before = levelOf(P.xp).lvl;
-  P.xp += Math.round(n);
+  P.xp += Math.round(n); xpPop(Math.round(n));
   const L = levelOf(P.xp);
   if (L.lvl > before) {
     const coins = L.lvl * 25; P.coins = (P.coins || 0) + coins; P.stats.coinsEarned = (P.stats.coinsEarned || 0) + coins;
-    setTimeout(() => { toast(`🎉 Level ${L.lvl}! +${coins} 🪙`, 'gold'); FX.sfx('ach'); FX.confetti(['#7ff0ff', '#ffd98a', '#ffffff'], 70); FX.vibe([40, 50, 40]); }, 900);
+    setTimeout(() => { levelUpShow(L.lvl, coins); renderCoins(); }, 900);
     if (DB.remote && DB.act) { const l = pos; DB.act('ach', `Level ${L.lvl}`, l ? l.lat : null, l ? l.lon : null); }
   }
   renderXP();
@@ -2098,7 +2193,7 @@ function checkAch() {
   const s = statView(), got = [];
   ACH.forEach(a => { if (!P.ach[a.id] && a.get(s) >= a.goal) { P.ach[a.id] = Date.now(); got.push(a); } });
   got.forEach(a => { earn(CO.achievement, a.n); act('ach', a.n); });
-  got.forEach((a, i) => setTimeout(() => { toast(`🏅 ${a.n} – new title: ${a.t}`, 'gold'); FX.sfx('ach'); FX.confetti(['#ffb02e', '#ffd98a', '#ffffff'], 45); FX.vibe([30, 40, 30]); }, 600 * i + 400));
+  got.forEach(a => setTimeout(() => achBanner(a), 400));
   if (got.length) save();
 }
 
@@ -3322,8 +3417,8 @@ function show(v) {
 }
 function renderHeader() {
   $('#hAv').innerHTML = avatarHtml(); $('#hName').textContent = P.name; renderXP();
-  $('#hStreakV').textContent = streakNow(); $('#hPackV').textContent = packCount();
-  $('#hCoinsV').textContent = fmtC(P.coins || 0);
+  $('#hStreakV').textContent = streakNow(); $('#hStreak').classList.toggle('lit', streakNow() > 0); $('#hPackV').textContent = packCount();
+  { const v = $('#hCoinsV'); if (!v.dataset.n) { v.textContent = fmtC(P.coins || 0); v.dataset.n = P.coins || 0; } else rollTo(v, P.coins || 0); }
   renderWalk(); renderDroneBtn();
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
@@ -5077,7 +5172,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
