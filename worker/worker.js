@@ -326,6 +326,7 @@ export default {
         const lat = +b.lat, lon = +b.lon, state = b.state === 'park' ? 'park' : 'fly';
         if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad position' }, 400, cors);
         const em = String(b.em || '').slice(0, 8), col = /^#[0-9a-f]{3,8}$/i.test(String(b.col || '')) ? String(b.col) : '';
+        const dl = /^#[0-9a-f]{3,8},#[0-9a-f]{3,8},#[0-9a-f]{3,8}$/i.test(String(b.dl || '')) ? String(b.dl) : '';
         const prev = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('drone/' + me).first();
         let team = null, tt = 0; if (prev) { try { const p = JSON.parse(prev.val); team = p.team || null; tt = p.tt || 0; } catch (e) {} }
         const now = Date.now();
@@ -333,7 +334,7 @@ export default {
           const trow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('team/' + me).first();
           team = null; if (trow) { try { team = JSON.parse(trow.val).team; } catch (e) {} } tt = now;
         }
-        const rec = { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6, state, em, col, team: TEAMS.has(team) ? team : null, tt, t: now };
+        const rec = { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6, state, em, col, dl, team: TEAMS.has(team) ? team : null, tt, t: now };
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('drone/' + me, JSON.stringify(rec)).run();
         return json({ ok: true }, 200, cors);
       }
@@ -357,7 +358,7 @@ export default {
           // a flying drone that stopped reporting (app closed) just hangs where it was
           const state = d.state === 'fly' && now - d.t < 45000 ? 'fly' : 'park';
           let h = 0; for (const ch of k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;       // stable id, no names
-          out.push({ k: h.toString(36), lat: d.lat, lon: d.lon, state, em: d.em || '', col: d.col || '', team: d.team || null });
+          out.push({ k: h.toString(36), lat: d.lat, lon: d.lon, state, em: d.em || '', col: d.col || '', dl: d.dl || '', team: d.team || null });
           if (out.length >= 150) break;
         }
         return json({ value: out }, 200, cors);

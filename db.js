@@ -205,9 +205,9 @@ window.DB = (function () {
       if (!W || !cells.length) return {};
       try { const r = await fetch(W + '/cells/scores?cells=' + cells.join(','), { headers: whead() }); const j = await r.json().catch(() => null); return j && j.value || {}; } catch (e) { return {}; }
     },
-    droneSet(lat, lon, state, em, col) {
+    droneSet(lat, lon, state, em, col, dl) {
       if (!W || !auth) return;
-      try { fetch(W + '/drone/set', { method: 'POST', headers: whead(), body: JSON.stringify({ lat, lon, state, em, col }), keepalive: true }).catch(() => {}); } catch (e) {}
+      try { fetch(W + '/drone/set', { method: 'POST', headers: whead(), body: JSON.stringify({ lat, lon, state, em, col, dl }), keepalive: true }).catch(() => {}); } catch (e) {}
     },
     droneClear() {
       if (!W || !auth) return;

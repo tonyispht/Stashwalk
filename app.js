@@ -687,6 +687,7 @@ function applyCosmetics() {
   const dot = cosGet('dot', cosEq('dot')); root.setProperty('--medot', dot.c === 'rainbow' ? '#3b9cff' : dot.c);
   document.body.classList.toggle('dot-rainbow', dot.c === 'rainbow');
   root.setProperty('--dronecol', cosGet('drone', cosEq('drone')).c);
+  if (typeof droneSync === 'function' && P.drone && (P.drone.parked || fly)) setTimeout(() => droneSync(true), 0);
   const dl = cosGet('dlight', cosEq('dlight')); root.setProperty('--dl1', dl.c1); root.setProperty('--dl2', dl.c2); root.setProperty('--dl3', dl.c3);
   const hav = $('#hAv'); if (hav) hav.innerHTML = avatarHtml();
   if (typeof drawParked === 'function' && P.drone && P.drone.parked) drawParked();
@@ -1107,8 +1108,10 @@ function wireDrone() {
 }
 // ---- parked drone + sharing drone positions with nearby players ----
 let parkedMarker = null;
-function droneIconHtml(em, col, cls) {
-  return `<div class="dronewrap ${cls || ''}" style="--dronecol:${col || '#f2b84b'}">${em ? `<span class="droneglyph">${em}</span>` : droneSVG()}</div>`;
+function droneIconHtml(em, col, cls, dl) {
+  const L3 = String(dl || '').split(',').filter(c => /^#[0-9a-f]{3,8}$/i.test(c));
+  const lights = L3.length === 3 ? `;--dl1:${L3[0]};--dl2:${L3[1]};--dl3:${L3[2]}` : ';--dl1:#ff4d4d;--dl2:#49e07f;--dl3:#7ff0ff';
+  return `<div class="dronewrap ${cls || ''}" style="--dronecol:${col || '#cfd8e3'}${lights}">${em ? `<span class="droneglyph">${em}</span>` : droneSVG()}</div>`;
 }
 function drawParked() {
   if (!map || !window.L) return;
@@ -1144,8 +1147,8 @@ function droneSync(force, state) {
   if (!force && !(moved && now - dsLast > 1500) && now - dsLast < 15000) return;
   dsLast = now; dsAt = { lat: at.lat, lon: at.lon };
   if (fly) { P.drone.live = { lat: at.lat, lon: at.lon, at: now }; }
-  const ic = cosGet('dicon', cosEq('dicon')), col = (cosGet('drone', cosEq('drone')) || {}).c;
-  DB.droneSet(at.lat, at.lon, state || (fly ? 'fly' : 'park'), ic.em || '', col || '');
+  const ic = cosGet('dicon', cosEq('dicon')), col = (cosGet('drone', cosEq('drone')) || {}).c, dl = cosGet('dlight', cosEq('dlight'));
+  DB.droneSet(at.lat, at.lon, state || (fly ? 'fly' : 'park'), ic.em || '', col || '', [dl.c1, dl.c2, dl.c3].join(','));
 }
 // if the app closed mid-flight, the drone stays where it last was
 function recoverDrone() {
@@ -1168,7 +1171,7 @@ async function pollDrones() {
     list.forEach(r => {
       seen.add(r.k);
       let o = OTHERS.get(r.k);
-      const html = `${droneIconHtml(r.em, r.col, r.state === 'fly' ? '' : 'still')}${r.team && TEAMS[r.team] ? `<i class="dteam" style="--tc:${TEAMS[r.team].c}"></i>` : ''}`;
+      const html = `${droneIconHtml(r.em, r.col, r.state === 'fly' ? '' : 'still', r.dl)}${r.team && TEAMS[r.team] ? `<i class="dteam" style="--tc:${TEAMS[r.team].c}"></i>` : ''}`;
       const cls = 'droneicon other' + (r.state === 'fly' ? ' flying' : ' parked');
       if (!o) {
         const mk = L.marker([r.lat, r.lon], { icon: L.divIcon({ className: cls, html, iconSize: [44, 44] }), interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
