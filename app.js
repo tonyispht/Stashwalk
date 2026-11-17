@@ -3838,7 +3838,24 @@ async function updateReady(worker) {
   PWA.waiting = worker;
   const bar = $('#updBar'); if (bar) bar.hidden = false;
   if (!$('#v-me').hidden) renderMe();
+  autoUpdate();
 }
+// Switch to a new build by itself as soon as it won't interrupt anything: right away when the app
+// is in the background, otherwise at the first moment with no window open, no drone flight and no
+// link picking. The banner stays for anyone who wants it sooner.
+let autoUpdTimer = null;
+function autoUpdate() {
+  clearTimeout(autoUpdTimer);
+  if (!PWA.waiting || PWA.applying) return;
+  const busy = modalOpen() || fly || (typeof lkPick !== 'undefined' && lkPick);
+  if (document.hidden || !busy) {
+    if (!document.hidden) toast('✨ Updating Stashwalk…');
+    autoUpdTimer = setTimeout(applyUpdate, document.hidden ? 50 : 1200);
+    return;
+  }
+  autoUpdTimer = setTimeout(autoUpdate, 15000);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && PWA.waiting) autoUpdate(); });
 function applyUpdate() {
   if (!PWA.waiting) return hardRefresh();
   PWA.applying = true;
