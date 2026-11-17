@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181540';
+const APP_BUILD = '202611181620';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -770,6 +770,52 @@ const COSMETICS = {
     { id: 'toxic', name: 'Toxic', cost: 800, cls: 'mt-toxic' },
     { id: 'sunset', name: 'Sunset', cost: 600, cls: 'mt-sunset' },
     { id: 'inkwell', name: 'Inkwell', cost: 600, cls: 'mt-ink' } ] },
+  cskin: { label: 'Chest skin', def: 'classic', items: [
+    { id: 'classic', name: 'Classic Chest', cost: 0, em: '' },
+    { id: 'crate', name: 'Wooden Crate', cost: 250, em: '📦' },
+    { id: 'toolbox', name: 'Toolbox', cost: 250, em: '🧰' },
+    { id: 'barrel', name: 'Barrel', cost: 300, em: '🛢️' },
+    { id: 'gift', name: 'Gift Box', cost: 300, em: '🎁' },
+    { id: 'egg', name: 'Mystery Egg', cost: 400, em: '🥚' },
+    { id: 'urn', name: 'Ancient Urn', cost: 450, em: '🏺' },
+    { id: 'pumpkin', name: 'Pumpkin', cost: 400, em: '🎃' },
+    { id: 'orb', name: 'Crystal Orb', cost: 700, em: '🔮' },
+    { id: 'moneybag', name: 'Loot Sack', cost: 600, em: '💰' },
+    { id: 'coffin', name: 'Coffin', cost: 600, em: '⚰️' },
+    { id: 'dragonegg', name: 'Dragon Hoard', cost: 1200, em: '🐉' } ] },
+  trail: { label: 'Walking trail', def: 'none', items: [
+    { id: 'none', name: 'No Trail', cost: 0, t: '' },
+    { id: 'sparkle', name: 'Sparkles', cost: 300, t: 'sparkle' },
+    { id: 'steps', name: 'Footprints', cost: 250, t: 'emoji', em: '👣' },
+    { id: 'flames', name: 'Flames', cost: 500, t: 'flame' },
+    { id: 'rainbow', name: 'Rainbow', cost: 600, t: 'rainbow' },
+    { id: 'bubbles', name: 'Bubbles', cost: 350, t: 'bubble' },
+    { id: 'leaves', name: 'Leaves', cost: 350, t: 'emoji', em: '🍃' },
+    { id: 'hearts', name: 'Hearts', cost: 400, t: 'emoji', em: '💖' },
+    { id: 'stars', name: 'Stardust', cost: 500, t: 'emoji', em: '✨' },
+    { id: 'ghost', name: 'Ghost Mist', cost: 450, t: 'mist' } ] },
+  ncolor: { label: 'Name colour', def: 'plain', items: [
+    { id: 'plain', name: 'Plain', cost: 0, c: '' },
+    { id: 'gold', name: 'Gold', cost: 400, c: 'gold' },
+    { id: 'cyan', name: 'Cyan', cost: 250, c: '#5ee8ff' },
+    { id: 'rose', name: 'Rose', cost: 250, c: '#ff7aa8' },
+    { id: 'lime', name: 'Lime', cost: 250, c: '#9dff5c' },
+    { id: 'violet', name: 'Violet', cost: 300, c: '#b88bff' },
+    { id: 'orange', name: 'Sunset', cost: 300, c: '#ff9a3c' },
+    { id: 'rainbow', name: 'Rainbow', cost: 1000, c: 'rainbow' } ] },
+  badge: { label: 'Name badge', def: 'none', items: [
+    { id: 'none', name: 'No Badge', cost: 0, em: '' },
+    { id: 'star', name: 'Star', cost: 200, em: '🌟' },
+    { id: 'compass', name: 'Compass', cost: 200, em: '🧭' },
+    { id: 'clover', name: 'Clover', cost: 250, em: '🍀' },
+    { id: 'target', name: 'Bullseye', cost: 250, em: '🎯' },
+    { id: 'bolt', name: 'Bolt', cost: 300, em: '⚡' },
+    { id: 'fire', name: 'Fire', cost: 300, em: '🔥' },
+    { id: 'shield', name: 'Shield', cost: 350, em: '🛡️' },
+    { id: 'fox', name: 'Fox', cost: 400, em: '🦊' },
+    { id: 'gem', name: 'Gem', cost: 700, em: '💎' },
+    { id: 'crown', name: 'Crown', cost: 1200, em: '👑' },
+    { id: 'dragon', name: 'Dragon', cost: 1500, em: '🐉' } ] },
   theme: { label: 'App theme', def: 'forest', items: [
     { id: 'forest', name: 'Forest', cost: 0, v: ['#0f1a14', '#13241b', '#183024', '#234230', '#2a4a39', '#9fb8aa', '#e9f1ec'] },
     { id: 'midnight', name: 'Midnight', cost: 300, v: ['#0b1020', '#10172b', '#151f38', '#1d2a4a', '#2a3a62', '#9aa7c4', '#e8ecf7'] },
@@ -860,8 +906,8 @@ const COSMETICS = {
     { id: 'spin', name: 'Rainbow Spin', cost: 1200, cls: 'fr-spin' },
     { id: 'stars', name: 'Starlight', cost: 1500, cls: 'fr-stars' } ] }
 };
-const STYLE_GROUPS = [['all', 'All'], ['me', '🧍 Player', ['picon', 'dot']], ['drone', '🚁 Drone', ['dicon', 'drone', 'dlight']],
-  ['profile', '🪪 Profile', ['avatar', 'avbg', 'avframe']], ['app', '🎨 App & map', ['theme', 'bg', 'accent', 'map']]];
+const STYLE_GROUPS = [['all', 'All'], ['me', '🧍 Player', ['picon', 'dot', 'trail']], ['drone', '🚁 Drone', ['dicon', 'drone', 'dlight']],
+  ['profile', '🪪 Profile', ['avatar', 'avbg', 'avframe', 'ncolor', 'badge']], ['chest', '📦 Chests', ['cskin']], ['app', '🎨 App & map', ['theme', 'bg', 'accent', 'map']]];
 let styleGroup = 'all';
 // the profile picture: initial or emoji, in the chosen colour and frame
 function avatarHtml(cls) {
@@ -897,7 +943,16 @@ function applyCosmetics() {
   if (fly && fly.marker && window.L) try { fly.marker.setIcon(L.divIcon({ className: 'droneicon', html: `<div class="dronewrap">${droneGlyph()}</div>`, iconSize: [52, 52] })); } catch (e) {}
   applyTheme();
   applyMapTheme();
+  const hn = $('#hName'); if (hn) hn.innerHTML = myNameHtml();
 }
+// coloured names and badges (yours, and other players' on the leaderboards)
+function nameHtml(name, nc, bd) {
+  const cls = nc === 'rainbow' ? 'nc-rainbow' : nc === 'gold' ? 'nc-gold' : '';
+  const st = nc && nc[0] === '#' ? ` style="color:${nc}"` : '';
+  return `<span class="pname ${cls}"${st}>${esc(name)}</span>${bd ? `<span class="pbadge">${bd}</span>` : ''}`;
+}
+const myNc = () => cosGet('ncolor', cosEq('ncolor')).c, myBd = () => cosGet('badge', cosEq('badge')).em;
+const myNameHtml = () => nameHtml(P.name, myNc(), myBd());
 const THEME_VARS = ['--bg', '--bg2', '--card', '--card2', '--line', '--mut', '--ink'];
 const BG_CLASSES = () => COSMETICS.bg.items.map(b => b.cls).filter(Boolean);
 function applyTheme() {
@@ -936,6 +991,7 @@ function applyMapTheme() {
 function equipCos(cat, id) {
   if (!cosOwned(cat, id)) return;
   P.cos.eq[cat] = id; save(); applyCosmetics(); renderStyle();
+  if (cat === 'ncolor' || cat === 'badge') submitLB(true);
   FX.sfx('tap'); FX.vibe(8);
 }
 function buyCos(cat, id) {
@@ -954,6 +1010,10 @@ function swatch(cat, it) {
   if (cat === 'picon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw" style="background:#3b9cff;box-shadow:0 0 0 4px #3b9cff33 inset"></i>`;
   if (cat === 'dicon') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swdrone">${droneSVG('mini')}</i>`;
   if (cat === 'map') return `<i class="sw mtsw ${it.tiles ? 'mts-' + it.tiles : it.cls || 'mtsw-classic'}"></i>`;
+  if (cat === 'cskin') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swem swchest">${CHEST_SVG}</i>`;
+  if (cat === 'trail') return `<i class="sw swtrail tr-${it.id}">${it.em ? it.em + it.em : ''}</i>`;
+  if (cat === 'ncolor') return `<i class="sw swname ${it.c === 'rainbow' ? 'nc-rainbow' : it.c === 'gold' ? 'nc-gold' : ''}" style="${it.c && it.c[0] === '#' ? 'color:' + it.c : ''}">Aa</i>`;
+  if (cat === 'badge') return `<i class="sw swem">${it.em || '–'}</i>`;
   if (cat === 'theme') return `<i class="sw swth" style="background:linear-gradient(135deg,${it.v[0]} 0 45%,${it.v[2]} 45% 75%,${it.v[4]} 75%)"><b style="background:var(--acc)"></b></i>`;
   if (cat === 'bg') return `<i class="sw swbg ${it.cls}"></i>`;
   if (cat === 'avatar') return `<span class="avx sw-av" style="--avbg:${cosGet('avbg', cosEq('avbg')).g};--avink:${cosGet('avbg', cosEq('avbg')).ink}"><span class="avin">${it.em ? `<span class="avem">${it.em}</span>` : esc((P.name || '?')[0].toUpperCase())}</span></span>`;
@@ -998,7 +1058,7 @@ function renderShopHead() {
 function renderShop() {
   const st = shopState(), stock = dailyStock(), merges = mergeOffers(), crafts = craftOffers();
   const can = n => (P.coins || 0) >= n;
-  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard() + towerCard();
+  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard() + towerCard() + boostCard();
   h += `<h2 class="sec">Today's stock <small>new stock in ${timeToReset()}${sundayShop(utcDay()) ? ' · 🌟 Sunday Legendary' : ''}</small></h2>
     <div class="grid shopgrid">${stock.map((it, i) => {
       const sold = !!st.bought[i];
@@ -1031,6 +1091,7 @@ function renderShop() {
   const ud = $('#upDrone'); if (ud) ud.onclick = upgradeDrone;
   wireTowerCard(document);
   $('#shopBox').onclick = e => {
+    const bb = e.target.closest('[data-boost]'); if (bb) return buyBoost(bb.dataset.boost);
     const b = e.target.closest('[data-buy]'); if (!b) return;
     const k = b.dataset.buy, i = +k.slice(1);
     if (k[0] === 'd') { if (st.bought[i]) return toast('Sold out until tomorrow'); const it = stock[i]; buyDialog([it.id], priceOf(it), it.n, () => { shopState().bought[i] = 1; }); }
@@ -1762,7 +1823,7 @@ function rcHintOnce() {
 // --- pick-up: coins inside the magnet radius fly into whoever pulled them ---
 function rcCollect(at, byDrone) {
   if (!RCF.on || !P || !map || OFFLINE || tooFast()) return;
-  const R = (byDrone ? RCF.droneMagnetFt : RCF.magnetFt) * 0.3048;
+  const R = (byDrone ? RCF.droneMagnetFt : RCF.magnetFt) * 0.3048 * (boostOn('magnet') ? 3 : 1);
   const g = rcGot();
   RC.marks.forEach((m, id) => {
     const c = m.coin; if (!c || m.flying) return;
@@ -1907,6 +1968,7 @@ function gainXP(n) {
   if (!P || !(n > 0)) return;
   seedXP();
   const before = levelOf(P.xp).lvl;
+  if (boostOn('xp')) n *= 2;
   P.xp += Math.round(n); xpPop(Math.round(n));
   const L = levelOf(P.xp);
   if (L.lvl > before) {
@@ -2627,7 +2689,7 @@ function ensureLB() {
 function lbStats() {
   ensureLB();
   return { coins: Math.round(P.stats.coinsEarned || 0), miles: milesOf(), opened: Object.keys(P.stats.visited).length,
-    dex: Object.keys(P.dex).length, wk: WK(), wkCoins: Math.max(0, Math.round((P.stats.coinsEarned || 0) - (P.lb.wkBase || 0))) };
+    dex: Object.keys(P.dex).length, wk: WK(), wkCoins: Math.max(0, Math.round((P.stats.coinsEarned || 0) - (P.lb.wkBase || 0))), nc: myNc() || '', bd: myBd() || '' };
 }
 async function submitLB(force) {
   if (!DB.remote || !lbOn() || OFFLINE || !P) return;
@@ -2647,7 +2709,7 @@ async function renderLB() {
   try {
     const d = await DB.lbFetch(m, lbPeriod, WK());
     const fmt = v => (lbPeriod === 'all' && lbMetric === 'miles') ? (+v).toFixed(1) + ' mi' : fmtC(v);
-    const row = r => `<div class="${r.me ? 'meRow' : ''}"><span class="rk">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</span><span class="nm">${esc(r.name)}</span><b>${fmt(r.v)}</b></div>`;
+    const row = r => `<div class="${r.me ? 'meRow' : ''}"><span class="rk">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</span><span class="nm">${nameHtml(r.name, r.nc, r.bd)}</span><b>${fmt(r.v)}</b></div>`;
     const top = lbAll ? d.top : d.top.slice(0, 10);
     let h = d.top.length ? '<div class="lblist">' + top.map(row).join('') + '</div>' : '<p class="fine">No scores yet — be the first!</p>';
     if (d.top.length > 10) h += `<button class="btn sm ghost lbmore" id="lbMore">${lbAll ? 'Show top 10' : `Show all ${d.top.length}`}</button>`;
@@ -2910,6 +2972,96 @@ async function shieldDialog(target, kind, ll, title, back) {
   });
 }
 // ---- towers ----
+// ---------------- boosts & tools ----------------
+const BOOSTS = {
+  magnet: { icon: '🧲', name: 'Coin Magnet', cost: 250, mins: 30, sub: '30 minutes of triple coin pickup range – walking and drone' },
+  xp: { icon: '🧪', name: 'XP Elixir', cost: 300, mins: 30, sub: 'Double XP from everything for 30 minutes' },
+  luck: { icon: '🍀', name: 'Lucky Charm', cost: 500, charges: 3, sub: 'Your next 3 chests each drop a bonus Rare-or-better item' },
+  field: { icon: '🔺', name: 'Field Booster', cost: 400, mins: 1440, sub: 'Fields you make in the next 24 hours pay double coins' },
+  copier: { icon: '🔑', name: 'Key Copier', cost: 200, sub: 'Copy one of your keys so you can link from it twice' },
+  banner: { icon: '🚩', name: 'Faction Banner', cost: 300, sub: 'Plant your faction’s flag where you stand – everyone sees it for 24 hours' }
+};
+const boostLeft = k => { const b = P.boost && P.boost[k]; return k === 'luck' ? (b || 0) : Math.max(0, (b || 0) - Date.now()); };
+const boostOn = k => boostLeft(k) > 0;
+function boostCard() {
+  if (!P.boost) P.boost = {};
+  const can = n => (P.coins || 0) >= n;
+  const row = (k, b) => {
+    const left = boostLeft(k), on = left > 0;
+    const state = k === 'luck' ? (on ? `${left} left` : '') : on ? (left > 3600000 ? Math.ceil(left / 3600000) + ' h left' : Math.ceil(left / 60000) + ' min left') : '';
+    return `<div class="offer boost${on ? ' live' : ''}${can(b.cost) ? '' : ' dear'}"><span class="bic">${b.icon}</span><div class="otxt"><b>${b.name}${state ? ` <em class="bstate">${state}</em>` : ''}</b><small>${b.sub}</small></div>
+      <button class="btn sm" data-boost="${k}">🪙 ${fmtC(b.cost)}</button></div>`;
+  };
+  return `<h2 class="sec">Boosts &amp; tools <small>use them when you need them</small></h2>` + Object.entries(BOOSTS).map(([k, b]) => row(k, b)).join('');
+}
+function buyBoost(k) {
+  const b = BOOSTS[k]; if (!b) return;
+  if (!P.boost) P.boost = {};
+  if (k === 'copier') return keyCopyDialog();
+  if (k === 'banner') return bannerDialog();
+  if ((P.coins || 0) < b.cost) return toast(`Need ${fmtC(b.cost - (P.coins || 0))} more 🪙`, 'bad');
+  modal(`<div style="text-align:center"><div style="font-size:46px">${b.icon}</div><h3>${b.name}</h3><p class="sub">${b.sub}</p>
+    ${boostOn(k) ? `<p class="fine">Already active – buying adds ${b.charges ? b.charges + ' more' : 'more time'}.</p>` : ''}
+    <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button><button class="btn" id="bGo">Use · 🪙 ${fmtC(b.cost)}</button></div></div>`, m => {
+    $('#okBtn', m).onclick = closeModal;
+    $('#bGo', m).onclick = () => {
+      if (!spend(b.cost)) return toast('Not enough coins', 'bad');
+      if (b.charges) P.boost[k] = (P.boost[k] || 0) + b.charges;
+      else P.boost[k] = Math.max(Date.now(), P.boost[k] || 0) + b.mins * 60000;
+      save(); closeModal(); renderAll(); renderBoostBar();
+      FX.sfx('ach'); FX.confetti(['#ffd98a', '#7ff0ff', '#fff'], 40); toast(`${b.icon} ${b.name} active!`, 'gold');
+    };
+  });
+}
+function renderBoostBar() {
+  const host = $('#maprow'); if (!host || !P) return;
+  let el = $('#boostBar'); const on = ['magnet', 'xp', 'luck', 'field'].filter(boostOn);
+  if (!on.length) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'boostBar'; el.className = 'boostbar'; host.appendChild(el); }
+  el.innerHTML = on.map(k => { const l = boostLeft(k); return `<span title="${BOOSTS[k].name}">${BOOSTS[k].icon}<b>${k === 'luck' ? '×' + l : l > 3600000 ? Math.ceil(l / 3600000) + 'h' : Math.ceil(l / 60000) + 'm'}</b></span>`; }).join('');
+}
+setInterval(() => { if (P) renderBoostBar(); }, 30000);
+function keyCopyDialog() {
+  const b = BOOSTS.copier, ks = Object.entries(P.keys || {});
+  if (!ks.length) return toast('You have no keys to copy – open a chest to get its key', 'bad');
+  modal(`<h3>🔑 Key Copier</h3><p class="sub">Pick a key to copy for 🪙 ${fmtC(b.cost)}. Each copy lets you make one more link from that chest.</p>
+    <div class="keylist">${ks.map(([id, k]) => `<button class="keyrow pick" data-kc="${esc(id)}"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(id) || k.n)}</b><small>${1 + (k.x || 0)} use${k.x ? 's' : ''}</small></span><span class="kgo">Copy →</span></button>`).join('')}</div>
+    <div class="trade"><button class="btn ghost" id="okBtn">Close</button></div>`, m => {
+    $('#okBtn', m).onclick = closeModal;
+    m.querySelector('.keylist').onclick = e => {
+      const r = e.target.closest('[data-kc]'); if (!r) return;
+      const k = P.keys[r.dataset.kc]; if (!k) return;
+      if (!spend(b.cost)) return toast('Not enough coins', 'bad');
+      k.x = (k.x || 0) + 1; save(); renderKeys(); FX.sfx('ach'); toast(`🔑 Copied – ${1 + k.x} uses of ${k.n}`, 'gold'); keyCopyDialog();
+    };
+  });
+}
+const BANNER_EMS = ['🚩', '🏴', '⚔️', '🏰', '👑', '💀', '🔥', '🌊', '🌿', '⭐', '🎉', '🐉'];
+function bannerDialog() {
+  const b = BOOSTS.banner;
+  if (!DB.remote) return toast('Banners need the shared world', 'bad');
+  if (!P.team) return chooseTeamDialog(false);
+  if (!pos) return toast('Turn on GPS first', 'bad');
+  let em = BANNER_EMS[0];
+  modal(`<h3>🚩 Faction Banner</h3><p class="sub">Plants a ${TEAMS[P.team].icon} ${TEAMS[P.team].name} banner where you're standing. Everyone sees it for 24 hours. You can have one up at a time – a new one replaces the old.</p>
+    <div class="lbl">Emblem</div><div class="emgrid">${BANNER_EMS.map((e, i) => `<button class="${i ? '' : 'on'}" data-em="${e}">${e}</button>`).join('')}</div>
+    <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button><button class="btn" id="bnGo">Plant · 🪙 ${fmtC(b.cost)}</button></div>`, m => {
+    $('#okBtn', m).onclick = closeModal;
+    m.querySelector('.emgrid').onclick = e => { const x = e.target.closest('[data-em]'); if (!x) return; em = x.dataset.em; $$('.emgrid button', m).forEach(y => y.classList.toggle('on', y === x)); };
+    $('#bnGo', m).onclick = async () => {
+      if ((P.coins || 0) < b.cost) return toast('Not enough coins', 'bad');
+      $('#bnGo', m).disabled = true;
+      try { await DB.call('/banner/place', { lat: pos.lat, lon: pos.lon, em }); }
+      catch (e) { $('#bnGo', m).disabled = false; return toast('Could not plant: ' + e.message, 'bad'); }
+      spend(b.cost); P.stats.banners = (P.stats.banners || 0) + 1; save(); closeModal(); show('explore'); loadLinks(true);
+      FX.sfx('place'); FX.confetti([TEAMS[P.team].c, TEAMS[P.team].c2, '#fff'], 60); toast(`${em} Banner planted for ${TEAMS[P.team].name}!`, 'gold');
+    };
+  });
+}
+// tower levels: wider reach and more loot per level
+const TOWER_MAXLVL = 5, towerUpCost = lvl => 1000 * lvl;
+const towerReach = t => TOWER_RADIUS_M * (1 + 0.2 * ((t.lvl || 1) - 1));
+const towerItems = t => (t.lvl || 1) >= 5 ? 3 : (t.lvl || 1) >= 3 ? 2 : 1;
 function towerCard() {
   if (!DB.remote) return '';
   const have = P.towers || 0, can = (P.coins || 0) >= TOWER_PRICE;
@@ -2937,13 +3089,22 @@ async function towerSheet(t) {
   const sh = await freshShield(t.id, t);
   modal(`<div class="gdhead"><h3>🗼 ${T.icon} ${T.name} tower</h3><button class="locx" id="twClose">✕</button></div>
     <p class="sub" style="margin-top:4px">Placed by ${esc(t.by || 'a player')} · ${ago(t.at)}${d != null ? ' · ' + fmtDist(d) + ' away' : ''}</p>
-    <p class="fine">${T.name} players get a bonus item from chests within 5 miles of this tower.</p>
+    <p class="fine"><b>Level ${t.lvl || 1}</b> · ${T.name} players get ${towerItems(t) > 1 ? towerItems(t) + ' bonus items' : 'a bonus item'} from chests within ${(towerReach(t) / 1609.344).toFixed(1)} miles of this tower.</p>
+    ${mine && (t.lvl || 1) < TOWER_MAXLVL ? `<button class="btn ghost" id="twUp" style="width:100%;margin-bottom:8px">⬆️ Upgrade to level ${(t.lvl || 1) + 1} · 🪙 ${fmtC(towerUpCost(t.lvl || 1))}</button>` : ''}
     <div class="lvlchip" style="--lc:${sh ? '#9fd0ff' : '#6b7d72'}"><b>🛡️</b><span>${sh ? `${SHIELDS[sh.r].n} · ${sh.hp}/${sh.max}` : 'No shield'}</span></div>
     <div class="admacts">${mine ? `<button class="btn" id="twShield" ${near ? '' : 'disabled'}>🛡️ ${sh ? 'Upgrade shield' : 'Install shield'}</button>`
       : `<button class="btn danger" id="twAttack" ${near ? '' : 'disabled'}>⚔️ Attack (Hard glyph)</button>`}
     ${near ? '' : `<p class="fine" style="margin:0">Get within ${Math.round(NEAR_M * FT)} ft (or fly your drone over it) to ${mine ? 'shield' : 'attack'} it.</p>`}</div>`, m => {
     $('#twClose', m).onclick = closeModal;
     const s2 = $('#twShield', m); if (s2) s2.onclick = () => shieldDialog(t.id, 'tower', t, 'this tower', () => towerSheet(t));
+    const up = $('#twUp', m); if (up) up.onclick = async () => {
+      const cost = towerUpCost(t.lvl || 1);
+      if ((P.coins || 0) < cost) return toast(`Need ${fmtC(cost - (P.coins || 0))} more 🪙`, 'bad');
+      up.disabled = true;
+      try { const r = await DB.call('/tower/upgrade', { tower: t.id }); spend(cost); t.lvl = r.lvl; save();
+        FX.sfx('ach'); FX.confetti([T.c, T.c2, '#fff'], 70); toast(`🗼 Tower raised to level ${r.lvl}!`, 'gold'); loadLinks(true); towerSheet(t); }
+      catch (e) { up.disabled = false; toast('Could not upgrade: ' + e.message, 'bad'); }
+    };
     const a = $('#twAttack', m); if (a) a.onclick = () => {
       const gid = 'tw_' + t.id;
       if (glyphLeft(gid) > 0) return toast(`You can attack this tower again in ${Math.ceil(glyphLeft(gid) / 60000)} min`, 'bad');
@@ -2962,11 +3123,12 @@ function towerBonus(meta) {
   if (!DB.remote || !P.team) return [];
   const day = utcDay(); P.towerDay = P.towerDay || {};
   if (P.towerDay[meta.id] === day) return [];
-  const n = Math.min(2, (linkData.towers || []).filter(t => t.team === P.team && dist(t, meta) <= TOWER_RADIUS_M).length);
+  const mine = (linkData.towers || []).filter(t => t.team === P.team && dist(t, meta) <= towerReach(t)).sort((a, b) => (b.lvl || 1) - (a.lvl || 1));
+  const n = Math.min(3, mine.slice(0, 2).reduce((a, t) => a + towerItems(t), 0)), luckT = 1.3 + 0.15 * (((mine[0] || {}).lvl || 1) - 1);
   if (!n) return [];
   Object.keys(P.towerDay).forEach(k => { if (P.towerDay[k] !== day) delete P.towerDay[k]; });
   P.towerDay[meta.id] = day;
-  const got = []; for (let i = 0; i < n; i++) { const it = rollItem(Math.random, 1.3); addItem(it.id); got.push(it); }
+  const got = []; for (let i = 0; i < n; i++) { const it = rollItem(Math.random, luckT); addItem(it.id); got.push(it); }
   P.stats.towerBonus = (P.stats.towerBonus || 0) + n; save();
   return got;
 }
@@ -3080,7 +3242,7 @@ function renderKeys() {
   const ks = Object.entries(P.keys).map(([id, k]) => Object.assign({ id, d: pos ? dist(pos, k) : null }, k)).sort((a, b) => (a.d ?? 1e12) - (b.d ?? 1e12));
   box.innerHTML = `<div class="card"><b>🔑 Chest keys <small class="fine">${ks.length}/${MAX_KEYS}</small></b>
     <p class="fine" style="margin:6px 0 0">${P.team ? `Open a chest to get its key. At another chest, tap <b>🔗 Link</b> and spend a key to link the two for ${TEAMS[P.team].icon} ${TEAMS[P.team].name}. Link three chests in a triangle to make a field.` : 'Join a faction to use keys for links and fields.'}</p></div>
-    <div class="keylist">${ks.map(k => `<div class="keyrow"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${k.d != null ? fmtDist(k.d) + ' away' : ''}</small></span>
+    <div class="keylist">${ks.map(k => `<div class="keyrow"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}${k.x ? ` <em class="bstate">×${1 + k.x}</em>` : ''}</b><small>${k.d != null ? fmtDist(k.d) + ' away' : ''}</small></span>
       <button class="btn sm ghost" data-kgo="${esc(k.id)}" title="Show on map">📍</button><button class="btn sm ghost danger" data-kdrop="${esc(k.id)}" title="Drop key">✕</button></div>`).join('')
       || '<div class="empty">No keys yet – open a chest to get its key.</div>'}</div>`;
   box.onclick = e => {
@@ -3117,12 +3279,12 @@ async function makeLink(meta, chest, toId) {
   const T = TEAMS[P.team];
   try {
     const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: toId, lat: k.lat, lon: k.lon, name: k.n });
-    delete P.keys[toId];
+    if (k.x > 0) k.x--; else delete P.keys[toId];
     P.stats.links = (P.stats.links || 0) + 1; earn(15, '🔗 Link');
     if ((r.len || 0) > (P.stats.longestLinkM || 0)) P.stats.longestLinkM = r.len;
     (r.fields || []).forEach(f => { if (f.km2 > (P.stats.bigFieldKm2 || 0)) P.stats.bigFieldKm2 = f.km2; });
     act('link', `${meta.name} ↔ ${k.n} (${fmtDist(r.len)})`, meta);
-    let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
+    let fc = 0; (r.fields || []).forEach(f => { const c = Math.min(400, 40 + Math.round(f.km2 * 20)) * (boostOn('field') ? 2 : 1); fc += c; P.stats.fields = (P.stats.fields || 0) + 1; act('field', `${f.km2.toFixed(2)} km² for ${T.icon} ${T.name}`, meta); });
     if (fc) earn(fc, '🔺 Field');
     save(); checkAch(); FX.sfx('reveal', r.fields && r.fields.length ? 3 : 2);
     if (r.fields && r.fields.length) fieldReveal(meta, chest, r.fields, r.link); else backToChest(meta, chest);
@@ -3292,8 +3454,11 @@ function drawLinks() {
   (linkData.fields || []).forEach(f => { const T = TEAMS[f.team]; if (!T) return;
     L.polygon(f.pts.map(p => [p.lat, p.lon]), { stroke: false, fillColor: T.c, fillOpacity: .2, interactive: false }).addTo(linkLayer); });
   (linkData.towers || []).forEach(t => { const T = TEAMS[t.team]; if (!T) return; const sh = shieldOn(t.id);
-    L.marker([t.lat, t.lon], { icon: L.divIcon({ className: 'towermark', html: `<span class="tw" style="--tc:${T.c}">🗼</span>${sh ? `<b class="twsh" title="Shield">🛡️${sh.hp}</b>` : ''}`, iconSize: [40, 40], iconAnchor: [20, 34] }),
+    L.marker([t.lat, t.lon], { icon: L.divIcon({ className: 'towermark', html: `<span class="tw" style="--tc:${T.c}">🗼</span>${sh ? `<b class="twsh" title="Shield">🛡️${sh.hp}</b>` : ''}${(t.lvl || 1) > 1 ? `<b class="twlv">${t.lvl}</b>` : ''}`, iconSize: [40, 40], iconAnchor: [20, 34] }),
       zIndexOffset: 1600, keyboard: false }).addTo(linkLayer).on('click', () => towerSheet(t)); });
+  (linkData.banners || []).forEach(bn => { const T = TEAMS[bn.team]; if (!T) return;
+    L.marker([bn.lat, bn.lon], { icon: L.divIcon({ className: 'bannermark', html: `<span class="bnpole" style="--tc:${T.c};--tc2:${T.c2}"><i>${bn.em}</i></span>`, iconSize: [40, 54], iconAnchor: [6, 52] }), zIndexOffset: 1400, keyboard: false })
+      .addTo(linkLayer).on('click', () => { const h = Math.max(1, Math.round((bn.until - Date.now()) / 3600000)); toast(`${bn.em} ${T.icon} ${T.name} banner by ${bn.by} · ${h} h left`); }); });
   (linkData.links || []).forEach(l => { const T = TEAMS[l.team]; if (!T) return;
     L.polyline([[l.alat, l.alon], [l.blat, l.blon]], { color: T.c, weight: 7, opacity: .18, interactive: false, lineCap: 'round' }).addTo(linkLayer);
     L.polyline([[l.alat, l.alon], [l.blat, l.blon]], { color: T.c2, weight: 2, opacity: .95, interactive: false }).addTo(linkLayer); });
@@ -3548,10 +3713,10 @@ function show(v) {
   if (v === 'me') refreshInvites();
 }
 function renderHeader() {
-  $('#hAv').innerHTML = avatarHtml(); $('#hName').textContent = P.name; renderXP();
+  $('#hAv').innerHTML = avatarHtml(); $('#hName').innerHTML = myNameHtml(); renderXP();
   $('#hStreakV').textContent = streakNow(); $('#hStreak').classList.toggle('lit', streakNow() > 0); $('#hStreak').classList.toggle('perfect', runNow() > 1); $('#hPackV').textContent = packCount();
   { const v = $('#hCoinsV'); if (!v.dataset.n) { v.textContent = fmtC(P.coins || 0); v.dataset.n = P.coins || 0; } else rollTo(v, P.coins || 0); }
-  renderWalk(); renderDroneBtn();
+  renderWalk(); renderDroneBtn(); renderBoostBar();
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
 // The streak never breaks: a missed day just pauses it. "run" counts days in a row without a gap,
@@ -3609,7 +3774,7 @@ function showStats() {
   seedXP();
   const L = levelOf(P.xp), pct = Math.round(L.into / L.need * 100);
   modal(`<div style="text-align:center"><span class="avwrap stav">${avatarHtml('big')}<i class="lvbadge big">${L.lvl}</i></span>
-      <h3 style="margin:10px 0 2px">${esc(P.name)}</h3><p class="sub" style="color:var(--acc2);margin:0">${esc(P.title)}</p></div>
+      <h3 style="margin:10px 0 2px">${myNameHtml()}</h3><p class="sub" style="color:var(--acc2);margin:0">${esc(P.title)}</p></div>
     <div class="lvcard">
       <div class="lvtop"><b>Level ${L.lvl}</b><span>${fmtC(L.need - L.into)} XP to level ${L.lvl + 1}</span></div>
       <span class="lvbar"><i style="width:${pct}%"></i></span>
@@ -4290,7 +4455,43 @@ function lifeTick(now) {
     c.fillStyle = m.col; c.beginPath(); c.arc(m.x, m.y, m.r, 0, 6.29); c.fill();
   }
   c.globalAlpha = 1;
+  try { drawTrail(c, t); } catch (e) {}
   LIFE.raf = requestAnimationFrame(lifeTick);
+}
+// your walking trail (a cosmetic): recent positions, drawn fading behind your icon
+const TRAIL = [];
+function trailAdd(lat, lon) {
+  const now = Date.now(), last = TRAIL[TRAIL.length - 1];
+  if (last && dist(last, { lat, lon }) < 2) return;
+  TRAIL.push({ lat, lon, t: now }); while (TRAIL.length && (TRAIL.length > 80 || now - TRAIL[0].t > 180000)) TRAIL.shift();
+}
+function drawTrail(c, t) {
+  const tr = cosGet('trail', cosEq('trail')); if (!tr.t || !pos || !map || TRAIL.length < 1) return;
+  const pts = TRAIL.concat([{ lat: pos.lat, lon: pos.lon, t: Date.now() }]).map(p => { const q = map.latLngToContainerPoint([p.lat, p.lon]); return { x: q.x, y: q.y, age: (Date.now() - p.t) / 180000 }; });
+  // sample evenly along the path, newest first
+  const samples = []; const step = tr.t === 'emoji' ? 22 : tr.t === 'rainbow' ? 4 : 9;
+  for (let i = pts.length - 1; i > 0; i--) {
+    const a = pts[i], b = pts[i - 1], len = Math.hypot(b.x - a.x, b.y - a.y), n = Math.max(1, Math.floor(len / step));
+    for (let j = 0; j < n; j++) { const k = j / n; samples.push({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, age: a.age + (b.age - a.age) * k, i: samples.length }); if (samples.length > 220) break; }
+    if (samples.length > 220) break;
+  }
+  for (const p of samples) {
+    const f = Math.max(0, 1 - p.age); if (f <= 0) continue;
+    const fade = f * Math.min(1, p.i / 3);                      // keep the icon itself clear
+    if (tr.t === 'sparkle') { const tw = .5 + .5 * Math.sin(t * 6 + p.i * 1.7); c.globalAlpha = fade * tw; c.fillStyle = p.i % 3 ? '#fff6cf' : '#7ff0ff';
+      c.beginPath(); c.arc(p.x + Math.sin(p.i) * 3, p.y + Math.cos(p.i * 1.3) * 3, 1.2 + tw * 1.6, 0, 6.29); c.fill(); }
+    else if (tr.t === 'flame') { const fl = .6 + .4 * Math.sin(t * 12 + p.i * 2.3); c.globalAlpha = fade * fl;
+      const g = c.createRadialGradient(p.x, p.y - fl * 3, 0, p.x, p.y, 7 * f + 2); g.addColorStop(0, '#fff3a0'); g.addColorStop(.4, '#ff9a3c'); g.addColorStop(1, 'rgba(255,60,20,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y - fl * 3, 7 * f + 2, 0, 6.29); c.fill(); }
+    else if (tr.t === 'rainbow') { c.globalAlpha = fade * .85; c.fillStyle = `hsl(${(p.i * 6 + t * 80) % 360},90%,62%)`; c.beginPath(); c.arc(p.x, p.y, 3.2 * f + 1, 0, 6.29); c.fill(); }
+    else if (tr.t === 'bubble') { c.globalAlpha = fade * .8; c.strokeStyle = '#bff6ff'; c.lineWidth = 1.2; const r = 2 + (p.i % 4) + (1 - f) * 4;
+      c.beginPath(); c.arc(p.x + Math.sin(t + p.i) * 4, p.y - (1 - f) * 18, r, 0, 6.29); c.stroke(); }
+    else if (tr.t === 'mist') { c.globalAlpha = fade * .35; const r = 8 + (1 - f) * 14; const g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, '#e8f0ff'); g.addColorStop(1, 'rgba(232,240,255,0)'); c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y, r, 0, 6.29); c.fill(); }
+    else if (tr.t === 'emoji') { c.globalAlpha = fade; c.font = `${Math.round(10 + 6 * f)}px system-ui`; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.save(); c.translate(p.x, p.y); if (tr.em === '👣') c.rotate(p.i % 2 ? .25 : -.25); c.fillText(tr.em, 0, 0); c.restore(); }
+  }
+  c.globalAlpha = 1;
 }
 // other players' recent actions, shown as soft rings with an icon (anonymous, a little delayed)
 const PULSE_ICON = { open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣', link: '🔗', field: '🔺', break: '💥', tower: '🗼', towerdown: '💥', ach: '🏅', levelup: '⭐', gift: '🎁', trade: '🔁', craft: '⚒️', merge: '🧪' };
@@ -4388,6 +4589,7 @@ function gpsMsg(t, cls) {
   if (cls === 'bad') FX.geiger(Infinity, 1); const g = $('#gps'); g.className = 'gpspill ' + (cls || ''); $('#gpsText').textContent = t; $('#gpsBtn').hidden = cls === 'ok'; }
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
+  trailAdd(lat, lon);
   if (first && KEY && !OFFLINE) DB.ping({ lat, lon }).catch(() => {});   // so the admin map is right straight away
   trackWalk(lat, lon, pos.acc, manual);
   if (!fly) { rcEnsureAround(pos); wildEnsureAround(pos); rcDraw(); if (!manual && pos.acc <= 40) rcCollect(pos, false); }
@@ -4648,11 +4850,13 @@ async function fetchLevels() {
   for (const id of want) { const v = got[id] || 0; if ((LVL.get(id) || 0) !== v) { LVL.set(id, v); changed = true; } }
   if (changed) drawChestMarkers();
 }
+const mySkin = () => cosGet('cskin', cosEq('cskin')).em;
+const SKIN_OK = new Set(COSMETICS.cskin.items.map(i => i.em).filter(Boolean));
 function chestPin(c, extra) {
   const rare = isRare(c), seen = !!(P && P.stats.visited[c.id]), lv = chestLevel(LVL.get(c.id));
   const cls = 'cm cm2' + (c.kind === 'player' ? ' pl' : '') + (rare ? ' rare' : '') + (seen ? ' seen' : ' fresh') + (extra || '');
   return L.divIcon({ className: cls, iconSize: [36, 44], iconAnchor: [18, 42],
-    html: `<div class="pin">${CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}` });
+    html: `<div class="pin${c.skin && SKIN_OK.has(c.skin) ? ' skinned' : ''}">${c.skin && SKIN_OK.has(c.skin) ? `<span class="pskin">${c.skin}</span>` : CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}` });
 }
 function drawChestMarkers() {
   if (!map || !window.L || !pos) return;
@@ -4897,6 +5101,11 @@ async function openChest(id, byDrone) {
     gainKey(meta);
     const tb = towerBonus(meta);
     if (tb.length) setTimeout(() => { toast(`🗼 Tower bonus: +${tb.map(it => it.n).join(', ')}`, 'gold'); renderAll(); }, 2400);
+    if (boostOn('luck')) {
+      let it = null; for (let i = 0; i < 20 && (!it || it.r < 2); i++) it = rollItem(Math.random, 2.2);
+      P.boost.luck--; addItem(it.id); save(); renderBoostBar();
+      setTimeout(() => { toast(`🍀 Lucky Charm: +${it.n} (${RAR[it.r].n})${P.boost.luck ? ` · ${P.boost.luck} left` : ''}`, 'gold'); FX.sfx('reveal', it.r); renderAll(); }, 3000);
+    }
     act(firstVisit ? 'newchest' : 'open', (isRare(meta) ? '✨ ' : '') + meta.name + ' (Lv ' + chestLevel(chestXP(r.value)) + ')' + (byDrone ? ' by drone' : ''), meta);
     if (firstVisit) earn(CO.chestNew, 'New chest');
     if (firstVisit && isRare(meta)) { P.stats.rareOpens = (P.stats.rareOpens || 0) + 1; earn(RARE_BONUS, '✨ Rare cache'); FX.confetti(['#b88bff', '#ffd98a', '#fff'], 40); }
@@ -5130,11 +5339,11 @@ function hideDialog(spot, byDrone, asAdmin) {
     nm.oninput = upd; $('#hGrid', m).onclick = e => { const t = e.target.closest('.tile'); if (!t) return; give = t.dataset.id; $$('#hGrid .tile', m).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     go.onclick = async () => {
       go.disabled = true; const id = 'u_' + Date.now().toString(36) + randHex().slice(0, 4), name = nm.value.trim();
-      const meta = { id, name, lat: at.lat, lon: at.lon, kind: 'player' }, day = utcDay(), ch = makeChest(meta, day);
+      const meta = Object.assign({ id, name, lat: at.lat, lon: at.lon, kind: 'player' }, mySkin() ? { skin: mySkin() } : {}), day = utcDay(), ch = makeChest(meta, day);
       const slot = SLOT_IDS[C.CHEST_SLOTS]; ch.items[slot] = { id: give, by: P.name, at: Date.now() };
       try {
         await DB.set('chests/' + id, ch);
-        await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, { name, lat: at.lat, lon: at.lon, kind: 'player' });
+        await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, Object.assign({ name, lat: at.lat, lon: at.lon, kind: 'player' }, mySkin() ? { skin: mySkin() } : {}));
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
       if (byDrone && pos) { P.stats.droneHides = (P.stats.droneHides || 0) + 1; const far = dist(pos, at); if (far > (P.stats.droneHideMaxM || 0)) P.stats.droneHideMaxM = far; }
       removeItem(give); P.stats.hidden = (P.stats.hidden || 0) + 1; P.hideN++; (P.found = P.found || {})[id] = 1; if (byDrone) P.hideDroneN = (P.hideDroneN || 0) + 1; if (BY_ID[give].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
@@ -5161,11 +5370,11 @@ function adminHideDialog(at) {
     g.onclick = e => { const t = e.target.closest('.tile'); if (!t) return; give = t.dataset.id; $$('.tile', g).forEach(x => x.classList.toggle('sel', x === t)); upd(); };
     go.onclick = async () => {
       go.disabled = true; const id = 'u_' + Date.now().toString(36) + randHex().slice(0, 4), name = nm.value.trim();
-      const meta = { id, name, lat: at.lat, lon: at.lon, kind: 'player' }, ch = makeChest(meta, utcDay());
+      const meta = Object.assign({ id, name, lat: at.lat, lon: at.lon, kind: 'player' }, mySkin() ? { skin: mySkin() } : {}), ch = makeChest(meta, utcDay());
       ch.items[SLOT_IDS[C.CHEST_SLOTS]] = { id: give, by: P.name, at: Date.now() };
       try {
         await DB.set('chests/' + id, ch);
-        await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, { name, lat: at.lat, lon: at.lon, kind: 'player' });
+        await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, Object.assign({ name, lat: at.lat, lon: at.lon, kind: 'player' }, mySkin() ? { skin: mySkin() } : {}));
       } catch (e) { go.disabled = false; return toast('Could not hide chest: ' + e.message, 'bad'); }
       (P.found = P.found || {})[id] = 1; save();
       chests.push(Object.assign({ src: 'player', by: P.name, at: Date.now() }, meta));
@@ -5413,7 +5622,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

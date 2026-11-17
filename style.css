@@ -1620,3 +1620,41 @@ body.linkpick .worldtick,body.linkpick .lifepulse{display:none}
 @keyframes rareGleam{0%,100%{filter:drop-shadow(0 0 2px #ffd98a66)}50%{filter:drop-shadow(0 0 9px #ffd98a)}}
 body.modal-open .rcm i,body.modal-open .cm2 .pin,body.modal-open .lifeclouds i{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.rcm i,.cm2 .pin,.lifeclouds i,.lifepulse i,.lifepulse b{animation:none}}
+/* ===== boosts & tools ===== */
+.offer.boost .bic{font-size:28px;width:44px;text-align:center;flex:none}
+.offer.boost.live{border-color:#7ff0ff88;box-shadow:0 0 12px #7ff0ff33}
+.bstate{font-style:normal;font-size:11px;font-weight:700;color:#7ff0ff;background:#7ff0ff1a;border:1px solid #7ff0ff55;border-radius:99px;padding:1px 7px;margin-left:4px}
+.boostbar{position:absolute;left:10px;bottom:calc(30px + var(--locH,0px));z-index:610;display:flex;gap:6px;pointer-events:none}
+.boostbar span{display:flex;align-items:center;gap:3px;padding:4px 8px;border-radius:99px;background:color-mix(in srgb,var(--bg) 90%,transparent);border:1px solid #7ff0ff66;
+  box-shadow:0 0 10px #7ff0ff33;font-size:14px;animation:boostGlow 2.4s ease-in-out infinite}
+.boostbar b{font-size:11.5px;color:#bff8ff}
+@keyframes boostGlow{50%{box-shadow:0 0 16px #7ff0ff77}}
+body.linkpick .boostbar{display:none}
+.emgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:6px}
+.emgrid button{font-size:24px;padding:8px 0;border-radius:12px;background:var(--card);border:2px solid transparent;cursor:pointer}
+.emgrid button.on{border-color:var(--acc);background:var(--card2)}
+/* banners & tower levels */
+.bannermark{background:none;border:0}
+.bnpole{position:absolute;left:4px;bottom:0;width:3px;height:50px;background:linear-gradient(#ddd,#777);border-radius:2px}
+.bnpole i{position:absolute;left:3px;top:0;font-style:normal;font-size:18px;line-height:28px;width:34px;text-align:center;border-radius:2px 8px 8px 2px;
+  background:linear-gradient(135deg,var(--tc),var(--tc2));box-shadow:0 2px 8px #0008;transform-origin:0 50%;animation:flagWave 2.2s ease-in-out infinite}
+@keyframes flagWave{0%,100%{transform:skewY(0) scaleX(1)}50%{transform:skewY(-6deg) scaleX(.93)}}
+.towermark .twlv{position:absolute;left:-4px;top:-2px;min-width:18px;height:18px;border-radius:9px;background:#ffd98a;color:#2a1d00;font-size:11px;font-weight:900;
+  display:grid;place-items:center;box-shadow:0 0 0 2px #0008}
+@media (prefers-reduced-motion:reduce){.bnpole i,.boostbar span{animation:none}}
+/* chest skins */
+.cm2 .pin.skinned .pskin{display:block;transform:rotate(45deg);font-size:18px;line-height:1}
+.sw.swchest{--wood:#9a5b22;--lid:#bd7430;--band:#f4c552}.sw.swchest svg{width:24px;height:24px}
+/* names & badges */
+.pname{font-weight:inherit}
+.pbadge{margin-left:4px;font-size:.9em}
+.nc-gold{background:linear-gradient(90deg,#ffe9a0,#f2b84b,#fff3c4,#f2b84b);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:ncShine 3s linear infinite}
+.nc-rainbow{background:linear-gradient(90deg,#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:ncShine 4s linear infinite}
+@keyframes ncShine{to{background-position:-200% 0}}
+.sw.swname{display:grid;place-items:center;font-style:normal;font-weight:900;font-size:16px;background:var(--card)}
+.sw.swtrail{display:grid;place-items:center;font-style:normal;font-size:13px;letter-spacing:-2px;background:var(--card)}
+.sw.tr-sparkle{background:radial-gradient(circle at 30% 40%,#fff6cf 0 2px,transparent 3px),radial-gradient(circle at 65% 60%,#7ff0ff 0 2px,transparent 3px),radial-gradient(circle at 50% 25%,#fff 0 1.5px,transparent 2.5px),var(--card)}
+.sw.tr-flames{background:radial-gradient(circle at 50% 70%,#fff3a0,#ff9a3c 35%,#ff3c14 60%,var(--card) 75%)}
+.sw.tr-rainbow{background:conic-gradient(#ff5f6d,#ffc371,#8ee36b,#4fd6e6,#a98bff,#ff5fa2,#ff5f6d)}
+.sw.tr-bubbles{background:radial-gradient(circle at 35% 40%,transparent 4px,#bff6ff 5px,transparent 6px),radial-gradient(circle at 65% 65%,transparent 3px,#bff6ff 4px,transparent 5px),var(--card)}
+.sw.tr-ghost{background:radial-gradient(circle,#e8f0ffaa,var(--card) 70%)}

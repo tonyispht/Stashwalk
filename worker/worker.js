@@ -264,6 +264,8 @@ export default {
         const rec = { name: (await nameOfUser(env, me)).slice(0, 16),
           coins: num(b.coins, 1e9), miles: Math.max(0, Math.min(1e6, +b.miles || 0)), opened: num(b.opened, 1e6), dex: num(b.dex, 1e5),
           wk: num(b.wk, 1e6), wkCoins: num(b.wkCoins, 1e9), t: Date.now() };
+        if (/^(#[0-9a-f]{6}|rainbow|gold)$/i.test(String(b.nc || ''))) rec.nc = String(b.nc);
+        const bd = String(b.bd || ''); if (bd && bd.length <= 8 && !/[<>&"'\sA-Za-z0-9]/.test(bd)) rec.bd = bd;
         rec.miles = Math.round(rec.miles * 10) / 10;
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
           .bind('lb/' + me, JSON.stringify(rec)).run();
@@ -276,11 +278,11 @@ export default {
         const rows = (await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'lb/%' LIMIT 20000").all()).results;
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
         let list = [];
-        rows.forEach(r => { try { const o = JSON.parse(r.val); const v = period === 'week' ? (o.wk === wk ? o.wkCoins : 0) : o[metric]; list.push({ key: r.path.slice(3), name: o.name, v: v || 0 }); } catch (e) {} });
+        rows.forEach(r => { try { const o = JSON.parse(r.val); const v = period === 'week' ? (o.wk === wk ? o.wkCoins : 0) : o[metric]; list.push({ key: r.path.slice(3), name: o.name, v: v || 0, nc: o.nc, bd: o.bd }); } catch (e) {} });
         list = list.filter(x => x.v > 0).sort((a, b) => b.v - a.v);
         const rank = me ? (list.findIndex(x => x.key === me) + 1) : 0;
         const you = rank ? { rank, v: list[rank - 1].v, name: list[rank - 1].name } : null;
-        return json({ metric, period, wk, total: list.length, top: list.slice(0, 100).map((x, i) => ({ rank: i + 1, name: x.name, v: x.v, me: x.key === me })), you }, 200, cors);
+        return json({ metric, period, wk, total: list.length, top: list.slice(0, 100).map((x, i) => ({ rank: i + 1, name: x.name, v: x.v, nc: x.nc, bd: x.bd, me: x.key === me })), you }, 200, cors);
       }
 
       // ---- factions / teams ----------------------------------------------------------------
@@ -376,6 +378,34 @@ export default {
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1)').bind('tower/' + id, JSON.stringify(rec)).run();
         return json({ ok: true, tower: rec }, 200, cors);
       }
+      // raise a tower of your own faction one level (1-5): wider reach and more bonus loot
+      if (url.pathname === '/tower/upgrade' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const team = await teamOfUser(env, me); if (!team) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const id = String(b.tower || ''); if (!/^t_[a-z0-9]{3,30}$/i.test(id)) return json({ error: 'bad tower' }, 400, cors);
+        const tw = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('tower/' + id).first();
+        if (!tw) return json({ error: 'no such tower' }, 404, cors);
+        const t = JSON.parse(tw.val); if (t.team !== team) return json({ error: 'not your faction' }, 400, cors);
+        const lvl = (t.lvl || 1); if (lvl >= 5) return json({ error: 'max level' }, 409, cors);
+        t.lvl = lvl + 1;
+        await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ?').bind(JSON.stringify(t), 'tower/' + id).run();
+        return json({ ok: true, lvl: t.lvl }, 200, cors);
+      }
+      // faction banners: one per player, visible to everyone for 24 hours
+      if (url.pathname === '/banner/place' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const team = await teamOfUser(env, me); if (!team) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const lat = +b.lat, lon = +b.lon, em = String(b.em || '🚩');
+        if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json({ error: 'bad position' }, 400, cors);
+        if (em.length > 8 || /[<>&"'\sA-Za-z0-9]/.test(em)) return json({ error: 'bad emblem' }, 400, cors);
+        const now = Date.now(), rec = { team, em, lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5, by: await nameOfUser(env, me), at: now, until: now + 86400000 };
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('banner/' + me, JSON.stringify(rec)).run();
+        return json({ ok: true, banner: rec }, 200, cors);
+      }
       // a won Hard glyph hack against an enemy tower: its shield soaks the hit, otherwise it falls
       if (url.pathname === '/tower/attack' && req.method === 'POST') {
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
@@ -464,10 +494,15 @@ export default {
         // towers reach 5 miles, so look a little beyond the box for them
         const pad = 0.09, towers = [], shields = [];
         const { results: tr } = await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'tower/%' LIMIT 5000").all();
-        tr.forEach(r => { try { const t = JSON.parse(r.val); if (t.lat >= s0 - pad && t.lat <= n0 + pad && t.lon >= w0 - pad && t.lon <= e0 + pad) towers.push({ id: t.id, team: t.team, lat: t.lat, lon: t.lon, by: t.by, at: t.at }); } catch (e) {} });
+        tr.forEach(r => { try { const t = JSON.parse(r.val); if (t.lat >= s0 - pad && t.lat <= n0 + pad && t.lon >= w0 - pad && t.lon <= e0 + pad) towers.push({ id: t.id, team: t.team, lat: t.lat, lon: t.lon, by: t.by, at: t.at, lvl: t.lvl || 1 }); } catch (e) {} });
         const { results: sr } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'shield/%' LIMIT 5000").all();
         sr.forEach(r => { try { const v = JSON.parse(r.val); if (v.hp > 0 && v.lat >= s0 - pad && v.lat <= n0 + pad && v.lon >= w0 - pad && v.lon <= e0 + pad) shields.push({ target: r.path.slice(7), team: v.team, r: v.r, hp: v.hp, max: v.max, kind: v.kind, by: v.by }); } catch (e) {} });
-        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600), towers: towers.slice(0, 300), shields: shields.slice(0, 800) }, 200, cors);
+        const banners = [], bnow = Date.now();
+        const { results: br } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'banner/%' LIMIT 5000").all();
+        for (const r of br) { try { const v = JSON.parse(r.val);
+          if (v.until < bnow) { await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind(r.path).run(); continue; }
+          if (v.lat >= s0 && v.lat <= n0 && v.lon >= w0 && v.lon <= e0) banners.push({ team: v.team, em: v.em, lat: v.lat, lon: v.lon, by: v.by, at: v.at, until: v.until }); } catch (e) {} }
+        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600), towers: towers.slice(0, 300), shields: shields.slice(0, 800), banners: banners.slice(0, 300) }, 200, cors);
       }
       // a won Hard glyph hack at a chest breaks the other factions' links (and their fields) there
       if (url.pathname === '/links/break' && req.method === 'POST') {
