@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611181710';
+const APP_BUILD = '202611191500';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -109,7 +109,8 @@ const RARE_BONUS = (C.COINS && C.COINS.rareChest) || 120;
 // ---- chest levels: a chest grows as more different explorers open it ----
 const LVL_AT = [0, 3, 6, 10, 16, 25, 40, 60];          // level points needed for levels 1..8
 // level points = different explorers who opened it + every successful glyph hack by anyone
-const chestXP = rec => rec ? (rec.visits || 0) + (rec.hacks || 0) : 0;
+// level points: explorers + glyph hacks + lock picks + link power + faction ground
+const chestXP = rec => rec ? (rec.visits || 0) + (rec.hacks || 0) + (rec.picks || 0) + (rec.lp || 0) + (rec.gx || 0) : 0;
 const chestLevel = v => { let l = 1; for (let i = 1; i < LVL_AT.length; i++) if ((v || 0) >= LVL_AT[i]) l = i + 1; return l; };
 const lvlBoost = l => 1 + 0.15 * ((l || 1) - 1);      // loot rarity multiplier
 const LVLC = ['#9fb8aa', '#9fb8aa', '#6fd38d', '#49c2e0', '#5d8cff', '#a77bff', '#ff7bd5', '#ffb347', '#ffd84a'];
@@ -2323,6 +2324,9 @@ ach('dpark5', 'Valet Pilot', 'Valet', 'Park your drone 5 times', s => s.dronePar
 ach('g1', 'First Glyph', 'Glyph Novice', 'Win a glyph hack', s => s.glyphWins, 1, '✨');
 ach('g25', 'Glyph Adept', 'Glyph Adept', 'Win 25 glyph hacks', s => s.glyphWins, 25, '🔮');
 ach('g100', 'Glyph Master', 'Glyph Master', 'Win 100 glyph hacks', s => s.glyphWins, 100, '🌀');
+ach('pick1', 'Click', 'Lockpick', 'Pick a chest lock', s => s.pickWins, 1, '🔓');
+ach('pick25', 'Light Fingers', 'Safecracker', 'Pick 25 chest locks', s => s.pickWins, 25, '🗝️');
+ach('pickclean', 'Clean Hands', 'Ghost Fingers', 'Pick 10 locks without a single miss', s => s.pickClean, 10, '🪛');
 ach('ghard1', 'Brave Hacker', 'Daredevil', 'Win a Hard glyph hack', s => s.glyphHard, 1, '🔥');
 ach('ghard10', 'Hard Mode Hero', 'Hard Mode Hero', 'Win 10 Hard glyph hacks', s => s.glyphHard, 10, '🌋');
 ach('gfast10', 'Quick Fingers', 'Quick Fingers', 'Get 10 fast glyph solves', s => s.glyphFast, 10, '⚡');
@@ -2387,7 +2391,7 @@ function statView() {
            droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0, roadCoins: P.stats.roadCoins || 0,
            droneMi: (P.stats.droneM || 0) / 1609.34, droneFarMi: (P.stats.droneMaxM || 0) / 1609.34, droneHides: P.stats.droneHides || 0,
            droneHideFarMi: (P.stats.droneHideMaxM || 0) / 1609.34, droneParks: P.stats.droneParks || 0,
-           glyphs: P.stats.glyphs || 0, glyphWins: P.stats.glyphWins || 0, glyphHard: P.stats.glyphHardWins || 0, glyphFast: P.stats.glyphFast || 0,
+           pickWins: P.stats.pickWins || 0, pickClean: P.stats.pickClean || 0, glyphs: P.stats.glyphs || 0, glyphWins: P.stats.glyphWins || 0, glyphHard: P.stats.glyphHardWins || 0, glyphFast: P.stats.glyphFast || 0,
            glyphBest: P.stats.glyphBest || 0, keysGot: P.stats.keysGot || 0, links: P.stats.links || 0, fields: P.stats.fields || 0,
            broke: P.stats.broke || 0, longestLinkKm: (P.stats.longestLinkM || 0) / 1000, bigFieldKm2: P.stats.bigFieldKm2 || 0,
            levelUps: P.stats.levelUps || 0, maxChestLvl: P.stats.maxChestLvl || 1, rareOpens: P.stats.rareOpens || 0, fx: P.stats.fx || 0,
@@ -2880,7 +2884,13 @@ const GUIDE = () => {
     <li>Opening a chest for the first time pays <b>+${CO.chestNew} 🪙</b>. <span class="gtag" style="--c:#b88bff">✨ Rare</span> chests pay +${RARE_BONUS} 🪙 and always hold an Epic or better.</li>
     <li>Chest types (the small badge): 🌳 park, 🏛️ landmark, ⛺ campsite, 🔭 viewpoint, 🥾 trail, 🚩 street, 📦 player-hidden, and more. Fancier places roll better loot.</li>
     <li>Spot a bad chest (private property, unsafe)? Tap <b>🚩 Report</b>. It's removed after ${C.FLAGS_TO_REMOVE} reports.</li></ul>`],
-  ['⬆️', 'Chest levels', `<p>Chests earn level points: one for every <b>different</b> explorer who opens them, plus one for <b>every successful glyph hack</b> by anyone. Level 2 at 3 points, then 6, 10, 16, 25, 40 and level 8 at 60.</p>
+  ['⬆️', 'Chest levels', `<p>Chests earn level points from five things, by anyone:</p><ul>
+    <li>👣 every <b>different</b> explorer who opens them</li>
+    <li>✨ every successful <b>glyph hack</b> (2 for Hard)</li>
+    <li>🔓 every successful <b>lock pick</b> (2 for a clean pick with no misses). Each lock can be picked once every 30 minutes.</li>
+    <li>🔗 <b>link power</b>: every link made from or to the chest, and 3 more for each field it anchors</li>
+    <li>🏳️ <b>faction ground</b>: 1 a day while the chest sits inside any faction's field</li></ul>
+    <p>Level 2 at 3 points, then 6, 10, 16, 25, 40 and level 8 at 60.</p>
     <ul><li>The level shows as a coloured number on the pin and in the chest window.</li><li>Higher levels restock with rarer items and give tougher, better-paying glyph hacks.</li>
     <li>The chest window shows 👣 explorers and ✨ glyph hacks so far.</li><li>If your visit or hack pushes a chest up a level, you get a coin bonus.</li></ul>`],
   ['✨', 'Glyph hacking', `<p>Every chest has a <b>✨ Glyph hack</b> button. Watch the pattern light up, then tap it back in the same order.</p>
@@ -3638,6 +3648,72 @@ function runGlyph(id, after, lvl, hard, onWin) {
         els.forEach(x => x.classList.add('bad')); finish(2600);
       }
     };
+  });
+}
+
+// ---------------- lock picking: a second way to level a chest ----------------
+// A needle sweeps across the lock; tap while it is inside the glowing sweet spot to set each pin.
+// More pins, smaller sweet spots and a faster needle at higher chest levels. Two picks: one miss
+// is forgiven, the second snaps the last pick. A clean pick (no misses) is worth 2 level points.
+const PICK_CD = 30 * 60000;
+const pickLeft = id => { const cd = P.pickCd || {}; return Math.max(0, (cd[id] || 0) + PICK_CD - Date.now()); };
+function pickMark(id) { const cd = P.pickCd = P.pickCd && typeof P.pickCd === 'object' ? P.pickCd : {}, now = Date.now();
+  for (const k in cd) if (now - cd[k] > PICK_CD) delete cd[k]; cd[id] = now; }
+function lockPick(meta, chest) {
+  if (pickLeft(meta.id)) return toast(`This lock can be picked again in ${Math.ceil(pickLeft(meta.id) / 60000)} min`, 'bad');
+  const lvl = chestLevel(chestXP(chest)), pins = Math.min(6, 3 + Math.floor((lvl - 1) / 2));
+  const zoneW = Math.max(.1, .24 - lvl * .016), speed0 = .55 + lvl * .07;   // track widths per second
+  pickMark(meta.id); P.stats.picks = (P.stats.picks || 0) + 1; save();
+  modal(`<div style="text-align:center"><h3>🔓 Pick the lock${lvl > 1 ? ` <span class="glv" style="--lc:${LVLC[lvl]}">Lv ${lvl}</span>` : ''}</h3>
+    <p class="sub" id="lpMsg">Tap when the needle is in the glow</p>
+    <div class="lppins" id="lpPins">${Array.from({ length: pins }, () => '<i></i>').join('')}</div>
+    <div class="lptrack" id="lpTrack"><span class="lpzone" id="lpZone"></span><span class="lpneedle" id="lpNeedle"></span></div>
+    <div class="lplives" id="lpLives">🪛🪛</div>
+    <button class="btn big" id="lpTap">Set pin</button>
+    <p class="fine">Set all ${pins} pins for chest level points. A clean pick with no misses is worth double.</p></div>`, m => {
+    $('#modal').onclick = null;
+    const zone = $('#lpZone', m), needle = $('#lpNeedle', m), msg = $('#lpMsg', m), pinEls = $$('#lpPins i', m), lives = $('#lpLives', m), tapBtn = $('#lpTap', m);
+    let pin = 0, miss = 0, x = 0, dir = 1, speed = speed0, z0 = 0, raf = 0, last = performance.now(), over = false, best = 1;
+    const newZone = () => { z0 = .08 + Math.random() * (.84 - zoneW); zone.style.left = (z0 * 100) + '%'; zone.style.width = (zoneW * 100) + '%'; zone.classList.remove('hit'); };
+    const tick = now => {
+      const dt = Math.min(.05, (now - last) / 1000); last = now;
+      x += dir * speed * dt; if (x >= 1) { x = 1; dir = -1; } if (x <= 0) { x = 0; dir = 1; }
+      needle.style.left = (x * 100) + '%';
+      if (!over) raf = requestAnimationFrame(tick);
+    };
+    const end = win => {
+      over = true; cancelAnimationFrame(raf); tapBtn.disabled = true;
+      if (win) {
+        const clean = miss === 0, pts = clean ? 2 : 1, coins = 10 + pins * 6 + (clean ? 20 : 0);
+        earn(coins, clean ? '🔓 Clean pick' : '🔓 Lock picked'); gainXP(15 + pins * 3);
+        P.stats.pickWins = (P.stats.pickWins || 0) + 1; if (clean) P.stats.pickClean = (P.stats.pickClean || 0) + 1; checkAch(); save();
+        glyphLevelPoint(meta.id, pts, 'picks', '🔓');
+        act('pick', `${meta.name} · ${pins} pins${clean ? ' clean' : ''}`, meta);
+        msg.innerHTML = `🔓 <b>${clean ? 'Clean pick!' : 'Unlocked!'}</b> +${coins} 🪙 · +${pts} level point${pts > 1 ? 's' : ''}`;
+        FX.sfx('reveal', clean ? 3 : 2); FX.confetti(['#ffd98a', '#9fd0ff', '#fff'], clean ? 70 : 40); FX.vibe([20, 40, 60]);
+      } else {
+        msg.innerHTML = '💥 <b>Your pick snapped.</b> Try this lock again in 30 minutes.'; FX.sfx('error'); FX.vibe([60, 40, 60]);
+        act('pickfail', meta.name, meta);
+      }
+      setTimeout(() => backToChest(meta, chest), win ? 1900 : 2200);
+    };
+    tapBtn.onclick = () => {
+      if (over) return;
+      const c = z0 + zoneW / 2, d = Math.abs(x - c);
+      if (x >= z0 && x <= z0 + zoneW) {
+        pinEls[pin].classList.add('set'); zone.classList.add('hit'); FX.sfx('pickup', pin + 2); FX.vibe(15);
+        best = Math.min(best, d / (zoneW / 2));
+        pin++; if (pin >= pins) return end(true);
+        speed *= 1.12; setTimeout(() => { if (!over) newZone(); }, 160);
+        msg.textContent = `${pins - pin} pin${pins - pin === 1 ? '' : 's'} to go`;
+      } else {
+        miss++; FX.sfx('error'); FX.vibe(40); m.querySelector('.lptrack').classList.remove('shake'); void m.offsetWidth; m.querySelector('.lptrack').classList.add('shake');
+        lives.textContent = '🪛'.repeat(Math.max(0, 2 - miss)) + '💥'.repeat(Math.min(2, miss));
+        if (miss >= 2) return end(false);
+        msg.textContent = 'Missed – one pick left';
+      }
+    };
+    newZone(); raf = requestAnimationFrame(tick);
   });
 }
 
@@ -4508,8 +4584,8 @@ function drawTrail(c, t) {
   c.globalAlpha = 1;
 }
 // other players' recent actions, shown as soft rings with an icon (anonymous, a little delayed)
-const PULSE_ICON = { open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣', link: '🔗', field: '🔺', break: '💥', tower: '🗼', towerdown: '💥', ach: '🏅', levelup: '⭐', gift: '🎁', trade: '🔁', craft: '⚒️', merge: '🧪' };
-const PULSE_TEXT = { open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
+const PULSE_ICON = { pick: '🔓', open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣', link: '🔗', field: '🔺', break: '💥', tower: '🗼', towerdown: '💥', ach: '🏅', levelup: '⭐', gift: '🎁', trade: '🔁', craft: '⚒️', merge: '🧪' };
+const PULSE_TEXT = { pick: 'picked a lock', open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
 async function lifePulse() {
   if (!map || !DB.remote || !DB.pulse || document.hidden || view !== 'explore' || !juicy()) return;
   if (LIFE.live && LIFE.pulsed) return;              // pushed live - only the first look replays recent activity
@@ -5175,25 +5251,26 @@ function levelUpReward(meta, xp) {
   toast(`⬆️ You levelled ${meta.name} up to level ${l}!`, 'gold'); act('levelup', meta.name + ' → Lv ' + l, meta); earn(10 * l, 'Chest level-up');
 }
 // A successful glyph hack adds a level point to the chest for everyone.
-async function glyphLevelPoint(id, pts) {
+async function glyphLevelPoint(id, pts, field, icon) {
   if (!DB.remote) return;
-  let before = 0;
+  let before = 0; field = field || 'hacks';
   try {
-    const r = await DB.tx('chests/' + id, cur => { if (!cur) return undefined; before = chestXP(cur); cur.hacks = (cur.hacks || 0) + (pts || 1); return cur; });
+    const r = await DB.tx('chests/' + id, cur => { if (!cur) return undefined; before = chestXP(cur); cur[field] = (cur[field] || 0) + (pts || 1); return cur; });
     if (!r || !r.value) return;
     const was = LVL.get(id) || 0, xp = chestXP(r.value); LVL.set(id, xp); lvlAsked.set(id, Date.now());
     if (chestLevel(was) !== chestLevel(xp)) drawChestMarkers();
     const meta = chests.find(c => c.id === id);
     if (meta && chestLevel(xp) > chestLevel(before)) setTimeout(() => levelUpReward(meta, xp), 1500);   // +2 can jump past a threshold
     else if (meta) { const l = chestLevel(xp), nx = LVL_AT[l];
-      setTimeout(() => toast(`✨ +${pts || 1} level point${(pts || 1) > 1 ? 's' : ''} for ${meta.name}${nx ? ` · ${xp}/${nx} to Lv ${l + 1}` : ' · max level'}`), 1500); }
+      setTimeout(() => toast(`${icon || '✨'} +${pts || 1} level point${(pts || 1) > 1 ? 's' : ''} for ${meta.name}${nx ? ` · ${xp}/${nx} to Lv ${l + 1}` : ' · max level'}`), 1500); }
   } catch (e) {}
 }
 function lvlChip(chest) {
   const v = chestXP(chest), l = chestLevel(v), next = LVL_AT[l];   // LVL_AT[l] = points needed for level l+1
   const from = LVL_AT[l - 1], pct = next ? Math.round((v - from) / (next - from) * 100) : 100;
-  const ex = chest.visits || 0, hk = chest.hacks || 0;
-  return `<div class="lvlchip" style="--lc:${LVLC[l]}" title="${ex} explorer${ex === 1 ? '' : 's'} + ${hk} glyph hack${hk === 1 ? '' : 's'}"><b>Lv ${l}</b><span>👣 ${ex} · ✨ ${hk}</span>
+  const ex = chest.visits || 0, hk = chest.hacks || 0, pk = chest.picks || 0, lp = chest.lp || 0, gx = chest.gx || 0;
+  const parts = [`👣 ${ex}`, `✨ ${hk}`].concat(pk ? [`🔓 ${pk}`] : [], lp ? [`🔗 ${lp}`] : [], gx ? [`🏳️ ${gx}`] : []);
+  return `<div class="lvlchip" style="--lc:${LVLC[l]}" title="Level points: ${ex} explorers, ${hk} glyph, ${pk} lock picks, ${lp} link power, ${gx} faction ground"><b>Lv ${l}</b><span>${parts.join(' · ')}</span>
     <span class="lvbar"><i style="width:${pct}%"></i></span><small>${next ? `Lv ${l + 1} at ${next}` : 'Max level'}</small></div>`;
 }
 function showChest(meta, chest, canGlyph) {
@@ -5217,6 +5294,7 @@ function showChest(meta, chest, canGlyph) {
     <button class="btn big chswap" id="swapBtn" disabled>Pick an item from each row to trade</button>`}
     <div class="actiles">
       ${tileBtn('glyphBtn', '✨', 'Glyph hack', glyphNote, gLeft ? 'wait' : 'hot', !!gLeft)}
+      ${DB.remote ? tileBtn('pickBtn', '🔓', 'Pick lock', pickLeft(meta.id) ? `ready in ${Math.ceil(pickLeft(meta.id) / 60000)} min` : '+level points', pickLeft(meta.id) ? 'wait' : 'hot', !!pickLeft(meta.id)) : ''}
       ${DB.remote ? tileBtn('linkBtn', '🔗', 'Link', P.team ? Object.keys(P.keys || {}).filter(k => k !== meta.id).length + ' keys' : 'join a faction') : ''}
       ${DB.remote ? tileBtn('shBtn', '🛡️', 'Shield', shNote) : ''}
       ${DB.remote ? tileBtn('fxBtn', '🎆', 'Celebrate', 'light it up') : ''}
@@ -5231,6 +5309,7 @@ function showChest(meta, chest, canGlyph) {
     const shb = $('#shBtn', m); if (shb) shb.onclick = () => shieldDialog(meta.id, 'chest', meta, meta.name, () => backToChest(meta, chest));
     const ar = $('#admRen', m); if (ar) ar.onclick = () => adminRenameDialog(chests.find(c => c.id === meta.id) || meta);
     const am = $('#admRm', m); if (am) am.onclick = () => adminRemoveChest(meta.id);
+    const pk = $('#pickBtn', m); if (pk && !pk.disabled) pk.onclick = () => lockPick(meta, chest);
     const gy = $('#glyphBtn', m);
     if (gy && !gy.disabled) gy.onclick = () => {
       // hack first, then the lined-up trade (if any) goes through whatever the glyph result
@@ -5667,7 +5746,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

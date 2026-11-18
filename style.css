@@ -1659,3 +1659,20 @@ body.linkpick .boostbar{display:none}
 .sw.tr-bubbles{background:radial-gradient(circle at 35% 40%,transparent 4px,#bff6ff 5px,transparent 6px),radial-gradient(circle at 65% 65%,transparent 3px,#bff6ff 4px,transparent 5px),var(--card)}
 .sw.tr-ghost{background:radial-gradient(circle,#e8f0ffaa,var(--card) 70%)}
 .dmph.capped{color:#7ff0ff}
+/* ===== lock picking ===== */
+.lppins{display:flex;justify-content:center;gap:10px;margin:8px 0 14px}
+.lppins i{width:14px;height:34px;border-radius:7px;background:var(--card);border:2px solid var(--line);position:relative;transition:all .2s}
+.lppins i::after{content:"";position:absolute;left:50%;bottom:4px;width:4px;height:12px;margin-left:-2px;border-radius:2px;background:#6b7d72;transition:all .25s cubic-bezier(.2,1.6,.4,1)}
+.lppins i.set{border-color:#ffd98a;box-shadow:0 0 12px #ffd98a88}
+.lppins i.set::after{height:24px;background:#ffd98a}
+.lptrack{position:relative;height:46px;margin:0 6px 10px;border-radius:12px;background:linear-gradient(180deg,#0006,#0002),var(--card);border:2px solid var(--line);overflow:hidden}
+.lptrack.shake{animation:lpShake .35s}
+@keyframes lpShake{25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+.lpzone{position:absolute;top:0;bottom:0;background:linear-gradient(90deg,transparent,#7ff0ff55,transparent);border-left:2px solid #7ff0ffaa;border-right:2px solid #7ff0ffaa;
+  box-shadow:inset 0 0 18px #7ff0ff55;animation:lpGlow 1s ease-in-out infinite}
+.lpzone.hit{background:linear-gradient(90deg,transparent,#ffd98a88,transparent);border-color:#ffd98a}
+@keyframes lpGlow{50%{box-shadow:inset 0 0 26px #7ff0ff99}}
+.lpneedle{position:absolute;top:-2px;bottom:-2px;width:4px;margin-left:-2px;background:#fff;border-radius:2px;box-shadow:0 0 10px #fff,0 0 3px #000}
+.lplives{font-size:20px;margin-bottom:10px;letter-spacing:4px}
+#lpTap{width:100%;font-size:18px}
+@media (prefers-reduced-motion:reduce){.lpzone{animation:none}}

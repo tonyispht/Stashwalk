@@ -151,8 +151,25 @@ async function shieldHit(env, target, attackerTeam) {
 const geoM = (a, b) => { const rad = Math.PI / 180, dLa = (b.lat - a.lat) * rad, dLo = (b.lon - a.lon) * rad;
   const h = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
 
+// ---- chest level points ------------------------------------------------------------------
+// explorers + glyph hacks + lock picks + link power + faction ground
+const chestXp = c => (c.visits || 0) + (c.hacks || 0) + (c.picks || 0) + (c.lp || 0) + (c.gx || 0);
+async function bumpChest(env, id, field, n) {
+  const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('chests/' + id).first(); if (!row) return;
+  let c; try { c = JSON.parse(row.val); } catch (e) { return; }
+  c[field] = (c[field] || 0) + n;
+  await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ?').bind(JSON.stringify(c), 'chests/' + id).run();
+}
+// is a point inside a triangle (same flat projection the crossing test uses)?
+function inTri(p, pts) {
+  const rad = Math.PI / 180, X = q => [q.lon * Math.cos(p.lat * rad), q.lat], P = X(p), [A, B, C] = pts.map(X);
+  const s = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = s(A, B, P), d2 = s(B, C, P), d3 = s(C, A, P);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
 // ---- live pushes -------------------------------------------------------------------------
-const PULSE_KINDS = new Set(['open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
+const PULSE_KINDS = new Set(['pick', 'open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
 const pulseId = ev => { let h = 0; for (const ch of String(ev.t) + ev.k) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h.toString(36); };
 // One instance holds every player's socket (hibernating, so idle sockets cost nothing). Each socket
 // remembers the map area its player is looking at; a new event goes only to sockets whose area holds it.
@@ -488,7 +505,7 @@ export default {
         const dm = (p, q) => { const dLa = (q.lat - p.lat) * rad, dLo = (q.lon - p.lon) * rad, h = Math.sin(dLa / 2) ** 2 + Math.cos(p.lat * rad) * Math.cos(q.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
         // range comes from the origin chest's level: 1 km per level
         const crow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('chests/' + A.id).first();
-        let xp = 0; if (crow) { try { const c = JSON.parse(crow.val); xp = (c.visits || 0) + (c.hacks || 0); } catch (e) {} }
+        let xp = 0; if (crow) { try { xp = chestXp(JSON.parse(crow.val)); } catch (e) {} }
         const LV = [0, 3, 6, 10, 16, 25, 40, 60]; let lvl = 1; for (let i = 1; i < LV.length; i++) if (xp >= LV[i]) lvl = i + 1;
         const maxM = lvl * 1000, len = dm(A, B);
         if (len > maxM) return json({ error: 'too far', len: Math.round(len), max: maxM, lvl }, 400, cors);
@@ -525,6 +542,11 @@ export default {
           await env.DB.prepare(put).bind('field/' + fid, JSON.stringify(F)).run();
           fields.push(Object.assign({ id: fid }, F));
         }
+        // link power: every link adds a level point to both chests; anchoring a field adds 3 to each corner
+        try {
+          await bumpChest(env, P1.id, 'lp', 1); await bumpChest(env, P2.id, 'lp', 1);
+          for (const f of fields) for (const q of f.pts) await bumpChest(env, q.id, 'lp', 3);
+        } catch (e) {}
         return json({ ok: true, link: Object.assign({ id: lid }, L), fields, len: Math.round(len), max: maxM }, 200, cors);
       }
       if (url.pathname === '/links' && req.method === 'GET') {
@@ -647,7 +669,7 @@ export default {
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
         if (!me) return json({ error: 'not logged in' }, 401, cors);
         const b = await req.json().catch(() => ({}));
-        const KINDS = new Set(['newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break', 'shield', 'tower', 'towerdown']);
+        const KINDS = new Set(['pick', 'pickfail', 'newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break', 'shield', 'tower', 'towerdown']);
         const k = String(b.k || '');
         if (!KINDS.has(k)) return json({ error: 'bad kind' }, 400, cors);
         const ev = { k, u: String(await nameOfUser(env, me)).slice(0, 16), t: Date.now() };
@@ -694,13 +716,27 @@ export default {
       if (url.pathname === '/chests/levels' && req.method === 'POST') {
         const b = await req.json().catch(() => ({}));
         const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).filter(i => /^[a-z0-9_]{3,40}$/i.test(i)).slice(0, 300);
-        const out = {};
+        const out = {}, rows = [];
         for (let i = 0; i < ids.length; i += 90) {               // D1 caps bound parameters per query
           const part = ids.slice(i, i + 90);
           const { results } = await env.DB.prepare('SELECT path, val FROM kv WHERE path IN (' + part.map(() => '?').join(',') + ')')
             .bind(...part.map(x => 'chests/' + x)).all();
-          results.forEach(r => { try { const c = JSON.parse(r.val), v = (c.visits || 0) + (c.hacks || 0); if (v) out[r.path.slice(7)] = v; } catch (e) {} });
+          results.forEach(r => { try { rows.push([r.path, JSON.parse(r.val)]); } catch (e) {} });
         }
+        // faction ground: a chest inside any faction's field earns a level point once per day it is seen covered
+        if (rows.length) {
+          const today = Math.floor(Date.now() / 86400000);
+          const { results: fr } = await env.DB.prepare("SELECT val FROM kv WHERE path LIKE 'field/%' LIMIT 5000").all();
+          const fl = []; fr.forEach(r => { try { fl.push(JSON.parse(r.val)); } catch (e) {} });
+          for (const [path, c] of rows) {
+            if (c.gd === today || !isFinite(c.lat) || !isFinite(c.lon) || !fl.length) continue;
+            const f = fl.find(f => f.pts && f.pts.length === 3 && !f.pts.some(q => q.id === path.slice(7)) && inTri(c, f.pts));
+            if (!f) continue;
+            c.gx = (c.gx || 0) + 1; c.gd = today; c.gt = f.team;
+            await env.DB.prepare('UPDATE kv SET val = ?, v = v + 1 WHERE path = ?').bind(JSON.stringify(c), path).run();
+          }
+        }
+        rows.forEach(([path, c]) => { const v = chestXp(c); if (v) out[path.slice(7)] = v; });
         return json({ value: out }, 200, cors);
       }
       // Global faction standings: cells led (ties count for nobody), total points, members.
