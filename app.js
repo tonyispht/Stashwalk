@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611191510';
+const APP_BUILD = '202611191530';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -1078,14 +1078,16 @@ function renderShop() {
       <small>For ${esc(o.relic.n)}${o.locked ? ` · Workshop level ${o.relic.lvl}` : ''}</small></div>
       <button class="btn sm">🪙 ${fmtC(o.price)}</button></div>`).join('')
     : `<div class="empty">You have everything your available recipes need.</div>`;
-  h += `<div class="card earnlist"><b>Ways to earn</b><ul>
-    <li>🥾 Walking <b>${CO.mile} / mile</b></li><li>🎁 Daily reward <b>${CO.daily}–${CO.daily + CO.dailyStreak * 6 + CO.dailyBig}</b></li>
-    <li>📦 A chest you have never opened <b>${CO.chestNew}</b></li><li>🔁 Trade <b>${CO.trade}</b></li>
-    <li>🏅 Achievement <b>${CO.achievement}</b></li><li>⚒️ Craft a relic <b>${CO.craft}</b></li>
-    <li>🫳 Hide a chest <b>${CO.hide}</b></li><li>🎁 Leave a gift <b>${CO.gift}</b></li>
-    <li>🔗 Merge <b>${CO.merge}</b></li><li>✨ New for your shelf <b>${CO.newItem}</b></li>
-    <li>💌 Friend joins <b>${CO.referral}</b></li>
-    <li>🛣️ Coins on streets &amp; trails <b>${RCF.value[0]}–${RCF.value[1] + RCF.pathBonus}</b></li><li>💰 Gold stack <b>${RCF.stackValue}</b></li></ul></div>`;
+  const grp = (t, rows) => `<div class="egrp"><h5>${t}</h5><ul>${rows.map(([l, v]) => `<li>${l} <b>${v}</b></li>`).join('')}</ul></div>`;
+  h += `<div class="card earnlist"><b>Ways to earn</b>
+    ${grp('🚶 Out and about', [['🥾 Walking', `${CO.mile} / mile`], ['🛣️ Road coins', `${RCF.value[0]}–${RCF.value[1] + RCF.pathBonus}`], ['💰 Gold stack', RCF.stackValue]])}
+    ${grp('📦 Chests', [['📦 New chest', CO.chestNew], ['🔁 Trade', CO.trade], ['🎁 Leave a gift', CO.gift], ['🫳 Hide a chest', CO.hide], ['✨ New for your shelf', CO.newItem]])}
+    ${grp('🧩 Hacks &amp; locks', [['✨ Glyph hack', '40+'], ['🔥 Hard glyph', '3×'], ['⚡ Fast solve', '+10+'], ['🔓 Lock pick', '28–66'], ['🪛 Clean pick', '+20']])}
+    ${grp('⚔️ Factions', [['🔗 Make a link', 15], ['🔺 Make a field', '40–400'], ['💥 Break a link', 20], ['💥 Break a field', 30], ['🛡️ Hit a shield', 10], ['🗼 Topple a tower', 150]])}
+    ${grp('🎯 Goals', [['🎁 Daily reward', `${CO.daily}–${(CO.daily + CO.dailyStreak * 6 + CO.dailyBig) * 2}`], ['✨ Unbroken days', 'up to 2×'], ['📅 Daily goal', '35–50'], ['🗓️ Weekly goal', '150–220'], ['🏅 Achievement', CO.achievement], ['⭐ Level up', '25 × lvl']])}
+    ${grp('🛠️ Making things', [['🔗 Merge', CO.merge], ['⚒️ Craft a relic', CO.craft], ['💌 Friend joins', CO.referral]])}
+    <p class="fine" style="margin:10px 0 0">Glyph hacks and lock picks pay more on higher-level chests, and Hard glyphs drop rarer items. A Field Booster doubles field coins, the XP Elixir doubles XP, and drone pickups pay the same as walking. Unbroken daily claims add up to 2× to the daily reward.</p>
+  </div>`;
   $('#shopBox').innerHTML = h;
   renderShopHead();
   const bd = $('#buyDrone'); if (bd) bd.onclick = buyDrone;
