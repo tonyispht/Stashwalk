@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611191530';
+const APP_BUILD = '202611191610';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -592,6 +592,7 @@ function trackWalk(lat, lon, acc, manual) {
   addWalk(d);
 }
 function addWalk(m) {
+  try { petWalk(m); } catch (e) {}
   P.stats.walkedM = (P.stats.walkedM || 0) + m;
   const paid = P.stats.walkPaid || 0, steps = Math.floor(P.stats.walkedM / WALK_STEP);
   if (steps > paid) {
@@ -1059,7 +1060,7 @@ function renderShopHead() {
 function renderShop() {
   const st = shopState(), stock = dailyStock(), merges = mergeOffers(), crafts = craftOffers();
   const can = n => (P.coins || 0) >= n;
-  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard() + towerCard() + boostCard();
+  let h = `<div class="card shoptop" id="shopHead"></div>` + droneCard() + towerCard() + eggCard() + boostCard();
   h += `<h2 class="sec">Today's stock <small>new stock in ${timeToReset()}${sundayShop(utcDay()) ? ' · 🌟 Sunday Legendary' : ''}</small></h2>
     <div class="grid shopgrid">${stock.map((it, i) => {
       const sold = !!st.bought[i];
@@ -1093,6 +1094,7 @@ function renderShop() {
   const bd = $('#buyDrone'); if (bd) bd.onclick = buyDrone;
   const ud = $('#upDrone'); if (ud) ud.onclick = upgradeDrone;
   wireTowerCard(document);
+  const eb = $('#eggBuy'); if (eb) eb.onclick = hatchEgg;
   $('#shopBox').onclick = e => {
     const bb = e.target.closest('[data-boost]'); if (bb) return buyBoost(bb.dataset.boost);
     const b = e.target.closest('[data-buy]'); if (!b) return;
@@ -2326,6 +2328,14 @@ ach('dpark5', 'Valet Pilot', 'Valet', 'Park your drone 5 times', s => s.dronePar
 ach('g1', 'First Glyph', 'Glyph Novice', 'Win a glyph hack', s => s.glyphWins, 1, '✨');
 ach('g25', 'Glyph Adept', 'Glyph Adept', 'Win 25 glyph hacks', s => s.glyphWins, 25, '🔮');
 ach('g100', 'Glyph Master', 'Glyph Master', 'Win 100 glyph hacks', s => s.glyphWins, 100, '🌀');
+ach('set1', 'Set Starter', 'Collector', 'Complete a collection set', s => s.sets, 1, '🧩');
+ach('set10', 'Curator', 'Curator', 'Complete 10 collection sets', s => s.sets, 10, '🏛️');
+ach('gild1', 'Gilded', 'Gilder', 'Gild a collection set', s => s.gilded, 1, '🏵️');
+ach('pet1', 'Best Friend', 'Pet Parent', 'Hatch a companion', s => s.pets, 1, '🐾');
+ach('petdig', 'Good Dog', 'Treasure Hound', 'Have your companion dig 100 times', s => s.petDigs, 100, '🦴');
+ach('merch', 'Window Shopper', 'Haggler', 'Buy from the wandering merchant', s => s.merchBuys, 1, '🧙');
+ach('friend', 'Friendly', 'Friendly', 'Add a friend', s => s.friends, 1, '👥');
+ach('gift10', 'Generous', 'Generous', 'Send 10 friend gifts', s => s.giftsSent, 10, '💝');
 ach('pick1', 'Click', 'Lockpick', 'Pick a chest lock', s => s.pickWins, 1, '🔓');
 ach('pick25', 'Light Fingers', 'Safecracker', 'Pick 25 chest locks', s => s.pickWins, 25, '🗝️');
 ach('pickclean', 'Clean Hands', 'Ghost Fingers', 'Pick 10 locks without a single miss', s => s.pickClean, 10, '🪛');
@@ -2393,7 +2403,7 @@ function statView() {
            droneOpens: P.stats.droneOpens || 0, droneLvl: (P.drone && P.drone.lvl) || 0, roadCoins: P.stats.roadCoins || 0,
            droneMi: (P.stats.droneM || 0) / 1609.34, droneFarMi: (P.stats.droneMaxM || 0) / 1609.34, droneHides: P.stats.droneHides || 0,
            droneHideFarMi: (P.stats.droneHideMaxM || 0) / 1609.34, droneParks: P.stats.droneParks || 0,
-           pickWins: P.stats.pickWins || 0, pickClean: P.stats.pickClean || 0, glyphs: P.stats.glyphs || 0, glyphWins: P.stats.glyphWins || 0, glyphHard: P.stats.glyphHardWins || 0, glyphFast: P.stats.glyphFast || 0,
+           sets: Object.values(P.sets || {}).filter(v => v >= 1).length, gilded: Object.values(P.sets || {}).filter(v => v >= 2).length, pets: (P.pets || []).length, petDigs: P.stats.petDigs || 0, merchBuys: P.stats.merchBuys || 0, friends: P.stats.friends || 0, giftsSent: P.stats.giftsSent || 0, pickWins: P.stats.pickWins || 0, pickClean: P.stats.pickClean || 0, glyphs: P.stats.glyphs || 0, glyphWins: P.stats.glyphWins || 0, glyphHard: P.stats.glyphHardWins || 0, glyphFast: P.stats.glyphFast || 0,
            glyphBest: P.stats.glyphBest || 0, keysGot: P.stats.keysGot || 0, links: P.stats.links || 0, fields: P.stats.fields || 0,
            broke: P.stats.broke || 0, longestLinkKm: (P.stats.longestLinkM || 0) / 1000, bigFieldKm2: P.stats.bigFieldKm2 || 0,
            levelUps: P.stats.levelUps || 0, maxChestLvl: P.stats.maxChestLvl || 1, rareOpens: P.stats.rareOpens || 0, fx: P.stats.fx || 0,
@@ -2406,6 +2416,7 @@ function checkAch() {
   got.forEach(a => { earn(CO.achievement, a.n); act('ach', a.n); });
   got.forEach(a => setTimeout(() => achBanner(a), 400));
   if (got.length) save();
+  checkSets();
 }
 
 // ---------------- account recovery ----------------
@@ -2929,6 +2940,12 @@ const GUIDE = () => {
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
+  ['🧩', 'Collection sets', `<p>Items belong to themed sets like the Trailhead Kit or Pond Life (see Items → Sets). Collect any version of every item in a set to complete it for coins and XP; collect every one at <b>Rare or better</b> to gild it for a bigger reward and an Epic item. Everything you've ever collected counts, so trading never undoes a set.</p>`],
+  ['🌅', 'First chest of the day', `<p>The first chest you open each day gives <b>double loot</b>: two bonus items on top of whatever you trade for.</p>`],
+  ['🧙', 'Wandering merchant', `<p>Every two hours a merchant sets up somewhere near you for one hour, shown on the map with a purple ring and a countdown. Get within 300 ft (or fly your drone over) to buy one of four Rare-or-better items. Each item sells once.</p>`],
+  ['🐾', 'Companions', `<p>Hatch an egg in the Shop for a companion that walks beside you on the map. It levels up as you walk (up to level 10) and digs up coins every 0.25 mi – more as it grows, with a chance of items from level 4. Dragonlings and Unicorn Foals are rare hatches. Switch or rename companions in Me → Profile.</p>`],
+  ['👥', 'Friends & gifts', `<p>Add players by name in Me → Profile. You can send one free gift a day to a friend – a random item. Gifts wait in their gift box until they open them. When you've both added each other, you can also see when they were last active.</p>`],
+  ['🤝', 'Item history', `<p>Items remember their story. Open an item to see how many hands it has passed through and where it was first found. Items in chests show 🤝 and the number of hands.</p>`],
   ['⭐', 'Your level', `<p>You earn <b>XP</b> for nearly everything: finding and opening chests, trading, gifts, hiding chests, glyph hacks (more for Hard), links, fields, breaking enemy links, shields, towers, achievements, daily rewards, walking and road coins.</p>
     <p>Your level shows on your profile picture, with a thin progress bar under the top bar and the full numbers on Me → Profile. Each level needs a little more XP than the last, and every level-up pays coins.</p>`],
   ['🛡️', 'Shields & towers', `<ul><li><b>Shields</b> come in five tiers – Wooden, Iron, Steel, Mythril and Aegis – blocking 1, 2, 3, 5 and 8 hacks. Craft them in Shop → Craft from 3 items of the same rarity, or merge 3 shields into the next tier.</li>
@@ -3720,6 +3737,246 @@ function lockPick(meta, chest) {
   });
 }
 
+// ================= collection sets =================
+// Themed groups of base items. Any version of an item counts toward "Complete"; every one at
+// Rare or better makes the set "Gilded". Progress uses your shelf (ever collected), so trading
+// an item away never undoes a set.
+const SETS = [
+  { id: 'trail', n: 'Trailhead Kit', ic: '🥾', b: [0, 1, 2, 3, 4, 5] },
+  { id: 'prosp', n: 'Prospector', ic: '⛏️', b: [6, 7, 8, 9, 10] },
+  { id: 'secret', n: 'Keys & Secrets', ic: '🗝️', b: [11, 12, 13, 14, 92] },
+  { id: 'camp', n: 'Campfire Night', ic: '🔥', b: [15, 45, 81, 82, 109] },
+  { id: 'band', n: 'Band Practice', ic: '🥁', b: [16, 19, 20, 21, 101] },
+  { id: 'games', n: 'Games Night', ic: '🎲', b: [17, 18, 105, 106, 107] },
+  { id: 'forest', n: 'Forest Floor', ic: '🍄', b: [22, 23, 24, 25, 26, 29] },
+  { id: 'meadow', n: 'Wild Meadow', ic: '🌻', b: [27, 30, 31, 32, 33, 34] },
+  { id: 'shore', n: 'Desert & Shore', ic: '🐚', b: [28, 35, 36, 66, 102, 103] },
+  { id: 'sky', n: 'Sky Watcher', ic: '🌙', b: [39, 40, 41, 42, 43, 44] },
+  { id: 'weather', n: 'Elements', ic: '🌊', b: [37, 38, 44, 45, 46] },
+  { id: 'wood', n: 'Woodland Friends', ic: '🦊', b: [47, 48, 49, 50, 51, 52, 53] },
+  { id: 'pond', n: 'Pond Life', ic: '🐸', b: [54, 57, 64, 65, 71, 73] },
+  { id: 'creepy', n: 'Creepy Crawlies', ic: '🕷️', b: [55, 56, 60, 61, 62, 70] },
+  { id: 'pollen', n: 'Pollinators', ic: '🐝', b: [27, 32, 58, 59, 77] },
+  { id: 'birds', n: 'Birdwatcher', ic: '🦅', b: [48, 63, 64, 69, 72, 73] },
+  { id: 'legend', n: 'Living Legends', ic: '🐉', b: [74, 75, 86, 90, 108] },
+  { id: 'picnic', n: 'Picnic Basket', ic: '🧺', b: [76, 77, 78, 79, 80, 83, 84, 85] },
+  { id: 'knight', n: "Knight's Gear", ic: '🛡️', b: [86, 87, 88, 89, 92] },
+  { id: 'wizard', n: "Wizard's Study", ic: '🔮', b: [13, 15, 90, 91, 92, 93] },
+  { id: 'wardrobe', n: 'Dress Up', ic: '🎩', b: [93, 94, 95, 96, 97, 98] },
+  { id: 'gadget', n: "Explorer's Gadgets", ic: '📷', b: [0, 6, 99, 100, 101] },
+  { id: 'voyage', n: 'Voyager', ic: '⛵', b: [1, 102, 103, 104, 105] }
+];
+const SET_REWARD = { done: { coins: 150, xp: 100 }, gilded: { coins: 600, xp: 300 } };
+function setProgress(st) {
+  const best = b => { let r = -1; for (let i = 4; i >= 0; i--) if (P.dex[b + '_' + i]) { r = i; break; } return r; };
+  const have = st.b.map(best);
+  return { have, n: have.filter(r => r >= 0).length, g: have.filter(r => r >= 2).length, total: st.b.length };
+}
+function checkSets() {
+  if (!P) return; P.sets = P.sets || {};
+  SETS.forEach(st => {
+    const pr = setProgress(st), lv = P.sets[st.id] || 0;
+    if (lv < 1 && pr.n === pr.total) { P.sets[st.id] = 1; earn(SET_REWARD.done.coins, '🧩 Set complete'); gainXP(SET_REWARD.done.xp); act('ach', 'Set: ' + st.n); setBanner(st, false); }
+    if ((P.sets[st.id] || 0) < 2 && pr.g === pr.total) {
+      P.sets[st.id] = 2; earn(SET_REWARD.gilded.coins, '🏵️ Set gilded'); gainXP(SET_REWARD.gilded.xp);
+      const it = rollItem(Math.random, 1, 3); addItem(it.id); act('ach', 'Gilded set: ' + st.n); setBanner(st, true, it);
+    }
+  });
+}
+function setBanner(st, gilded, it) {
+  setTimeout(() => achBanner({ icon: st.ic, n: (gilded ? 'Gilded set: ' : 'Set complete: ') + st.n, t: gilded ? 'Epic ' + (it ? it.n : 'item') : st.n + ' collector' }), 900);
+}
+function renderSets() {
+  const box = $('#setsBox'); if (!box) return; P.sets = P.sets || {};
+  const rows = SETS.map(st => ({ st, pr: setProgress(st), lv: P.sets[st.id] || 0 }))
+    .sort((a, b) => (a.lv === 2) - (b.lv === 2) || (b.pr.n / b.pr.total) - (a.pr.n / a.pr.total));
+  const done = rows.filter(r => r.lv >= 1).length, gil = rows.filter(r => r.lv >= 2).length;
+  box.innerHTML = `<div class="card"><b>🧩 Collection sets <small class="fine">${done}/${SETS.length} complete · ${gil} gilded</small></b>
+    <p class="fine" style="margin:6px 0 0">Collect any version of every item in a set for 🪙 ${SET_REWARD.done.coins} and XP. Collect them all at <b style="color:var(--r2)">Rare</b> or better to gild it for 🪙 ${SET_REWARD.gilded.coins} and an Epic item. Anything you've ever collected counts.</p></div>
+    <div class="setlist">${rows.map(({ st, pr, lv }) => `<div class="setcard${lv === 2 ? ' gilded' : lv ? ' done' : ''}">
+      <div class="sethead"><span class="setic">${st.ic}</span><b>${esc(st.n)}</b><small>${lv === 2 ? '🏵️ Gilded' : lv ? `✓ Complete · ${pr.g}/${pr.total} gilded` : `${pr.n}/${pr.total}`}</small></div>
+      <span class="bar"><i style="width:${Math.round((lv ? pr.g : pr.n) / pr.total * 100)}%"></i></span>
+      <div class="setitems">${st.b.map((b, i) => { const it = BY_ID[b + '_' + Math.max(0, pr.have[i])]; const r = pr.have[i];
+        return `<i class="setit${r < 0 ? ' miss' : ''}${r >= 2 ? ' gold' : ''}" title="${esc(it ? it.n.replace(/^\S+ /, '') : '')}" style="${r >= 0 ? '--rc:' + RAR[r].c : ''}">${it ? it.e : '?'}</i>`; }).join('')}</div></div>`).join('')}</div>`;
+}
+
+// ================= item history =================
+// P.hist[itemId] = { h: hands it has passed through, o: where it was first found }. Chest slots carry
+// the same two fields, so an item's story travels with it from player to player.
+function histNew(id, where) { P.hist = P.hist || {}; if (!P.hist[id]) P.hist[id] = { h: 1, o: String(where || '').slice(0, 40) }; }
+function histIn(id, slot, where) {
+  P.hist = P.hist || {};
+  const h = slot && slot.h ? slot.h + 1 : slot && slot.by ? 2 : 1;
+  const o = String((slot && slot.o) || (!slot || !slot.by ? where : '') || '').slice(0, 40);
+  if (!P.hist[id] || h >= (P.hist[id].h || 0)) P.hist[id] = { h, o };
+}
+function histOut(id) { const x = P.hist && P.hist[id]; const out = x ? { h: Math.min(999, x.h || 1) } : { h: 1 }; if (x && x.o) out.o = x.o; if (P.inv[id] <= 1 && P.hist) delete P.hist[id]; return out; }
+
+// ================= wandering merchant =================
+// Every two hours a merchant sets up somewhere near you for one hour (the hour is offset per player).
+// Walk within 300 ft (or fly the drone over) to buy one of four rare-or-better items, each once.
+const MERCH_SLOT = 7200000, MERCH_STAY = 3600000, MERCH_NEAR_M = 90;
+let merchLayer = null;
+function merchNow() {
+  if (!P || !pos || !DB.remote) return null;
+  const now = Date.now(), slot = Math.floor(now / MERCH_SLOT), off = (hashStr(P.name + '|m|' + slot) % 60) * 60000;
+  const start = slot * MERCH_SLOT + off, end = start + MERCH_STAY;
+  if (now < start || now >= end) return null;
+  if (!P.merch || P.merch.slot !== slot) {
+    const R = rng(hashStr(P.name + '|ml|' + slot)), ang = R() * 6.283, d = 150 + R() * 550;
+    P.merch = { slot, lat: pos.lat + Math.cos(ang) * d / 111320, lon: pos.lon + Math.sin(ang) * d / (111320 * Math.cos(pos.lat * Math.PI / 180)), bought: {}, told: false };
+    save();
+  }
+  const m = P.merch; m.end = end;
+  if (!m.stock) { const R = rng(hashStr(P.name + '|ms|' + slot)); m.stock = [rollItem(R, 1, 2), rollItem(R, 1, 2), rollItem(R, 1, 3), rollItem(R, 1, R() < .15 ? 4 : 3)].map(it => it.id); }
+  return m;
+}
+const merchPrice = it => Math.round(priceOf(it) * 1.25);
+function drawMerchant() {
+  if (!map || !window.L) return;
+  if (!merchLayer) merchLayer = L.layerGroup().addTo(map);
+  merchLayer.clearLayers();
+  const m = merchNow(); if (!m) return;
+  if (!m.told) { m.told = true; save(); toast(`🧙 A wandering merchant set up shop ${fmtDist(dist(pos, m))} away – for ${Math.ceil((m.end - Date.now()) / 60000)} minutes`, 'gold'); FX.sfx('welcome'); }
+  const mins = Math.max(1, Math.ceil((m.end - Date.now()) / 60000));
+  L.marker([m.lat, m.lon], { icon: L.divIcon({ className: 'merchmark', html: `<span class="mmring"></span><span class="mmic">🧙</span><b class="mmt">${mins}m</b>`, iconSize: [54, 54] }), zIndexOffset: 1700, keyboard: false })
+    .addTo(merchLayer).on('click', merchantSheet);
+}
+function merchantSheet() {
+  const m = merchNow(); if (!m) return toast('The merchant has moved on', 'bad');
+  const at = fly ? fly.ll : pos, d = dist(at, m), near = d <= MERCH_NEAR_M, mins = Math.ceil((m.end - Date.now()) / 60000);
+  modal(`<div class="gdhead"><h3>🧙 Wandering merchant</h3><button class="locx" id="mmClose">✕</button></div>
+    <p class="sub" style="margin-top:4px">Leaving in ${mins} min · ${fmtDist(d)} away${near ? '' : ` – get within ${Math.round(MERCH_NEAR_M * FT)} ft${hasDrone() ? ' or fly your drone over' : ''} to buy`}</p>
+    <div class="list">${m.stock.map((id, i) => { const it = BY_ID[id], sold = m.bought[i], pr = merchPrice(it);
+      return `<div class="offer${sold ? ' sold' : (P.coins || 0) < pr ? ' dear' : ''}">${tile(it)}<div class="otxt"><b>${esc(it.n)}</b><small>${RAR[it.r].n}${P.dex[id] ? '' : ' · ✨ new for your shelf'}</small></div>
+        <button class="btn sm" data-mb="${i}" ${sold || !near ? 'disabled' : ''}>${sold ? 'Sold' : '🪙 ' + fmtC(pr)}</button></div>`; }).join('')}</div>`, el => {
+    $('#mmClose', el).onclick = closeModal;
+    el.querySelector('.list').onclick = e => {
+      const b = e.target.closest('[data-mb]'); if (!b) return; const i = +b.dataset.mb, it = BY_ID[m.stock[i]], pr = merchPrice(it);
+      if (m.bought[i]) return; if (!spend(pr)) return toast('Not enough coins', 'bad');
+      m.bought[i] = 1; const fresh = !P.dex[it.id]; addItem(it.id); histNew(it.id, 'a wandering merchant');
+      P.stats.merchBuys = (P.stats.merchBuys || 0) + 1; save(); checkAch(); renderAll();
+      closeModal(); showMade(it, 'From the wandering merchant', fresh);
+    };
+  });
+}
+setInterval(() => { try { if (map && P) drawMerchant(); } catch (e) {} }, 60000);
+
+// ================= companions =================
+const PETS = [
+  { t: 'fox', em: '🦊', n: 'Fox Kit', w: 16 }, { t: 'owl', em: '🦉', n: 'Owlet', w: 16 }, { t: 'bunny', em: '🐇', n: 'Bunny', w: 16 },
+  { t: 'turtle', em: '🐢', n: 'Turtle', w: 14 }, { t: 'hedgehog', em: '🦔', n: 'Hedgehog', w: 14 }, { t: 'frog', em: '🐸', n: 'Frog', w: 14 },
+  { t: 'dragon', em: '🐉', n: 'Dragonling', w: 6, rare: true }, { t: 'unicorn', em: '🦄', n: 'Unicorn Foal', w: 4, rare: true }
+];
+const PET_BY = Object.fromEntries(PETS.map(p => [p.t, p])), EGG_PRICE = 800, PET_DIG_M = 400, PET_MAX = 10;
+const petLevel = xp => Math.min(PET_MAX, Math.floor(Math.sqrt((xp || 0) / 400)) + 1);
+const petNext = l => l >= PET_MAX ? null : Math.pow(l, 2) * 400;
+const myPet = () => (P.pets && P.pets[P.petOn || 0]) || null;
+let petMarker = null;
+function petWalk(m) {
+  const pet = myPet(); if (!pet) return;
+  const before = petLevel(pet.xp); pet.xp = (pet.xp || 0) + m; pet.dig = (pet.dig || 0) + m;
+  const l = petLevel(pet.xp), sp = PET_BY[pet.t] || PETS[0];
+  if (l > before) { toast(`${sp.em} ${pet.name} grew to level ${l}!`, 'gold'); FX.sfx('ach'); FX.confetti(['#ffd98a', '#b6f0c9', '#fff'], 40); }
+  while (pet.dig >= PET_DIG_M) {
+    pet.dig -= PET_DIG_M;
+    const coins = 5 + 3 * l; earn(coins, `${sp.em} ${pet.name} dug`);
+    P.stats.petDigs = (P.stats.petDigs || 0) + 1;
+    let it = null; if (l >= 4 && Math.random() < 0.06 + 0.02 * (l - 4)) { it = rollItem(Math.random, 1 + l * 0.12); addItem(it.id); histNew(it.id, pet.name + "'s digging"); }
+    toast(`${sp.em} ${pet.name} dug up +${coins} 🪙${it ? ' and ' + it.n + '!' : ''}`, it ? 'gold' : '');
+    const el = petMarker && petMarker.getElement && petMarker.getElement(); if (el) { el.classList.remove('dig'); void el.offsetWidth; el.classList.add('dig'); }
+  }
+  save();
+}
+function drawPet() {
+  if (!map || !window.L || !pos) return;
+  const pet = myPet();
+  if (!pet) { if (petMarker) { map.removeLayer(petMarker); petMarker = null; } return; }
+  const sp = PET_BY[pet.t] || PETS[0];
+  const ic = L.divIcon({ className: 'petmark', html: `<span>${sp.em}</span>`, iconSize: [26, 26], iconAnchor: [34, 6] });
+  if (!petMarker) petMarker = L.marker([pos.lat, pos.lon], { icon: ic, interactive: false, keyboard: false, zIndexOffset: 990 }).addTo(map);
+  else { petMarker.setLatLng([pos.lat, pos.lon]); if (petMarker._petT !== pet.t) petMarker.setIcon(ic); }
+  petMarker._petT = pet.t;
+}
+function eggCard() {
+  const can = (P.coins || 0) >= EGG_PRICE, n = (P.pets || []).length;
+  return `<div class="card eggcard"><div class="dtop"><span class="twbig">🥚</span><div><b>Companion egg</b>
+    <small>Hatch a companion that walks beside you on the map. It grows as you walk and digs up coins every ${fmtFt(PET_DIG_M)} – from level 4 it finds items too. Rare hatches: Dragonling and Unicorn Foal.${n ? ` You have ${n}.` : ''}</small></div></div>
+    <button class="btn" id="eggBuy" style="margin-top:10px;width:100%" ${can ? '' : 'disabled'}>Hatch an egg · 🪙 ${fmtC(EGG_PRICE)}</button></div>`;
+}
+function hatchEgg() {
+  if (!spend(EGG_PRICE)) return toast('Not enough coins', 'bad');
+  let roll = Math.random() * PETS.reduce((a, p) => a + p.w, 0), sp = PETS[0];
+  for (const p of PETS) { roll -= p.w; if (roll < 0) { sp = p; break; } }
+  P.pets = P.pets || []; const pet = { t: sp.t, name: sp.n, xp: 0, dig: 0, born: Date.now() }; P.pets.push(pet); P.petOn = P.pets.length - 1;
+  P.stats.pets = P.pets.length; save(); checkAch();
+  modal(`<div style="text-align:center"><div class="egghatch" id="eggH">🥚</div><h3 id="eggT">Hatching…</h3>
+    <div id="eggName" hidden><input id="petName" maxlength="16" value="${esc(sp.n)}"><button class="btn big" id="petOk" style="margin-top:10px;width:100%">Name it</button></div></div>`, m => {
+    $('#modal').onclick = null;
+    setTimeout(() => { $('#eggH', m).classList.add('crack'); FX.sfx('reveal', sp.rare ? 4 : 2); }, 1300);
+    setTimeout(() => {
+      $('#eggH', m).textContent = sp.em; $('#eggH', m).classList.add('born');
+      $('#eggT', m).innerHTML = `${sp.rare ? '✨ Rare! ' : ''}A ${esc(sp.n)}!`; $('#eggName', m).hidden = false;
+      FX.confetti(sp.rare ? ['#ffb02e', '#b46bff', '#fff'] : ['#b6f0c9', '#ffd98a', '#fff'], sp.rare ? 110 : 60); FX.vibe([30, 40, 80]);
+    }, 1900);
+    $('#petOk', m).onclick = () => { pet.name = ($('#petName', m).value || sp.n).trim().slice(0, 16) || sp.n; save(); closeModal(); drawPet(); renderAll(); toast(`${sp.em} ${pet.name} is walking with you now`, 'gold'); };
+  });
+}
+function renderPetCard() {
+  const el = $('#petCard'); if (!el) return;
+  const pets = P.pets || [];
+  if (!pets.length) { el.innerHTML = `<b>🐾 Companion</b><p class="fine">No companion yet – hatch an egg in the Shop. It walks beside you, grows as you walk and digs up coins.</p>`; return; }
+  const pet = myPet(), sp = PET_BY[pet.t] || PETS[0], l = petLevel(pet.xp), nx = petNext(l), from = petNext(l - 1) || 0;
+  el.innerHTML = `<b>🐾 Companion</b>
+    <div class="petrow"><span class="petbig">${sp.em}</span><div style="flex:1;min-width:0"><b>${esc(pet.name)}</b> <small class="fine">${esc(sp.n)} · Lv ${l}</small>
+      <span class="bar"><i style="width:${nx ? Math.round((pet.xp - from) / (nx - from) * 100) : 100}%"></i></span>
+      <small class="fine">${nx ? `${fmtDist(nx - pet.xp)} to level ${l + 1}` : 'Max level'} · digs every ${fmtFt(PET_DIG_M)} for ${5 + 3 * l} 🪙${l >= 4 ? ' + item chance' : ''}</small></div>
+      <button class="btn sm ghost" id="petRen">Rename</button></div>
+    ${pets.length > 1 ? `<div class="petpick">${pets.map((p, i) => `<button class="${i === (P.petOn || 0) ? 'on' : ''}" data-pet="${i}">${(PET_BY[p.t] || PETS[0]).em}<small>${esc(p.name)}</small></button>`).join('')}</div>` : ''}`;
+  $('#petRen', el).onclick = () => { const n = prompt('Name your companion', pet.name); if (n && n.trim()) { pet.name = n.trim().slice(0, 16); save(); renderPetCard(); } };
+  const pk = el.querySelector('.petpick'); if (pk) pk.onclick = e => { const b = e.target.closest('[data-pet]'); if (!b) return; P.petOn = +b.dataset.pet; save(); renderPetCard(); drawPet(); };
+}
+
+// ================= friends & gifts =================
+async function fillFriends() {
+  const el = $('#friendsCard'); if (!el) return;
+  if (!DB.remote) { el.innerHTML = '<b>👥 Friends</b><p class="fine">Friends need the shared world.</p>'; return; }
+  let d, inbox = [];
+  try { [d, inbox] = await Promise.all([DB.wget('/friends'), DB.wget('/gift/inbox').then(j => j.gifts || [])]); }
+  catch (e) { el.innerHTML = `<b>👥 Friends</b><p class="fine" style="color:var(--bad)">${esc(e.message)}</p>`; return; }
+  if (!document.body.contains(el)) return;
+  const fr = d.friends || [];
+  el.innerHTML = `<b>👥 Friends <small class="fine">${fr.length}</small></b>
+    ${inbox.length ? `<div class="giftbox"><b>🎁 ${inbox.length} gift${inbox.length === 1 ? '' : 's'} waiting</b>${inbox.map(g => `<div class="giftrow"><span>🎁 From <b>${esc(g.from)}</b></span><button class="btn sm" data-gopen="${esc(g.id)}">Open</button></div>`).join('')}</div>` : ''}
+    <p class="fine" style="margin:6px 0">Add players by name. You can send one free gift a day to a friend – a random item from the gift box. ${d.giftReady ? '<b style="color:var(--acc2)">Today’s gift is ready to send.</b>' : 'You’ve sent today’s gift.'}</p>
+    <div class="linkbox"><input id="frName" placeholder="Player name" maxlength="64"><button class="btn sm" id="frAdd">Add</button></div>
+    <div class="frlist">${fr.map(f => { const T = TEAMS[f.team];
+      return `<div class="frrow"><span class="frav">${esc((f.name || '?')[0].toUpperCase())}<i class="lvbadge">${levelOf(f.xp).lvl}</i></span>
+        <div class="frtx"><b>${esc(f.name)}</b>${T ? ` <small>${T.icon}</small>` : ''}<small class="fine">${esc(f.title || '')}${f.mutual ? (f.seen ? ` · <span class="${f.seen === 'online' ? 'online' : ''}">${f.seen === 'online' ? '● online' : 'seen ' + f.seen}</span>` : '') : ' · hasn’t added you back'}</small>
+        <small class="fine">📦 ${fmtC(f.opened)} chests · 📚 ${fmtC(f.dex)} items</small></div>
+        <button class="btn sm" data-gift="${esc(f.key)}" ${d.giftReady ? '' : 'disabled'}>🎁</button><button class="btn sm ghost" data-frrm="${esc(f.key)}" title="Remove">✕</button></div>`; }).join('') || '<div class="empty">No friends yet – add someone by their player name.</div>'}</div>
+    ${(d.fans || []).length ? `<p class="fine" style="margin:10px 0 4px">Added you:</p>${d.fans.map(f => `<div class="giftrow"><span><b>${esc(f.name)}</b></span><button class="btn sm ghost" data-addback="${esc(f.name)}">Add back</button></div>`).join('')}` : ''}`;
+  const add = async name => { try { await DB.call('/friends/add', { name }); toast(`👥 Added ${name}`, 'gold'); P.stats.friends = (P.stats.friends || 0) + 1; save(); checkAch(); fillFriends(); } catch (e) { toast(e.message, 'bad'); } };
+  $('#frAdd', el).onclick = () => { const n = $('#frName', el).value.trim(); if (n) add(n); };
+  el.onclick = async e => {
+    const g = e.target.closest('[data-gift]'), rm = e.target.closest('[data-frrm]'), op = e.target.closest('[data-gopen]'), ab = e.target.closest('[data-addback]');
+    if (ab) return add(ab.dataset.addback);
+    if (rm) { await DB.call('/friends/remove', { key: rm.dataset.frrm }).catch(() => {}); return fillFriends(); }
+    if (g) { g.disabled = true; try { await DB.call('/gift/send', { to: g.dataset.gift }); P.stats.giftsSent = (P.stats.giftsSent || 0) + 1; save(); checkAch(); FX.sfx('coin'); toast('🎁 Gift sent!', 'gold'); fillFriends(); } catch (er) { g.disabled = false; toast(er.message, 'bad'); } return; }
+    if (op) { op.disabled = true; try { const r = await DB.call('/gift/claim', { id: op.dataset.gopen }); const it = BY_ID[r.gift.item]; if (!it) return fillFriends();
+      const fresh = !P.dex[it.id]; addItem(it.id); histIn(it.id, { by: r.gift.from, h: 1 }, ''); P.stats.giftsGot = (P.stats.giftsGot || 0) + 1; save(); checkAch(); renderAll();
+      showMade(it, 'Gift from ' + r.gift.from, fresh); } catch (er) { toast(er.message, 'bad'); fillFriends(); } }
+  };
+}
+async function giftCheck() {
+  if (!DB.remote || !P || document.hidden || OFFLINE) return;
+  try { const j = await DB.wget('/gift/inbox'); const n = (j.gifts || []).length; const ids = (j.gifts || []).map(g => g.id).join(',');
+    if (n && ids !== P.giftSeen) { P.giftSeen = ids; save(); toast(`🎁 ${j.gifts[j.gifts.length - 1].from} sent you a gift – open it in Me → Friends`, 'gold'); FX.sfx('daily'); }
+    const dot = $('#meDot'); if (dot) dot.hidden = !n;
+  } catch (e) {}
+}
+setTimeout(() => { giftCheck(); setInterval(giftCheck, 180000); }, 8000);
+
 // Quick access from the map: jump to the Me tab and scroll to the leaderboard.
 function openLeaderboard() { meTab = 'ranks'; show('me'); setTimeout(() => { const c = $('#lbCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 320); }
 // Player's all-time coins rank, shown in the profile card.
@@ -3777,7 +4034,7 @@ let itemsSub = 'pack', shopSub = 'shop';
 function syncSubViews() {
   $$('#itemsSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === itemsSub));
   $$('#shopSeg button').forEach(b => b.classList.toggle('on', b.dataset.sub === shopSub));
-  const sp = $('#sub-pack'), sd = $('#sub-dex'), sk = $('#sub-keys'); if (sp && sd) { sp.hidden = itemsSub !== 'pack'; sd.hidden = itemsSub !== 'dex'; if (sk) sk.hidden = itemsSub !== 'keys'; }
+  const sp = $('#sub-pack'), sd = $('#sub-dex'), sk = $('#sub-keys'), sst = $('#sub-sets'); if (sp && sd) { sp.hidden = itemsSub !== 'pack'; sd.hidden = itemsSub !== 'dex'; if (sk) sk.hidden = itemsSub !== 'keys'; if (sst) sst.hidden = itemsSub !== 'sets'; }
   const ss = $('#sub-shop'), sy = $('#sub-style'), sc = $('#sub-craft');
   if (ss && sc) { ss.hidden = shopSub !== 'shop'; if (sy) sy.hidden = shopSub !== 'style'; sc.hidden = shopSub !== 'craft'; }
 }
@@ -3785,7 +4042,7 @@ const renderShopSub = () => (shopSub === 'shop' ? renderShop() : shopSub === 'st
 function setSub(group, sub) {
   if (group === 'items') itemsSub = sub; else shopSub = sub;
   syncSubViews(); FX.sfx('tap'); FX.vibe(8);
-  if (group === 'items') (itemsSub === 'pack' ? renderPack() : itemsSub === 'keys' ? renderKeys() : renderDex());
+  if (group === 'items') (itemsSub === 'pack' ? renderPack() : itemsSub === 'keys' ? renderKeys() : itemsSub === 'sets' ? renderSets() : renderDex());
   else renderShopSub();
   const sv = $('#v-' + group); if (sv) sv.scrollTop = 0;
 }
@@ -3820,7 +4077,7 @@ function renderAll() {
   if (!P) return; renderHeader();
   renderNextAch();
   if (view === 'explore') renderNearby();
-  else if (view === 'items') (itemsSub === 'pack' ? renderPack() : renderDex());
+  else if (view === 'items') (itemsSub === 'pack' ? renderPack() : itemsSub === 'keys' ? renderKeys() : itemsSub === 'sets' ? renderSets() : renderDex());
   else if (view === 'daily') renderDaily();
   else if (view === 'shop') renderShopSub();
   else if (view === 'me') renderMe();
@@ -3901,6 +4158,7 @@ function showItem(id) {
   modal(`<div style="text-align:center">${revealBox(it)}<h3 style="margin-top:12px">${esc(it.n)}</h3>${badge(it.r)}
     <p class="sub" style="margin-top:10px"><i>${esc(it.flavor)}</i></p>
     <p class="fine">${first ? 'First collected ' + new Date(first).toLocaleDateString() : 'Not collected yet'} · In your pack: ${own}</p>
+    ${P.hist && P.hist[id] && own ? `<p class="fine histline">🤝 ${P.hist[id].h > 1 ? `Passed through <b>${P.hist[id].h} hands</b>` : 'You were its first finder'}${P.hist[id].o ? ` · first found at <b>${esc(P.hist[id].o)}</b>` : ''}</p>` : ''}
     <button class="btn ghost" onclick="document.getElementById('modal').onclick({target:document.getElementById('modal')})">Close</button></div>`);
 }
 
@@ -4197,6 +4455,8 @@ function renderMe() {
     <div class="linkbox"><input id="inviteLink" readonly value="${esc(link)}"><button class="btn sm" id="copyBtn">Copy</button></div>
     <div class="row2" style="padding:0;margin-top:8px">${navigator.share ? '<button class="btn ghost sm" id="shareBtn">Share…</button>' : ''}<button class="btn ghost sm" id="qrBtn">Show QR code</button></div>
     <div id="qr" hidden></div></div>
+    <div class="card" id="petCard"></div>
+    <div class="card" id="friendsCard"><b>👥 Friends</b><p class="fine">Loading…</p></div>
     ${statsCard(s)}
     <h2 class="sec" id="achSec">Achievements <small>${unlocked.length} / ${ACH.length}</small></h2>
     <p class="fine pad" style="margin-top:-2px">Closest to earning first · completed at the bottom.</p><div style="padding:0 14px">`;
@@ -4255,7 +4515,7 @@ function renderMe() {
     $$('#meTabs button').forEach(x => x.classList.toggle('on', x === b)); FX.sfx('tap'); const v = $('#v-me'); if (v) v.scrollTop = 0; if (meTab === 'ranks') { renderLB(); fillStandings(); } };
   $('#qrBtn').onclick = () => { const q = $('#qr'); q.hidden = !q.hidden; $('#qrBtn').textContent = q.hidden ? 'Show QR code' : 'Hide QR code'; };
   if (isAdmin()) { renderAdmin(); $('#meDot').hidden = true; if (!adminData) adminPoll(); }
-  wireLB(); fillMeRank();
+  wireLB(); fillMeRank(); renderPetCard(); fillFriends();
   if ($('#standRefresh')) $('#standRefresh').onclick = () => fillStandings(true);
   if ($('#gmOpen')) $('#gmOpen').onclick = openControlMap;
   fillStandings();
@@ -4714,6 +4974,7 @@ function gpsMsg(t, cls) {
 function setPos(lat, lon, acc, manual) {
   const first = !pos; pos = { lat, lon, acc: acc || 0 };
   trailAdd(lat, lon);
+  setTimeout(() => { try { drawPet(); if (!P.merch || Date.now() - (P.merchDrawn || 0) > 20000) { P.merchDrawn = Date.now(); drawMerchant(); } } catch (e) {} }, 0);
   if (first && KEY && !OFFLINE) DB.ping({ lat, lon }).catch(() => {});   // so the admin map is right straight away
   trackWalk(lat, lon, pos.acc, manual);
   if (!fly) { rcEnsureAround(pos); wildEnsureAround(pos); rcDraw(); if (!manual && pos.acc <= 40) rcCollect(pos, false); }
@@ -5225,6 +5486,12 @@ async function openChest(id, byDrone) {
     gainKey(meta);
     const tb = towerBonus(meta);
     if (tb.length) setTimeout(() => { toast(`🗼 Tower bonus: +${tb.map(it => it.n).join(', ')}`, 'gold'); renderAll(); }, 2400);
+    if (P.firstOpenDay !== dayKey()) {
+      P.firstOpenDay = dayKey(); const lk = 1.4 + 0.1 * (chestLevel(LVL.get(meta.id) || 0) - 1);
+      const fo = [rollItem(Math.random, lk), rollItem(Math.random, lk)]; fo.forEach(it => { addItem(it.id); histNew(it.id, meta.name); });
+      P.stats.firstOpens = (P.stats.firstOpens || 0) + 1; save();
+      setTimeout(() => { toast(`🌅 First chest of the day – double loot: +${fo.map(it => it.n).join(', ')}`, 'gold'); FX.sfx('daily'); FX.confetti(['#ffd98a', '#ffb02e', '#fff'], 50); renderAll(); }, 2000);
+    }
     if (boostOn('luck')) {
       let it = null; for (let i = 0; i < 20 && (!it || it.r < 2); i++) it = rollItem(Math.random, 2.2);
       P.boost.luck--; addItem(it.id); save(); renderBoostBar();
@@ -5292,7 +5559,7 @@ function showChest(meta, chest, canGlyph) {
       <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}${csh && TEAMS[csh.team] ? ` <span class="chsh" style="--tc:${TEAMS[csh.team].c}">🛡️ ${TEAMS[csh.team].icon} ${csh.hp}/${csh.max}</span>` : ''}</p></div></div>
     ${lvlChip(chest)}
     <h4 class="chsec">Inside the chest</h4>
-    <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: chest.items[s].by ? 'from ' + chest.items[s].by : '', mine: !!chest.items[s].by && String(chest.items[s].by).toLowerCase() === String(P.name).toLowerCase() }) : ''; }).join('')}</div>
+    <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: (chest.items[s].by ? 'from ' + chest.items[s].by : '') + ((chest.items[s].h || 0) > 1 ? ` · 🤝${chest.items[s].h}` : ''), mine: !!chest.items[s].by && String(chest.items[s].by).toLowerCase() === String(P.name).toLowerCase() }) : ''; }).join('')}</div>
     ${done ? `<p class="chnote">You traded here recently. You can swap again in ${fmtWait(wait)}.</p>` : `<h4 class="chsec">Your pack <small>pick one to leave behind</small></h4><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
     <button class="btn big chswap" id="swapBtn" disabled>Pick an item from each row to trade</button>`}
     <div class="actiles">
@@ -5343,15 +5610,16 @@ async function doTrade(meta, slot, getId, giveId) {
   if (tradeWait(meta.id)) return toast(`You can trade here again in ${fmtWait(tradeWait(meta.id))}`, 'bad');
   if (getId === giveId) return toast('Pick a different item to trade for', 'bad');
   if (!P.inv[giveId]) return toast('You no longer have that item', 'bad');
-  let ok = false;
+  let ok = false, took = null;
   try {
     const r = await DB.tx('chests/' + meta.id, cur => {
       ok = false; if (!cur || !cur.items || !cur.items[slot] || cur.items[slot].id !== getId) return undefined;
-      cur.items[slot] = { id: giveId, by: P.name, at: Date.now() }; ok = true; return cur;
+      took = cur.items[slot];
+      cur.items[slot] = Object.assign({ id: giveId, by: P.name, at: Date.now() }, histOut(giveId)); ok = true; return cur;
     });
     if (!ok) { toast('Someone else got there first – the chest has changed', 'bad'); return showChest(meta, r.value || makeChest(meta, utcDay())); }
   } catch (e) { return toast('Trade failed: ' + e.message, 'bad'); }
-  removeItem(giveId); const isNew = !P.dex[getId]; addItem(getId);
+  removeItem(giveId); const isNew = !P.dex[getId]; addItem(getId); histIn(getId, took, meta.name);
   P.exch[meta.id] = Date.now(); P.stats.ex = (P.stats.ex || 0) + 1; if (BY_ID[giveId].r >= 3) P.stats.gaveRare = (P.stats.gaveRare || 0) + 1;
   earn(CO.trade, 'Trade'); act('trade', `${BY_ID[giveId].n} → ${BY_ID[getId].n} at ${meta.name}`, meta);
   const it = BY_ID[getId]; save(); checkAch(); renderAll();
@@ -5393,7 +5661,7 @@ async function doDonate(meta, slot, giveId) {
       if (!cur || !cur.items) return undefined;
       if (cur.items[slot]) return undefined;                       // someone filled it first
       if (Object.keys(cur.items).length >= C.MAX_CHEST_SLOTS) return undefined;
-      cur.items[slot] = { id: giveId, by: P.name, at: Date.now() };
+      cur.items[slot] = Object.assign({ id: giveId, by: P.name, at: Date.now() }, histOut(giveId));
       ok = true; return cur;
     });
     if (!ok) { toast('That chest just filled up - try again', 'bad'); return; }
@@ -5467,7 +5735,7 @@ function hideDialog(spot, byDrone, asAdmin) {
     go.onclick = async () => {
       go.disabled = true; const id = 'u_' + Date.now().toString(36) + randHex().slice(0, 4), name = nm.value.trim();
       const meta = Object.assign({ id, name, lat: at.lat, lon: at.lon, kind: 'player' }, mySkin() ? { skin: mySkin() } : {}), day = utcDay(), ch = makeChest(meta, day);
-      const slot = SLOT_IDS[C.CHEST_SLOTS]; ch.items[slot] = { id: give, by: P.name, at: Date.now() };
+      const slot = SLOT_IDS[C.CHEST_SLOTS]; ch.items[slot] = Object.assign({ id: give, by: P.name, at: Date.now() }, histOut(give));
       try {
         await DB.set('chests/' + id, ch);
         await DB.set('cells/' + cellKey(at.lat, at.lon) + '/' + id, Object.assign({ name, lat: at.lat, lon: at.lon, kind: 'player' }, mySkin() ? { skin: mySkin() } : {}));
@@ -5749,7 +6017,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();

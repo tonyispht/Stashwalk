@@ -642,6 +642,76 @@ export default {
         }
         return json({ value: out }, 200, cors);
       }
+      // ---- friends & gifts ---------------------------------------------------------------------
+      // friends/<me> = [keys]  (one-way: adding someone doesn't need their OK; "mutual" when both added)
+      // giftday/<me> = UTC day of the last free gift sent      inbox/<to>/<id> = { from, item, at }
+      if (url.pathname.startsWith('/friends') || url.pathname.startsWith('/gift')) {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const get = async k => { const r = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind(k).first(); try { return r ? JSON.parse(r.val) : null; } catch (e) { return null; } };
+        const put = (k, v) => env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind(k, JSON.stringify(v)).run();
+        const day = Math.floor(Date.now() / 86400000);
+        const mine = (await get('friends/' + me)) || [];
+        if (url.pathname === '/friends/add' && req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          const k = String(b.name || '').trim().toLowerCase();
+          if (!SEG.test(k)) return json({ error: 'no such player' }, 404, cors);
+          if (k === me) return json({ error: "that's you" }, 400, cors);
+          if (!(await get('users/' + k))) return json({ error: 'no such player' }, 404, cors);
+          if (!mine.includes(k)) { if (mine.length >= 50) return json({ error: 'friend list is full' }, 409, cors); mine.push(k); await put('friends/' + me, mine); }
+          return json({ ok: true }, 200, cors);
+        }
+        if (url.pathname === '/friends/remove' && req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          await put('friends/' + me, mine.filter(k => k !== String(b.key || '').toLowerCase()));
+          return json({ ok: true }, 200, cors);
+        }
+        if (url.pathname === '/friends' && req.method === 'GET') {
+          const now = Date.now(), out = [];
+          for (const k of mine) {
+            const u = await get('users/' + k); if (!u) continue;
+            const p = (await get('players/' + k)) || {}, t = await get('team/' + k), theirs = (await get('friends/' + k)) || [];
+            const mutual = theirs.includes(me);
+            let seen = '';
+            if (mutual) { const sv = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('seen/' + k).first(); const ts = sv ? seenOf(sv.val).t : 0;
+              seen = !ts ? '' : now - ts < ONLINE_MS ? 'online' : now - ts < 86400000 ? 'today' : now - ts < 7 * 86400000 ? 'this week' : 'a while ago'; }
+            const st = p.stats || {};
+            out.push({ key: k, name: u.name || k, xp: p.xp || 0, title: p.title || '', team: t && t.team || null, mutual, seen,
+              opened: Object.keys(st.visited || {}).length, dex: Object.keys(p.dex || {}).length });
+          }
+          const fans = []; // players who added me that I haven't added back
+          const { results } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'friends/%' LIMIT 5000").all();
+          for (const r of results) { const k = r.path.slice(8); if (k === me || mine.includes(k)) continue; try { if (JSON.parse(r.val).includes(me)) { const u = await get('users/' + k); if (u) fans.push({ key: k, name: u.name || k }); } } catch (e) {} }
+          const gd = await get('giftday/' + me);
+          return json({ friends: out, fans: fans.slice(0, 20), giftReady: gd !== day }, 200, cors);
+        }
+        if (url.pathname === '/gift/send' && req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          const to = String(b.to || '').toLowerCase();
+          if (!mine.includes(to)) return json({ error: 'add them as a friend first' }, 400, cors);
+          if ((await get('giftday/' + me)) === day) return json({ error: 'already sent today' }, 409, cors);
+          const { results: inb } = await env.DB.prepare('SELECT path FROM kv WHERE path LIKE ?').bind('inbox/' + to + '/%').all();
+          if (inb.length >= 30) return json({ error: 'their gift box is full' }, 409, cors);
+          const w = [60, 28, 10, 2], roll = Math.random() * 100; let r = 0, acc = 0; for (; r < 3; r++) { acc += w[r]; if (roll < acc) break; }
+          const item = Math.floor(Math.random() * 110) + '_' + r, id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          await put('inbox/' + to + '/' + id, { from: await nameOfUser(env, me), item, at: Date.now() });
+          await put('giftday/' + me, day);
+          return json({ ok: true }, 200, cors);
+        }
+        if (url.pathname === '/gift/inbox' && req.method === 'GET') {
+          const { results } = await env.DB.prepare('SELECT path, val FROM kv WHERE path LIKE ? LIMIT 50').bind('inbox/' + me + '/%').all();
+          const gifts = []; results.forEach(r => { try { gifts.push(Object.assign({ id: r.path.split('/')[2] }, JSON.parse(r.val))); } catch (e) {} });
+          return json({ gifts: gifts.sort((a, b) => a.at - b.at) }, 200, cors);
+        }
+        if (url.pathname === '/gift/claim' && req.method === 'POST') {
+          const b = await req.json().catch(() => ({}));
+          const id = String(b.id || ''); if (!/^g[a-z0-9]{4,30}$/.test(id)) return json({ error: 'bad gift' }, 400, cors);
+          const g = await get('inbox/' + me + '/' + id); if (!g) return json({ error: 'already opened' }, 404, cors);
+          await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('inbox/' + me + '/' + id).run();
+          return json({ ok: true, gift: g }, 200, cors);
+        }
+        return json({ error: 'not found' }, 404, cors);
+      }
       // ---- world pulse: anonymous recent activity near you, so the map feels alive -----------
       // No names, and positions are rounded to ~100 m (done at /act).
       if (url.pathname === '/pulse' && req.method === 'GET') {

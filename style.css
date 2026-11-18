@@ -1682,3 +1682,56 @@ body.linkpick .boostbar{display:none}
 .earnlist .egrp{margin-top:10px}
 .earnlist .egrp h5{margin:0 0 2px;font-size:12.5px;color:var(--ink);font-weight:800}
 .earnlist .egrp ul{margin-top:4px}
+/* ===== collection sets ===== */
+.setlist{display:grid;gap:8px;padding:0 14px 14px}
+.setcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.setcard.done{border-color:#5ec27a88}
+.setcard.gilded{border-color:#ffd98a;box-shadow:0 0 14px #ffd98a44;background:linear-gradient(135deg,color-mix(in srgb,#ffd98a 10%,var(--card)),var(--card))}
+.sethead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.sethead .setic{font-size:22px}
+.sethead b{flex:1}
+.sethead small{color:var(--mut);font-size:12px}
+.setcard.gilded .sethead small{color:#ffd98a}
+.setitems{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.setit{font-style:normal;font-size:20px;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--bg2);border:2px solid var(--rc,var(--line))}
+.setit.miss{filter:grayscale(1) brightness(.5);opacity:.5;border-style:dashed}
+.setit.gold{box-shadow:0 0 8px var(--rc)}
+/* ===== item history ===== */
+.histline{color:#bff8ff}
+/* ===== wandering merchant ===== */
+.merchmark{background:none;border:0}
+.merchmark .mmring{position:absolute;inset:4px;border-radius:50%;border:2px solid #c7a3ff;box-shadow:0 0 14px #b46bff;animation:mmPulse 2s ease-out infinite}
+.merchmark .mmic{position:absolute;inset:8px;display:grid;place-items:center;font-size:26px;border-radius:50%;background:radial-gradient(circle,#3a2357,#1b1030);box-shadow:0 3px 10px #000a}
+.merchmark .mmt{position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:99px;background:#b46bff;color:#fff;white-space:nowrap}
+@keyframes mmPulse{0%{transform:scale(.8);opacity:1}100%{transform:scale(1.35);opacity:0}}
+.offer.sold{opacity:.5}
+/* ===== companions ===== */
+.petmark{background:none;border:0}
+.petmark span{display:block;font-size:22px;filter:drop-shadow(0 2px 3px #000a);animation:petHop 1.1s ease-in-out infinite}
+.petmark.dig span{animation:petDig .6s ease-in-out 2}
+@keyframes petHop{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes petDig{0%,100%{transform:rotate(0)}25%{transform:rotate(-25deg) translateY(3px)}75%{transform:rotate(25deg) translateY(3px)}}
+.petrow{display:flex;align-items:center;gap:10px;margin-top:8px}
+.petbig{font-size:40px}
+.petpick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.petpick button{display:flex;flex-direction:column;align-items:center;font-size:22px;padding:6px 8px;border-radius:12px;background:var(--bg2);border:2px solid transparent;cursor:pointer;min-width:58px}
+.petpick button small{font-size:10.5px;color:var(--mut);max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.petpick button.on{border-color:var(--acc)}
+.egghatch{font-size:90px;margin:10px 0;display:inline-block;animation:eggWob .25s ease-in-out infinite}
+.egghatch.crack{animation:eggWob .1s ease-in-out infinite;filter:brightness(1.3) drop-shadow(0 0 20px #fff)}
+.egghatch.born{animation:lvPop .6s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes eggWob{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+@media (prefers-reduced-motion:reduce){.petmark span,.merchmark .mmring,.egghatch{animation:none}}
+/* ===== friends ===== */
+.frlist{display:grid;gap:6px;margin-top:10px}
+.frrow{display:flex;align-items:center;gap:8px;padding:8px;border-radius:12px;background:var(--bg2)}
+.frav{position:relative;flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:900;background:var(--card2);color:var(--ink)}
+.frav .lvbadge{position:absolute;right:-6px;bottom:-4px}
+.frtx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.frtx small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frtx .online{color:var(--ok)}
+.giftbox{margin:8px 0;padding:8px 10px;border-radius:12px;border:1px solid #ffd98a88;background:color-mix(in srgb,#ffd98a 8%,var(--card));animation:boostGlow 2.4s ease-in-out infinite}
+.giftrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.setcard .bar{display:block;position:relative;height:6px;border-radius:3px;background:var(--bg2);overflow:hidden}
+.setcard .bar i{position:absolute;left:0;top:0;bottom:0;height:auto;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.setcard.gilded .bar i{background:linear-gradient(90deg,#ffd98a,#fff3c4)}
