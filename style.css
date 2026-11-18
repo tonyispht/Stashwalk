@@ -1735,3 +1735,28 @@ body.linkpick .boostbar{display:none}
 .setcard .bar{display:block;position:relative;height:6px;border-radius:3px;background:var(--bg2);overflow:hidden}
 .setcard .bar i{position:absolute;left:0;top:0;bottom:0;height:auto;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2))}
 .setcard.gilded .bar i{background:linear-gradient(90deg,#ffd98a,#fff3c4)}
+/* ===== getting started ===== */
+.tutpill{position:absolute;top:42px;left:8px;z-index:505;display:flex;align-items:center;gap:8px;max-width:min(300px,calc(100% - 70px));padding:7px 10px 9px;border-radius:14px;cursor:pointer;
+  background:linear-gradient(135deg,color-mix(in srgb,#7ff0ff 14%,var(--bg)),color-mix(in srgb,var(--bg) 94%,transparent));border:1px solid #7ff0ff88;color:var(--ink);font:inherit;text-align:left;
+  box-shadow:0 4px 16px #0008,0 0 14px #7ff0ff33;overflow:hidden;animation:tutIn .5s cubic-bezier(.2,1.4,.4,1)}
+.facbar:not([hidden]) ~ .tutpill{top:104px}
+.tutpill .tpic{font-size:22px}
+.tutpill .tptx{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.tutpill .tptx b{font-size:12.5px}
+.tutpill .tptx small{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tutpill .tpbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffffff14}
+.tutpill .tpbar i{display:block;height:100%;background:linear-gradient(90deg,#7ff0ff,#ffd98a)}
+@keyframes tutIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+body.linkpick .tutpill,body.toofast .tutpill{display:none}
+.tutlist{display:grid;gap:6px;margin:10px 0}
+.tutrow{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.tutrow .tic{font-size:20px;flex:none;width:26px;text-align:center}
+.tutrow .ttx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.tutrow .ttx small{color:var(--mut);font-size:12px}
+.tutrow .trw{font-size:12px;font-weight:800;color:var(--acc2);white-space:nowrap}
+.tutrow.done{opacity:.6}
+.tutrow.done .ttx b{text-decoration:line-through;text-decoration-color:#ffffff55}
+.tutrow.cur{border-color:#7ff0ff;box-shadow:0 0 12px #7ff0ff44;background:color-mix(in srgb,#7ff0ff 8%,var(--card))}
+.worldtick{top:auto;bottom:calc(78px + var(--locH,0px));transform:translate(-50%,14px)}
+.worldtick.in{transform:translate(-50%,0)}
+.worldtick{max-width:calc(100% - 150px)}

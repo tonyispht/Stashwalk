@@ -331,6 +331,28 @@ export default {
         if (/^(#[0-9a-f]{6}|rainbow|gold)$/i.test(String(b.nc || ''))) rec.nc = String(b.nc);
         const bd = String(b.bd || ''); if (bd && bd.length <= 8 && !/[<>&"'\sA-Za-z0-9]/.test(bd)) rec.bd = bd;
         rec.miles = Math.round(rec.miles * 10) / 10;
+        // Sanity limits: scores are sent by the phone, so anything faster than real play is cut back to
+        // what was possible since the last score (or since the account was made) and the record is flagged.
+        {
+          const now = rec.t, prevRow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('lb/' + me).first();
+          let prev = null; try { prev = prevRow ? JSON.parse(prevRow.val) : null; } catch (e) {}
+          let created = now; try { const u = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('users/' + me).first(); if (u) created = JSON.parse(u.val).created || now; } catch (e) {}
+          const chestsRow = await env.DB.prepare("SELECT count(*) AS n FROM kv WHERE path LIKE 'chests/%'").first();
+          const hrs = Math.max(0, (now - (prev ? prev.t || created : created)) / 3600000), days = Math.max(0, (now - created) / 86400000);
+          const base = prev || { coins: 0, miles: 0, opened: 0, dex: 0 };
+          const lim = {                                           // ceiling for each score right now
+            coins: Math.min((base.coins || 0) + 6000 + 4000 * hrs, 8000 + 40000 * days),
+            miles: Math.min((base.miles || 0) + 0.5 + 15 * hrs, 1 + 60 * days),
+            opened: Math.min((base.opened || 0) + 15 + 60 * hrs, ((chestsRow && chestsRow.n) || 0) + 5),
+            dex: Math.min((base.dex || 0) + 25 + 60 * hrs, 600)
+          };
+          let cut = 0;
+          for (const k of Object.keys(lim)) if (rec[k] > lim[k]) { rec[k] = k === 'miles' ? Math.round(lim[k] * 10) / 10 : Math.floor(lim[k]); cut++; }
+          if (rec.wkCoins > rec.coins) { rec.wkCoins = rec.coins; cut++; }
+          if (prev && prev.wk === rec.wk && rec.wkCoins > (prev.wkCoins || 0) + 6000 + 4000 * hrs) { rec.wkCoins = Math.floor((prev.wkCoins || 0) + 6000 + 4000 * hrs); cut++; }
+          rec.flags = ((prev && prev.flags) || 0) + (cut ? 1 : 0);
+          if (cut) await adminEvent(env, { k: 'lbcap', u: rec.name, t: now, x: 'leaderboard score trimmed ×' + cut });
+        }
         await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1')
           .bind('lb/' + me, JSON.stringify(rec)).run();
         return json({ ok: true }, 200, cors);

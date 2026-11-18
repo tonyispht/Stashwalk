@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611191610';
+const APP_BUILD = '202611191720';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -2328,6 +2328,7 @@ ach('dpark5', 'Valet Pilot', 'Valet', 'Park your drone 5 times', s => s.dronePar
 ach('g1', 'First Glyph', 'Glyph Novice', 'Win a glyph hack', s => s.glyphWins, 1, '✨');
 ach('g25', 'Glyph Adept', 'Glyph Adept', 'Win 25 glyph hacks', s => s.glyphWins, 25, '🔮');
 ach('g100', 'Glyph Master', 'Glyph Master', 'Win 100 glyph hacks', s => s.glyphWins, 100, '🌀');
+ach('tut', 'Pathfinder', 'Pathfinder', 'Finish the Getting started guide', s => s.tutDone, 1, '🧭');
 ach('set1', 'Set Starter', 'Collector', 'Complete a collection set', s => s.sets, 1, '🧩');
 ach('set10', 'Curator', 'Curator', 'Complete 10 collection sets', s => s.sets, 10, '🏛️');
 ach('gild1', 'Gilded', 'Gilder', 'Gild a collection set', s => s.gilded, 1, '🏵️');
@@ -2396,7 +2397,7 @@ function renderNextAch() {
 
 function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
-  return { logins: P.daily.n, streak: P.daily.max || 0, maxRun: Math.max(P.daily.maxRun || 0, P.daily.run == null ? (P.daily.streak || 0) : 0), visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
+  return { tutDone: P.tut && P.tut.done && !P.tut.skipped ? 1 : 0, found: Object.keys(P.found || {}).length, logins: P.daily.n, streak: P.daily.max || 0, maxRun: Math.max(P.daily.maxRun || 0, P.daily.run == null ? (P.daily.streak || 0) : 0), visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
            given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
            miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0,
@@ -2416,7 +2417,7 @@ function checkAch() {
   got.forEach(a => { earn(CO.achievement, a.n); act('ach', a.n); });
   got.forEach(a => setTimeout(() => achBanner(a), 400));
   if (got.length) save();
-  checkSets();
+  checkSets(); checkTut();
 }
 
 // ---------------- account recovery ----------------
@@ -3737,6 +3738,66 @@ function lockPick(meta, chest) {
   });
 }
 
+// ================= getting started =================
+// A short guided path for new players: one thing at a time, each with a small reward. Shown as a
+// pill on the map; tap it for the checklist. Players who are already well along skip it.
+const TUT = [
+  { id: 'find', ic: '🔍', t: 'Find a hidden chest', how: 'Walk toward a dashed search circle on the map. The chest appears when you get close – the Locator helps with the last stretch.', ok: s => s.found >= 1 || s.visited >= 1, c: 25, go: 'explore' },
+  { id: 'open', ic: '📦', t: 'Open a chest', how: 'Stand next to a chest and tap Open chest.', ok: s => s.visited >= 1, c: 25, go: 'explore' },
+  { id: 'trade', ic: '🔁', t: 'Swap an item', how: 'In an open chest, pick one of its items and one of yours, then tap Trade. Your item stays for the next explorer.', ok: s => s.ex >= 1, c: 30, go: 'explore' },
+  { id: 'daily', ic: '🎁', t: 'Claim your daily reward', how: 'Open the Daily tab and tap Claim. There’s a new one every day.', ok: s => s.logins >= 1, c: 25, go: 'daily' },
+  { id: 'glyph', ic: '✨', t: 'Win a glyph hack', how: 'In a chest, tap Glyph hack, watch the pattern, then trace it back.', ok: s => s.glyphWins >= 1, c: 40, go: 'explore' },
+  { id: 'pick', ic: '🔓', t: 'Pick a lock', how: 'In a chest, tap Pick lock and tap Set pin while the needle is in the glow.', ok: s => s.pickWins >= 1, c: 40, go: 'explore' },
+  { id: 'team', ic: '⚔️', t: 'Join a faction', how: 'Pick Embers, Tide or Grove. Factions link chests into fields and compete for ground.', ok: () => !!P.team, c: 30, go: 'team' },
+  { id: 'road', ic: '🪙', t: 'Scoop 25 road coins', how: 'Coins lie along streets and trails – just walk past them to collect.', ok: s => s.roadCoins >= 25, c: 40, go: 'explore' },
+  { id: 'walk', ic: '🥾', t: 'Walk half a mile', how: 'Walk with the game open. Every tenth of a mile pays coins.', ok: () => milesOf() >= 0.5, c: 50, go: 'explore' },
+  { id: 'hide', ic: '🫳', t: 'Hide a chest of your own', how: 'Tap the hide button (open hand) on the map, name the spot and leave an item inside for others to find.', ok: s => s.hidden >= 1, c: 50, go: 'explore' }
+];
+const TUT_FINAL = 300;
+function tutInit() {
+  if (P.tut) return;
+  const s = statView();
+  P.tut = (s.visited >= 10 || levelOf(P.xp || 0).lvl >= 5) ? { done: true, skipped: true } : { got: {} };
+  save();
+}
+function tutNext() { if (!P.tut || P.tut.done) return null; const s = statView(); return TUT.find(st => !P.tut.got[st.id] && !st.ok(s)) || TUT.find(st => !P.tut.got[st.id]) || null; }
+function checkTut() {
+  if (!P || !P.tut || P.tut.done) return;
+  const s = statView(); let paid = 0;
+  TUT.forEach(st => { if (!P.tut.got[st.id] && st.ok(s)) { P.tut.got[st.id] = Date.now(); paid++; earn(st.c, `${st.ic} ${st.t}`); } });
+  if (paid) {
+    const n = Object.keys(P.tut.got).length;
+    if (n >= TUT.length) {
+      P.tut.done = Date.now(); const it = rollItem(Math.random, 1, 2); addItem(it.id); earn(TUT_FINAL, '🧭 Getting started complete');
+      setTimeout(checkAch, 0);
+      setTimeout(() => { achBanner({ icon: '🧭', n: 'You’re all set!', t: 'Pathfinder · +' + TUT_FINAL + ' 🪙 and ' + it.n }); FX.confetti(['#ffd98a', '#7ff0ff', '#fff'], 120); }, 1200);
+    } else { const nx = tutNext(); setTimeout(() => toast(`🧭 Step done! ${nx ? 'Next: ' + nx.t : ''}`, 'gold'), 900); }
+    save();
+  }
+  renderTutPill();
+}
+function renderTutPill() {
+  const host = $('#maprow'); if (!host || !P) return;
+  let el = $('#tutPill');
+  if (!P.tut || P.tut.done || P.tut.hide) { if (el) el.remove(); return; }
+  const nx = tutNext(), n = Object.keys(P.tut.got).length;
+  if (!el) { el = document.createElement('button'); el.id = 'tutPill'; el.className = 'tutpill'; const fb = $('#facBar'); (fb && fb.parentNode || host).appendChild(el); el.onclick = tutSheet; }
+  el.innerHTML = `<span class="tpic">🧭</span><span class="tptx"><b>Getting started ${n}/${TUT.length}</b><small>${nx ? `${nx.ic} ${esc(nx.t)} · +${nx.c} 🪙` : ''}</small></span><span class="tpbar"><i style="width:${Math.round(n / TUT.length * 100)}%"></i></span>`;
+}
+function tutSheet() {
+  const s = statView(), nx = tutNext(), n = Object.keys(P.tut.got || {}).length;
+  modal(`<div class="gdhead"><h3>🧭 Getting started</h3><button class="locx" id="tutX">✕</button></div>
+    <p class="sub" style="margin-top:2px">${n}/${TUT.length} done · finish them all for <b>+${TUT_FINAL} 🪙</b> and a Rare item.</p>
+    <div class="tutlist">${TUT.map(st => { const done = !!P.tut.got[st.id], cur = nx && nx.id === st.id;
+      return `<div class="tutrow${done ? ' done' : ''}${cur ? ' cur' : ''}"><span class="tic">${done ? '✅' : st.ic}</span><div class="ttx"><b>${esc(st.t)}</b>${cur || !done ? `<small>${esc(st.how)}</small>` : ''}</div>
+        <span class="trw">${done ? '' : '+' + st.c + ' 🪙'}</span>${cur ? `<button class="btn sm" data-tgo="${st.go}">Go</button>` : ''}</div>`; }).join('')}</div>
+    <div class="trade"><button class="btn ghost" id="tutHide">Hide this guide</button><button class="btn" id="okBtn">Got it</button></div>
+    <p class="fine" style="text-align:center;margin:6px 0 0">You can bring it back from Settings.</p>`, m => {
+    $('#tutX', m).onclick = closeModal; $('#okBtn', m).onclick = closeModal;
+    $('#tutHide', m).onclick = () => { P.tut.hide = true; save(); closeModal(); renderTutPill(); toast('Guide hidden – bring it back from Me → Settings'); };
+    const g = m.querySelector('[data-tgo]'); if (g) g.onclick = () => { closeModal(); const w = g.dataset.tgo; if (w === 'team') chooseTeamDialog(false); else show(w); };
+  });
+}
 // ================= collection sets =================
 // Themed groups of base items. Any version of an item counts toward "Complete"; every one at
 // Rare or better makes the set "Gilded". Progress uses your shelf (ever collected), so trading
@@ -4063,7 +4124,7 @@ function renderHeader() {
   $('#hAv').innerHTML = avatarHtml(); $('#hName').innerHTML = myNameHtml(); renderXP();
   $('#hStreakV').textContent = streakNow(); $('#hStreak').classList.toggle('lit', streakNow() > 0); $('#hStreak').classList.toggle('perfect', runNow() > 1); $('#hPackV').textContent = packCount();
   { const v = $('#hCoinsV'); if (!v.dataset.n) { v.textContent = fmtC(P.coins || 0); v.dataset.n = P.coins || 0; } else rollTo(v, P.coins || 0); }
-  renderWalk(); renderDroneBtn(); renderBoostBar();
+  renderWalk(); renderDroneBtn(); renderBoostBar(); try { tutInit(); checkTut(); } catch (e) {}
   $('#dailyDot').hidden = P.daily.last === dayKey();
 }
 // The streak never breaks: a missed day just pauses it. "run" counts days in a row without a gap,
@@ -4483,6 +4544,7 @@ function renderMe() {
     <label class="tg"><input type="checkbox" id="setGei" ${FX.prefs.geiger ? 'checked' : ''}><span>📡 Ticking sound while the locator runs</span></label></div>
     <div class="card"><b>Map &amp; display</b>
     <label class="tg"><input type="checkbox" id="setMap" ${FX.prefs.darkmap ? 'checked' : ''}><span>🌙 Dark map</span></label>
+    ${P.tut && !P.tut.done ? `<label class="tg"><input type="checkbox" id="setTut" ${P.tut.hide ? '' : 'checked'}><span>🧭 Getting started guide</span></label>` : ''}
     <label class="tg"><input type="checkbox" id="setZoomMem" ${zoomMemOn() ? 'checked' : ''}><span>🔍 Remember map &amp; drone zoom</span></label>
     ${FX.fsSupported ? `<label class="tg"><input type="checkbox" id="setFs" ${FX.inFs() ? 'checked' : ''}><span>⛶ Fullscreen (also on login)</span></label>` : ''}</div>
     <div class="card"><b>Notifications &amp; privacy</b>
@@ -4546,6 +4608,7 @@ function renderMe() {
   $('#setSnd').onchange = e => { FX.set('snd', e.target.checked); FX.sfx('coin'); };
   $('#setFx').onchange = e => { FX.set('fx', e.target.checked); if (e.target.checked) { FX.burst(innerWidth / 2, innerHeight / 2, ['#f2b84b', '#fff'], 24); FX.vibe(30); } };
   $('#setGei').onchange = e => { FX.set('geiger', e.target.checked); if (e.target.checked) FX.geigerDemo(); };
+  const stt = $('#setTut'); if (stt) stt.onchange = e => { P.tut.hide = !e.target.checked; save(); renderTutPill(); };
   $('#setMap').onchange = e => { FX.set('darkmap', e.target.checked); applyBasemap(); toast(e.target.checked ? 'Dark map on' : 'Standard map on'); };
   const gbtn = $('#guideBtn'); if (gbtn) gbtn.onclick = () => openGuide();
   const szm = $('#setZoomMem'); if (szm) szm.onchange = e => { try { localStorage.setItem('sw_zoom_mem', e.target.checked ? '1' : '0'); } catch (er) {} toast(e.target.checked ? '🔍 Zoom levels will be remembered' : '🔍 Zoom memory off'); };
@@ -6017,7 +6080,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
