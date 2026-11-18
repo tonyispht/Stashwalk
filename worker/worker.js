@@ -5,6 +5,7 @@
 //   DB               (D1 database binding)
 //   ALLOWED_ORIGINS  (text, comma separated, e.g. https://tonyispht.github.io)  - only these sites may call the Worker
 //   ADMIN_USERS      (optional text, comma separated) - accounts that can see the admin stats; defaults to TonyIspht
+//   BACKUPS          (KV namespace binding) - nightly gzipped copies of the database, kept 30 days (cron trigger)
 
 const TOP = new Set(['users', 'players', 'chests', 'cells', 'invites', 'feed']);
 const FLAGS_TO_REMOVE = 3;   // distinct players who must flag a chest before it is dropped
@@ -166,6 +167,24 @@ function inTri(p, pts) {
   const s = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   const d1 = s(A, B, P), d2 = s(B, C, P), d3 = s(C, A, P);
   return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
+// ---- nightly backups ---------------------------------------------------------------------
+// The cron trigger copies the whole kv table into the BACKUPS KV namespace as gzipped JSON,
+// one key per day (backup/YYYY-MM-DD), each kept for 30 days.
+async function runBackup(env) {
+  if (!env.BACKUPS || !env.DB) return { error: 'backups not configured' };
+  const rows = []; let last = '';
+  for (;;) {                                               // page through by path so no query gets too big
+    const { results } = await env.DB.prepare('SELECT path, val, v FROM kv WHERE path > ? ORDER BY path LIMIT 2000').bind(last).all();
+    if (!results.length) break; rows.push(...results); last = results[results.length - 1].path;
+    if (results.length < 2000) break;
+  }
+  const body = new Blob([JSON.stringify({ at: Date.now(), rows })]).stream().pipeThrough(new CompressionStream('gzip'));
+  const gz = await new Response(body).arrayBuffer();
+  const day = new Date().toISOString().slice(0, 10);
+  await env.BACKUPS.put('backup/' + day, gz, { expirationTtl: 31 * 86400, metadata: { rows: rows.length, bytes: gz.byteLength, at: Date.now() } });
+  return { ok: true, day, rows: rows.length, bytes: gz.byteLength };
 }
 
 // ---- live pushes -------------------------------------------------------------------------
@@ -856,6 +875,22 @@ export default {
         return json({ value: out, held, cellsTotal: Object.keys(byCell).length, at: Date.now() }, 200, cors);
       }
 
+      if (url.pathname === '/admin/backups' && req.method === 'GET') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        if (!env.BACKUPS) return json({ error: 'backups not configured' }, 503, cors);
+        const l = await env.BACKUPS.list({ prefix: 'backup/' });
+        return json({ backups: l.keys.map(k => Object.assign({ day: k.name.slice(7) }, k.metadata || {})).sort((a, b) => a.day < b.day ? 1 : -1) }, 200, cors);
+      }
+      if (url.pathname === '/admin/backup/run' && req.method === 'POST') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        return json(await runBackup(env), 200, cors);
+      }
+      if (url.pathname === '/admin/backup' && req.method === 'GET') {
+        const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
+        const day = String(url.searchParams.get('d') || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'bad day' }, 400, cors);
+        const gz = env.BACKUPS && await env.BACKUPS.get('backup/' + day, 'arrayBuffer'); if (!gz) return json({ error: 'no backup for that day' }, 404, cors);
+        return new Response(gz, { headers: Object.assign({}, cors, { 'Content-Type': 'application/gzip', 'Content-Disposition': `attachment; filename="stashwalk-${day}.json.gz"` }) });
+      }
       if (url.pathname === '/admin/stats' && req.method === 'GET') {
         const ad = await requireAdmin(env, req); if (ad.err) return json({ error: ad.msg }, ad.err, cors);
         const now = Date.now();
@@ -1138,5 +1173,9 @@ export default {
     } catch (e) {
       return json({ error: 'server error' }, 500, cors);
     }
+  },
+  // nightly cron: back up the database
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runBackup(env).catch(() => {}));
   }
 };
