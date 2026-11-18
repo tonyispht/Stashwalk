@@ -1676,3 +1676,6 @@ body.linkpick .boostbar{display:none}
 .lplives{font-size:20px;margin-bottom:10px;letter-spacing:4px}
 #lpTap{width:100%;font-size:18px}
 @media (prefers-reduced-motion:reduce){.lpzone{animation:none}}
+.backtop{display:inline-flex;align-items:center;gap:4px;margin:-4px 0 6px;padding:6px 12px;border-radius:99px;background:var(--card);border:1px solid var(--line);
+  color:var(--ink);font-weight:700;font-size:13.5px;cursor:pointer}
+.backtop:active{transform:scale(.95)}

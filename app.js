@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611191500';
+const APP_BUILD = '202611191510';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -2973,7 +2973,7 @@ async function shieldDialog(target, kind, ll, title, back) {
   const enemy = cur && cur.team !== P.team, mine = cur && cur.team === P.team;
   const owned = SHIELDS.map((sh, r) => ({ sh, r, n: P.inv[sh.id] || 0 }));
   const can = r => !enemy && (!mine || r > cur.r);
-  modal(`<h3>🛡️ Shield ${esc(title)}</h3>
+  modal(`<button class="backtop" id="backTop">← Back</button><h3>🛡️ Shield ${esc(title)}</h3>
     <p class="sub">${enemy ? `${TEAMS[cur.team].icon} ${TEAMS[cur.team].name} have a <b>${SHIELDS[cur.r].n}</b> here (${cur.hp}/${cur.max}). Break it with Hard glyph hacks first.`
       : mine ? `Your faction's <b>${SHIELDS[cur.r].n}</b> is up (${cur.hp}/${cur.max}). You can swap in a stronger tier.`
       : `Each enemy Hard glyph win wears a shield down by 1. ${kind === 'tower' ? 'The tower can only fall once the shield is gone.' : 'Links and fields here only break once the shield is gone.'}`}</p>
@@ -2981,7 +2981,7 @@ async function shieldDialog(target, kind, ll, title, back) {
       <span class="kic">🛡️</span><span class="ktx"><b>${esc(o.sh.n)} <small class="fine">×${o.n}</small></b><small>${RAR[o.r].n} · blocks ${SHIELD_HP[o.r]} hack${SHIELD_HP[o.r] === 1 ? '' : 's'}</small></span>${o.n && can(o.r) ? '<span class="kgo">Install</span>' : ''}</button>`).join('')}</div>
     ${owned.some(o => o.n) ? '' : '<p class="fine">You have no shields yet – craft them in Shop → Craft from 3 items of the same rarity.</p>'}
     <div class="trade"><button class="btn ghost" id="cancelBtn">Back</button></div>`, m => {
-    $('#cancelBtn', m).onclick = back;
+    $('#cancelBtn', m).onclick = $('#backTop', m).onclick = back;
     $$('[data-shi]', m).forEach(b => b.onclick = async () => {
       const r = +b.dataset.shi; b.disabled = true;
       try { await DB.call('/shield/install', { target, kind, r, lat: ll.lat, lon: ll.lon }); }
@@ -3183,12 +3183,13 @@ function drawFx() {
 function fxDialog(meta, chest) {
   if (!DB.remote) return toast('Effects need the shared world', 'bad');
   const live = fxList.find(f => f.chest === meta.id && f.until > Date.now());
-  modal(`<h3>🎆 Celebrate at ${esc(meta.name)}</h3>
+  modal(`${chest ? '<button class="backtop" id="backTop">← Back to chest</button>' : ''}<h3>🎆 Celebrate at ${esc(meta.name)}</h3>
     <p class="sub">Everyone nearby sees it on their map.${live ? ` <b>${FX_TYPES[live.type].icon} ${esc(live.by)}'s ${FX_TYPES[live.type].name.toLowerCase()} is running here now.</b>` : ''}</p>
     <div class="fxopts">${Object.entries(FX_TYPES).map(([k, t]) => `<button class="fxopt" data-fx="${k}" ${P.coins < t.cost ? 'disabled' : ''}>
       <span class="fxic">${t.icon}</span><span class="fxtx"><b>${t.name}</b><small>${t.sub}</small></span><span class="fxcost">${t.cost} 🪙</span></button>`).join('')}</div>
     <div class="trade"><button class="btn ghost" id="cancelBtn">${chest ? 'Back to chest' : 'Close'}</button></div>`, m => {
     $('#cancelBtn', m).onclick = () => chest ? backToChest(meta, chest) : closeModal();
+    const bt = $('#backTop', m); if (bt) bt.onclick = () => backToChest(meta, chest);
     $$('.fxopt', m).forEach(b => b.onclick = async () => {
       const k = b.dataset.fx, t = FX_TYPES[k];
       if (P.coins < t.cost) return toast('Not enough coins', 'bad');
@@ -3376,14 +3377,14 @@ function linkDialog(meta, chest) {
     const can = !st || st.s === 'ok';
     return `<button class="keyrow pick${st && st.s !== 'ok' ? ' off' : ''}" data-lk="${esc(k.id)}" ${can ? '' : 'disabled'}><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)} ${tag}</small></span>${can ? '<span class="kgo">Link →</span>' : ''}</button>`;
   };
-  modal(`<h3>🔗 Link from ${esc(meta.name)}</h3>
+  modal(`<button class="backtop" id="backTop">← Back to chest</button><h3>🔗 Link from ${esc(meta.name)}</h3>
     <p class="sub">Lv ${lvl} chest – links reach <b>${fmtDist(R)}</b>. Pick a key; it's used up. Links can't cross other links. Close a triangle of three chests to make a ${T.icon} field.</p>
     ${inR.length ? `<button class="btn ghost big" id="lkMap" style="margin-bottom:8px" disabled>🗺️ Choose on map</button>` : ''}
     <div class="keylist" id="lkList">${inR.map(k => row(k, null)).join('')
       || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}</div>
     ${out.length ? `<p class="fine" style="margin:8px 2px 4px">Out of range (${out.length})</p><div class="keylist">` + out.slice(0, 8).map(k => `<div class="keyrow off"><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)}</small></span></div>`).join('') + '</div>' : ''}
     <div class="trade"><button class="btn ghost" id="cancelBtn">Back to chest</button></div>`, m => {
-    $('#cancelBtn', m).onclick = () => backToChest(meta, chest);
+    $('#cancelBtn', m).onclick = $('#backTop', m).onclick = () => backToChest(meta, chest);
     const mb = $('#lkMap', m); if (mb) mb.onclick = () => { if (ranked) linkPickMap(meta, chest, R, ranked); };
     if (inR.length) (async () => {
       ranked = await linkTargets(meta, R);
