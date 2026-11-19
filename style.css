@@ -1760,3 +1760,5 @@ body.linkpick .tutpill,body.toofast .tutpill{display:none}
 .worldtick{top:auto;bottom:calc(78px + var(--locH,0px));transform:translate(-50%,14px)}
 .worldtick.in{transform:translate(-50%,0)}
 .worldtick{max-width:calc(100% - 150px)}
+.footnote{margin:6px 0 2px;padding:6px 10px;border-radius:10px;font-size:12.5px;color:var(--mut);background:var(--bg2);border:1px dashed var(--line)}
+.footnote.on{color:#b6f0c9;border:1px solid #49d17a88;background:color-mix(in srgb,#49d17a 10%,var(--bg2))}

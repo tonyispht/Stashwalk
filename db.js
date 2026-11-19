@@ -217,8 +217,8 @@ window.DB = (function () {
       if (!r.ok) { const e = new Error(j.error || path + ' ' + r.status); e.data = j; throw e; }
       return j;
     },
-    async linkMake(from, to) {
-      const r = await fetch(W + '/links/make', { method: 'POST', headers: whead(), body: JSON.stringify({ from, to }) });
+    async linkMake(from, to, foot) {
+      const r = await fetch(W + '/links/make', { method: 'POST', headers: whead(), body: JSON.stringify({ from, to, foot: !!foot }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { const e = new Error(j.error || 'link ' + r.status); e.data = j; throw e; }
       return j;

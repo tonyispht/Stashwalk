@@ -154,7 +154,7 @@ const geoM = (a, b) => { const rad = Math.PI / 180, dLa = (b.lat - a.lat) * rad,
 
 // ---- chest level points ------------------------------------------------------------------
 // explorers + glyph hacks + lock picks + link power + faction ground
-const chestXp = c => (c.visits || 0) + (c.hacks || 0) + (c.picks || 0) + (c.lp || 0) + (c.gx || 0);
+const chestXp = c => (c.visits || 0) + (c.hacks || 0) + (c.picks || 0) + (c.lp || 0) + (c.gx || 0) + (c.wk || 0);
 async function bumpChest(env, id, field, n) {
   const row = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('chests/' + id).first(); if (!row) return;
   let c; try { c = JSON.parse(row.val); } catch (e) { return; }
@@ -586,6 +586,7 @@ export default {
         // link power: every link adds a level point to both chests; anchoring a field adds 3 to each corner
         try {
           await bumpChest(env, P1.id, 'lp', 1); await bumpChest(env, P2.id, 'lp', 1);
+          if (b.foot) await bumpChest(env, A.id, 'lp', 1);        // made standing at the origin chest in person
           for (const f of fields) for (const q of f.pts) await bumpChest(env, q.id, 'lp', 3);
         } catch (e) {}
         return json({ ok: true, link: Object.assign({ id: lid }, L), fields, len: Math.round(len), max: maxM }, 200, cors);

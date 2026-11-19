@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611191720';
+const APP_BUILD = '202611201000';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -110,7 +110,10 @@ const RARE_BONUS = (C.COINS && C.COINS.rareChest) || 120;
 const LVL_AT = [0, 3, 6, 10, 16, 25, 40, 60];          // level points needed for levels 1..8
 // level points = different explorers who opened it + every successful glyph hack by anyone
 // level points: explorers + glyph hacks + lock picks + link power + faction ground
-const chestXP = rec => rec ? (rec.visits || 0) + (rec.hacks || 0) + (rec.picks || 0) + (rec.lp || 0) + (rec.gx || 0) : 0;
+const chestXP = rec => rec ? (rec.visits || 0) + (rec.hacks || 0) + (rec.picks || 0) + (rec.lp || 0) + (rec.gx || 0) + (rec.wk || 0) : 0;
+// Standing at a chest or tower in person (not just the drone hovering over it) earns extra level points.
+const FOOT_SLACK_M = 15;
+const onFootAt = t => !!(t && pos && (pos.acc || 0) <= 60 && dist(pos, t) <= Math.max(unlockM(), 60) + FOOT_SLACK_M);
 const chestLevel = v => { let l = 1; for (let i = 1; i < LVL_AT.length; i++) if ((v || 0) >= LVL_AT[i]) l = i + 1; return l; };
 const lvlBoost = l => 1 + 0.15 * ((l || 1) - 1);      // loot rarity multiplier
 const LVLC = ['#9fb8aa', '#9fb8aa', '#6fd38d', '#49c2e0', '#5d8cff', '#a77bff', '#ff7bd5', '#ffb347', '#ffd84a'];
@@ -2904,6 +2907,7 @@ const GUIDE = () => {
     <li>🔓 every successful <b>lock pick</b> (2 for a clean pick with no misses). Each lock can be picked once every 30 minutes.</li>
     <li>🔗 <b>link power</b>: every link made from or to the chest, and 3 more for each field it anchors</li>
     <li>🏳️ <b>faction ground</b>: 1 a day while the chest sits inside any faction's field</li></ul>
+    <p><b>🥾 Be there in person:</b> a glyph hack, lock pick or link made while you're standing at the chest earns <b>1 extra level point</b>, and opening a chest for the first time on foot adds a walk-in point. Drone visits earn the normal amount. Tower upgrades also cost 40% less when you're standing at the tower.</p>
     <p>Level 2 at 3 points, then 6, 10, 16, 25, 40 and level 8 at 60.</p>
     <ul><li>The level shows as a coloured number on the pin and in the chest window.</li><li>Higher levels restock with rarer items and give tougher, better-paying glyph hacks.</li>
     <li>The chest window shows 👣 explorers and ✨ glyph hacks so far.</li><li>If your visit or hack pushes a chest up a level, you get a coin bonus.</li></ul>`],
@@ -3101,6 +3105,7 @@ function bannerDialog() {
 }
 // tower levels: wider reach and more loot per level
 const TOWER_MAXLVL = 5, towerUpCost = lvl => 1000 * lvl;
+const towerUpPrice = t => Math.round(towerUpCost(t.lvl || 1) * (onFootAt(t) ? 0.6 : 1));
 const towerReach = t => TOWER_RADIUS_M * (1 + 0.2 * ((t.lvl || 1) - 1));
 const towerItems = t => (t.lvl || 1) >= 5 ? 3 : (t.lvl || 1) >= 3 ? 2 : 1;
 function towerCard() {
@@ -3131,7 +3136,7 @@ async function towerSheet(t) {
   modal(`<div class="gdhead"><h3>🗼 ${T.icon} ${T.name} tower</h3><button class="locx" id="twClose">✕</button></div>
     <p class="sub" style="margin-top:4px">Placed by ${esc(t.by || 'a player')} · ${ago(t.at)}${d != null ? ' · ' + fmtDist(d) + ' away' : ''}</p>
     <p class="fine"><b>Level ${t.lvl || 1}</b> · ${T.name} players get ${towerItems(t) > 1 ? towerItems(t) + ' bonus items' : 'a bonus item'} from chests within ${(towerReach(t) / 1609.344).toFixed(1)} miles of this tower.</p>
-    ${mine && (t.lvl || 1) < TOWER_MAXLVL ? `<button class="btn ghost" id="twUp" style="width:100%;margin-bottom:8px">⬆️ Upgrade to level ${(t.lvl || 1) + 1} · 🪙 ${fmtC(towerUpCost(t.lvl || 1))}</button>` : ''}
+    ${mine && (t.lvl || 1) < TOWER_MAXLVL ? `<button class="btn ghost" id="twUp" style="width:100%;margin-bottom:8px">⬆️ Upgrade to level ${(t.lvl || 1) + 1} · 🪙 ${fmtC(towerUpPrice(t))}${onFootAt(t) ? ' <small>🥾 −40% in person</small>' : ''}</button>${onFootAt(t) ? '' : '<p class="fine" style="margin:-4px 0 8px">🥾 Upgrades cost 40% less when you’re standing at the tower.</p>'}` : ''}
     <div class="lvlchip" style="--lc:${sh ? '#9fd0ff' : '#6b7d72'}"><b>🛡️</b><span>${sh ? `${SHIELDS[sh.r].n} · ${sh.hp}/${sh.max}` : 'No shield'}</span></div>
     <div class="admacts">${mine ? `<button class="btn" id="twShield" ${near ? '' : 'disabled'}>🛡️ ${sh ? 'Upgrade shield' : 'Install shield'}</button>`
       : `<button class="btn danger" id="twAttack" ${near ? '' : 'disabled'}>⚔️ Attack (Hard glyph)</button>`}
@@ -3139,7 +3144,7 @@ async function towerSheet(t) {
     $('#twClose', m).onclick = closeModal;
     const s2 = $('#twShield', m); if (s2) s2.onclick = () => shieldDialog(t.id, 'tower', t, 'this tower', () => towerSheet(t));
     const up = $('#twUp', m); if (up) up.onclick = async () => {
-      const cost = towerUpCost(t.lvl || 1);
+      const cost = towerUpPrice(t);
       if ((P.coins || 0) < cost) return toast(`Need ${fmtC(cost - (P.coins || 0))} more 🪙`, 'bad');
       up.disabled = true;
       try { const r = await DB.call('/tower/upgrade', { tower: t.id }); spend(cost); t.lvl = r.lvl; save();
@@ -3320,7 +3325,7 @@ async function makeLink(meta, chest, toId) {
   const k = P.keys[toId]; if (!k) return false;
   const T = TEAMS[P.team];
   try {
-    const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: toId, lat: k.lat, lon: k.lon, name: k.n });
+    const r = await DB.linkMake({ id: meta.id, lat: meta.lat, lon: meta.lon, name: meta.name }, { id: toId, lat: k.lat, lon: k.lon, name: k.n }, onFootAt(meta));
     if (k.x > 0) k.x--; else delete P.keys[toId];
     P.stats.links = (P.stats.links || 0) + 1; earn(15, '🔗 Link');
     if ((r.len || 0) > (P.stats.longestLinkM || 0)) P.stats.longestLinkM = r.len;
@@ -3655,7 +3660,7 @@ function runGlyph(id, after, lvl, hard, onWin) {
           earn(coins, hard ? '🔥 Hard glyph bonus' : '✨ Glyph bonus'); if (item) addItem(item.id);
           P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; if (hard) P.stats.glyphHardWins = (P.stats.glyphHardWins || 0) + 1; checkAch(); save();
           if (onWin) onWin();
-          else { glyphLevelPoint(id, G.points); if (hard) breakLinksAt(id); }
+          else { const gm0 = chests.find(c => c.id === id), foot = onFootAt(gm0); glyphLevelPoint(id, G.points + (foot ? 1 : 0), 'hacks', foot ? '🥾✨' : '✨'); if (hard) breakLinksAt(id); }
           const gm = chests.find(c => c.id === id); act('glyph', `${gm ? gm.name : 'a chest'} · ${hard ? '🔥 hard ' : ''}${len} pts${fast ? ' ⚡' : ''} +${coins}🪙${item ? ' + ' + item.n : ''}`, gm);
           msg.innerHTML = `${hard ? '🔥' : '✨'} <b>${fast ? '⚡ Fast solve!' : 'Nice!'}</b> +${coins} 🪙 <small class="fine">(${secs.toFixed(1)} s)</small>`;
           if (item) $('#gPrize', m).innerHTML = `<div class="gprize">${tile(item)}<div><b>${esc(item.n)}</b>${badge(item.r)}${fresh ? '<br><small class="fine">✨ New for your shelf</small>' : ''}</div></div>`;
@@ -3705,10 +3710,10 @@ function lockPick(meta, chest) {
     const end = win => {
       over = true; cancelAnimationFrame(raf); tapBtn.disabled = true;
       if (win) {
-        const clean = miss === 0, pts = clean ? 2 : 1, coins = 10 + pins * 6 + (clean ? 20 : 0);
+        const clean = miss === 0, foot = onFootAt(meta), pts = (clean ? 2 : 1) + (foot ? 1 : 0), coins = 10 + pins * 6 + (clean ? 20 : 0);
         earn(coins, clean ? '🔓 Clean pick' : '🔓 Lock picked'); gainXP(15 + pins * 3);
         P.stats.pickWins = (P.stats.pickWins || 0) + 1; if (clean) P.stats.pickClean = (P.stats.pickClean || 0) + 1; checkAch(); save();
-        glyphLevelPoint(meta.id, pts, 'picks', '🔓');
+        glyphLevelPoint(meta.id, pts, 'picks', foot ? '🥾🔓' : '🔓');
         act('pick', `${meta.name} · ${pins} pins${clean ? ' clean' : ''}`, meta);
         msg.innerHTML = `🔓 <b>${clean ? 'Clean pick!' : 'Unlocked!'}</b> +${coins} 🪙 · +${pts} level point${pts > 1 ? 's' : ''}`;
         FX.sfx('reveal', clean ? 3 : 2); FX.confetti(['#ffd98a', '#9fd0ff', '#fff'], clean ? 70 : 40); FX.vibe([20, 40, 60]);
@@ -5521,18 +5526,18 @@ async function openChest(id, byDrone) {
   const cine = chestCinematic(meta.name);
   try {
     const day = utcDay();
-    const firstVisit = !P.stats.visited[id];
+    const firstVisit = !P.stats.visited[id], walkIn = !byDrone && onFootAt(meta);
     P.lvlCounted = P.lvlCounted || {};
     let counted = false;
     const r = await DB.tx('chests/' + id, cur => {
       counted = false;
-      if (!cur) { const c = makeChest(meta, day); c.visits = firstVisit ? 1 : 0; counted = firstVisit; return c; }
+      if (!cur) { const c = makeChest(meta, day); c.visits = firstVisit ? 1 : 0; if (firstVisit && walkIn) c.wk = 1; counted = firstVisit; return c; }
       let changed = false;
       if ((cur.day || 0) < day) { refreshChest(cur, meta, day); changed = true; }
       // each explorer counts once; explorers from before counting began are added the next time
       // they open a chest that has no explorers on record yet
       const backfill = !firstVisit && !P.lvlCounted[id] && !(cur.visits > 0);
-      if (firstVisit || backfill) { cur.visits = (cur.visits || 0) + 1; changed = true; counted = true; }
+      if (firstVisit || backfill) { cur.visits = (cur.visits || 0) + 1; if (firstVisit && walkIn) cur.wk = (cur.wk || 0) + 1; changed = true; counted = true; }
       return changed ? cur : undefined;
     });
     if (counted || firstVisit) { P.lvlCounted[id] = 1; save(); }
@@ -5601,8 +5606,8 @@ async function glyphLevelPoint(id, pts, field, icon) {
 function lvlChip(chest) {
   const v = chestXP(chest), l = chestLevel(v), next = LVL_AT[l];   // LVL_AT[l] = points needed for level l+1
   const from = LVL_AT[l - 1], pct = next ? Math.round((v - from) / (next - from) * 100) : 100;
-  const ex = chest.visits || 0, hk = chest.hacks || 0, pk = chest.picks || 0, lp = chest.lp || 0, gx = chest.gx || 0;
-  const parts = [`👣 ${ex}`, `✨ ${hk}`].concat(pk ? [`🔓 ${pk}`] : [], lp ? [`🔗 ${lp}`] : [], gx ? [`🏳️ ${gx}`] : []);
+  const ex = chest.visits || 0, hk = chest.hacks || 0, pk = chest.picks || 0, lp = chest.lp || 0, gx = chest.gx || 0, wk = chest.wk || 0;
+  const parts = [`👣 ${ex}`, `✨ ${hk}`].concat(pk ? [`🔓 ${pk}`] : [], lp ? [`🔗 ${lp}`] : [], gx ? [`🏳️ ${gx}`] : [], wk ? [`🥾 ${wk}`] : []);
   return `<div class="lvlchip" style="--lc:${LVLC[l]}" title="Level points: ${ex} explorers, ${hk} glyph, ${pk} lock picks, ${lp} link power, ${gx} faction ground"><b>Lv ${l}</b><span>${parts.join(' · ')}</span>
     <span class="lvbar"><i style="width:${pct}%"></i></span><small>${next ? `Lv ${l + 1} at ${next}` : 'Max level'}</small></div>`;
 }
@@ -5621,6 +5626,7 @@ function showChest(meta, chest, canGlyph) {
     <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic cm2${meta.kind === 'player' ? ' pl' : ''}${isRare(meta) ? ' rare' : ''}"><span class="pin">${CHEST_SVG}</span></span>
       <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}${csh && TEAMS[csh.team] ? ` <span class="chsh" style="--tc:${TEAMS[csh.team].c}">🛡️ ${TEAMS[csh.team].icon} ${csh.hp}/${csh.max}</span>` : ''}</p></div></div>
     ${lvlChip(chest)}
+    ${DB.remote ? (onFootAt(meta) ? '<p class="footnote on">🥾 You’re here in person – hacks, lock picks and links earn this chest an extra level point.</p>' : '<p class="footnote">🛸 Drone visit – walk here in person for extra level points on hacks, picks and links.</p>') : ''}
     <h4 class="chsec">Inside the chest</h4>
     <div class="grid popin" id="chestGrid">${slots.map(s => { const it = BY_ID[chest.items[s].id]; return it ? tile(it, { slot: s, by: (chest.items[s].by ? 'from ' + chest.items[s].by : '') + ((chest.items[s].h || 0) > 1 ? ` · 🤝${chest.items[s].h}` : ''), mine: !!chest.items[s].by && String(chest.items[s].by).toLowerCase() === String(P.name).toLowerCase() }) : ''; }).join('')}</div>
     ${done ? `<p class="chnote">You traded here recently. You can swap again in ${fmtWait(wait)}.</p>` : `<h4 class="chsec">Your pack <small>pick one to leave behind</small></h4><div class="grid" id="giveGrid">${mine.length ? mine.map(it => tile(it, { count: P.inv[it.id] })).join('') : '<div class="empty" style="grid-column:1/-1">Your pack is empty – claim your Daily reward first.</div>'}</div>
