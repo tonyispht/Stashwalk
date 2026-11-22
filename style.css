@@ -1762,3 +1762,11 @@ body.linkpick .tutpill,body.toofast .tutpill{display:none}
 .worldtick{max-width:calc(100% - 150px)}
 .footnote{margin:6px 0 2px;padding:6px 10px;border-radius:10px;font-size:12.5px;color:var(--mut);background:var(--bg2);border:1px dashed var(--line)}
 .footnote.on{color:#b6f0c9;border:1px solid #49d17a88;background:color-mix(in srgb,#49d17a 10%,var(--bg2))}
+/* ===== link amps ===== */
+.ampchip{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:800;color:#bff8ff;background:#7ff0ff1a;border:1px solid #7ff0ff66}
+.ampslots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0 4px}
+.ampslot{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:12px;border:2px dashed var(--line);background:var(--bg2);text-align:center}
+.ampslot b{font-size:24px;color:var(--mut)}
+.ampslot small{font-size:10.5px;color:var(--mut);line-height:1.2;overflow:hidden;max-width:100%;text-overflow:ellipsis}
+.ampslot.on{border:2px solid var(--ac);box-shadow:0 0 12px color-mix(in srgb,var(--ac) 50%,transparent);background:color-mix(in srgb,var(--ac) 10%,var(--bg2))}
+.ampslot.on b{color:inherit}

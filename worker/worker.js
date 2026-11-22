@@ -169,6 +169,14 @@ function inTri(p, pts) {
   return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
 }
 
+// ---- link range (Ingress Prime style) -----------------------------------------------------
+// Base range = 160 m x level^4 (L1 160 m ... L8 655 km). Link amps multiply it: Rare 2x, Ultra 5x,
+// Very Rare 7x; with several, the strongest counts fully, the 2nd adds 25%, the 3rd and 4th 12.5%.
+const AMP_MULT = [2, 5, 7], AMP_SLOTS = 4, AMP_PER_PLAYER = 2;
+const ampMult = list => { const m = (list || []).map(a => AMP_MULT[a.r] || 1).sort((a, b) => b - a), w = [1, .25, .125, .125];
+  return m.length ? m.reduce((t, x, i) => t + x * (w[i] || 0), 0) : 1; };
+const linkRangeM = (lvl, list) => 160 * Math.pow(lvl, 4) * ampMult(list);
+
 // ---- nightly backups ---------------------------------------------------------------------
 // The cron trigger copies the whole kv table into the BACKUPS KV namespace as gzipped JSON,
 // one key per day (backup/YYYY-MM-DD), each kept for 30 days.
@@ -188,7 +196,7 @@ async function runBackup(env) {
 }
 
 // ---- live pushes -------------------------------------------------------------------------
-const PULSE_KINDS = new Set(['pick', 'open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
+const PULSE_KINDS = new Set(['amp', 'pick', 'open', 'newchest', 'hide', 'glyph', 'link', 'field', 'break', 'tower', 'towerdown', 'ach', 'levelup', 'gift', 'trade', 'craft', 'merge']);
 const pulseId = ev => { let h = 0; for (const ch of String(ev.t) + ev.k) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h.toString(36); };
 // One instance holds every player's socket (hibernating, so idle sockets cost nothing). Each socket
 // remembers the map area its player is looking at; a new event goes only to sockets whose area holds it.
@@ -544,11 +552,12 @@ export default {
         for (const x of [A, B]) { const bl = await env.DB.prepare('SELECT 1 FROM kv WHERE path = ?').bind('block/' + x.id).first(); if (bl) return json({ error: 'that chest was removed' }, 400, cors); }
         const R = 6371000, rad = Math.PI / 180;
         const dm = (p, q) => { const dLa = (q.lat - p.lat) * rad, dLo = (q.lon - p.lon) * rad, h = Math.sin(dLa / 2) ** 2 + Math.cos(p.lat * rad) * Math.cos(q.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
-        // range comes from the origin chest's level: 1 km per level
+        // range comes from the origin chest's level (160 m x level^4) and its link amps
         const crow = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('chests/' + A.id).first();
         let xp = 0; if (crow) { try { xp = chestXp(JSON.parse(crow.val)); } catch (e) {} }
         const LV = [0, 3, 6, 10, 16, 25, 40, 60]; let lvl = 1; for (let i = 1; i < LV.length; i++) if (xp >= LV[i]) lvl = i + 1;
-        const maxM = lvl * 1000, len = dm(A, B);
+        let amps = []; try { const ar = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('amp/' + A.id).first(); const ao = ar && JSON.parse(ar.val); if (ao && ao.team === team) amps = ao.list || []; } catch (e) {}
+        const maxM = Math.round(linkRangeM(lvl, amps)), len = dm(A, B);
         if (len > maxM) return json({ error: 'too far', len: Math.round(len), max: maxM, lvl }, 400, cors);
         const [P1, P2] = A.id < B.id ? [A, B] : [B, A], lid = P1.id + '~' + P2.id;
         const { results: all } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'link/%' LIMIT 5000").all();
@@ -608,12 +617,16 @@ export default {
         tr.forEach(r => { try { const t = JSON.parse(r.val); if (t.lat >= s0 - pad && t.lat <= n0 + pad && t.lon >= w0 - pad && t.lon <= e0 + pad) towers.push({ id: t.id, team: t.team, lat: t.lat, lon: t.lon, by: t.by, at: t.at, lvl: t.lvl || 1 }); } catch (e) {} });
         const { results: sr } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'shield/%' LIMIT 5000").all();
         sr.forEach(r => { try { const v = JSON.parse(r.val); if (v.hp > 0 && v.lat >= s0 - pad && v.lat <= n0 + pad && v.lon >= w0 - pad && v.lon <= e0 + pad) shields.push({ target: r.path.slice(7), team: v.team, r: v.r, hp: v.hp, max: v.max, kind: v.kind, by: v.by }); } catch (e) {} });
+        const amps = [];
+        const { results: amr } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'amp/%' LIMIT 5000").all();
+        amr.forEach(r => { try { const v = JSON.parse(r.val); if ((v.list || []).length && v.lat >= s0 - pad && v.lat <= n0 + pad && v.lon >= w0 - pad && v.lon <= e0 + pad)
+          amps.push({ target: r.path.slice(4), team: v.team, list: v.list.map(a => ({ r: a.r, by: a.by })) }); } catch (e) {} });
         const banners = [], bnow = Date.now();
         const { results: br } = await env.DB.prepare("SELECT path, val FROM kv WHERE path LIKE 'banner/%' LIMIT 5000").all();
         for (const r of br) { try { const v = JSON.parse(r.val);
           if (v.until < bnow) { await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind(r.path).run(); continue; }
           if (v.lat >= s0 && v.lat <= n0 && v.lon >= w0 && v.lon <= e0) banners.push({ team: v.team, em: v.em, lat: v.lat, lon: v.lon, by: v.by, at: v.at, until: v.until }); } catch (e) {} }
-        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600), towers: towers.slice(0, 300), shields: shields.slice(0, 800), banners: banners.slice(0, 300) }, 200, cors);
+        return json({ links: links.slice(0, 800), fields: fields.slice(0, 600), towers: towers.slice(0, 300), shields: shields.slice(0, 800), banners: banners.slice(0, 300), amps: amps.slice(0, 800) }, 200, cors);
       }
       // a won Hard glyph hack at a chest breaks the other factions' links (and their fields) there
       if (url.pathname === '/links/break' && req.method === 'POST') {
@@ -635,7 +648,28 @@ export default {
         fr.forEach(r => { try { const f = JSON.parse(r.val); if (f.team !== team && f.pts.some(p => p.id === chest)) gone.push(r.path); } catch (e) {} });
         for (let i = 0; i < gone.length; i += 90) { const part = gone.slice(i, i + 90);
           await env.DB.prepare('DELETE FROM kv WHERE path IN (' + part.map(() => '?').join(',') + ')').bind(...part).run(); }
-        return json({ ok: true, links: nl, fields: gone.length - nl }, 200, cors);
+        let ampsGone = 0;
+        try { const ar = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('amp/' + chest).first(); const ao = ar && JSON.parse(ar.val);
+          if (ao && ao.team !== team) { ampsGone = (ao.list || []).length; await env.DB.prepare('DELETE FROM kv WHERE path = ?').bind('amp/' + chest).run(); } } catch (e) {}
+        return json({ ok: true, links: nl, fields: gone.length - nl, amps: ampsGone }, 200, cors);
+      }
+      // install a link amp on a chest: up to 4 per chest, 2 per player, one faction at a time
+      if (url.pathname === '/amp/install' && req.method === 'POST') {
+        const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
+        if (!me) return json({ error: 'not logged in' }, 401, cors);
+        const team = await teamOfUser(env, me); if (!team) return json({ error: 'join a faction first' }, 400, cors);
+        const b = await req.json().catch(() => ({}));
+        const chest = String(b.chest || ''), r = Math.round(+b.r), lat = +b.lat, lon = +b.lon;
+        if (!/^[a-z0-9_]{3,40}$/i.test(chest) || !(r >= 0 && r < AMP_MULT.length) || !isFinite(lat) || !isFinite(lon)) return json({ error: 'bad amp' }, 400, cors);
+        const ar = await env.DB.prepare('SELECT val FROM kv WHERE path = ?').bind('amp/' + chest).first();
+        let ao = null; try { ao = ar ? JSON.parse(ar.val) : null; } catch (e) {}
+        if (ao && ao.team !== team && (ao.list || []).length) return json({ error: 'enemy amps', team: ao.team }, 409, cors);
+        if (!ao || ao.team !== team) ao = { team, lat, lon, list: [] };
+        if (ao.list.length >= AMP_SLOTS) return json({ error: 'slots full' }, 409, cors);
+        if (ao.list.filter(a => a.user === me).length >= AMP_PER_PLAYER) return json({ error: 'your limit', max: AMP_PER_PLAYER }, 409, cors);
+        ao.list.push({ r, user: me, by: await nameOfUser(env, me), at: Date.now() });
+        await env.DB.prepare('INSERT INTO kv (path, val, v) VALUES (?, ?, 1) ON CONFLICT(path) DO UPDATE SET val = excluded.val, v = kv.v + 1').bind('amp/' + chest, JSON.stringify(ao)).run();
+        return json({ ok: true, amps: ao.list.map(a => ({ r: a.r, by: a.by })), mult: ampMult(ao.list) }, 200, cors);
       }
       // ---- drones other players can see: drone/<user> = { lat, lon, state, em, col, team, t } ----
       // Display only. Flying drones report every couple of seconds; a parked one stays put until
@@ -781,7 +815,7 @@ export default {
         const me = await verify(env, req.headers.get('X-User'), req.headers.get('X-Hash'));
         if (!me) return json({ error: 'not logged in' }, 401, cors);
         const b = await req.json().catch(() => ({}));
-        const KINDS = new Set(['pick', 'pickfail', 'newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break', 'shield', 'tower', 'towerdown']);
+        const KINDS = new Set(['amp', 'pick', 'pickfail', 'newchest', 'open', 'trade', 'gift', 'hide', 'glyph', 'glyphfail', 'levelup', 'fx', 'team', 'ach', 'merge', 'craft', 'daily', 'drone', 'link', 'field', 'break', 'shield', 'tower', 'towerdown']);
         const k = String(b.k || '');
         if (!KINDS.has(k)) return json({ error: 'bad kind' }, 400, cors);
         const ev = { k, u: String(await nameOfUser(env, me)).slice(0, 16), t: Date.now() };

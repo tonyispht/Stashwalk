@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611201000';
+const APP_BUILD = '202611221300';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -1100,6 +1100,7 @@ function renderShop() {
   const eb = $('#eggBuy'); if (eb) eb.onclick = hatchEgg;
   $('#shopBox').onclick = e => {
     const bb = e.target.closest('[data-boost]'); if (bb) return buyBoost(bb.dataset.boost);
+    const ab = e.target.closest('[data-amp-buy]'); if (ab) return buyAmp(+ab.dataset.ampBuy);
     const b = e.target.closest('[data-buy]'); if (!b) return;
     const k = b.dataset.buy, i = +k.slice(1);
     if (k[0] === 'd') { if (st.bought[i]) return toast('Sold out until tomorrow'); const it = stock[i]; buyDialog([it.id], priceOf(it), it.n, () => { shopState().bought[i] = 1; }); }
@@ -2331,6 +2332,7 @@ ach('dpark5', 'Valet Pilot', 'Valet', 'Park your drone 5 times', s => s.dronePar
 ach('g1', 'First Glyph', 'Glyph Novice', 'Win a glyph hack', s => s.glyphWins, 1, '✨');
 ach('g25', 'Glyph Adept', 'Glyph Adept', 'Win 25 glyph hacks', s => s.glyphWins, 25, '🔮');
 ach('g100', 'Glyph Master', 'Glyph Master', 'Win 100 glyph hacks', s => s.glyphWins, 100, '🌀');
+ach('amp1', 'Amplified', 'Signal Booster', 'Install a link amp', s => s.ampsInstalled, 1, '📡');
 ach('tut', 'Pathfinder', 'Pathfinder', 'Finish the Getting started guide', s => s.tutDone, 1, '🧭');
 ach('set1', 'Set Starter', 'Collector', 'Complete a collection set', s => s.sets, 1, '🧩');
 ach('set10', 'Curator', 'Curator', 'Complete 10 collection sets', s => s.sets, 10, '🏛️');
@@ -2400,7 +2402,7 @@ function renderNextAch() {
 
 function statView() {
   const ids = Object.keys(P.dex), byR = [0, 0, 0, 0, 0]; ids.forEach(id => { if (BY_ID[id]) byR[BY_ID[id].r]++; });
-  return { tutDone: P.tut && P.tut.done && !P.tut.skipped ? 1 : 0, found: Object.keys(P.found || {}).length, logins: P.daily.n, streak: P.daily.max || 0, maxRun: Math.max(P.daily.maxRun || 0, P.daily.run == null ? (P.daily.streak || 0) : 0), visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
+  return { ampsInstalled: P.stats.ampsInstalled || 0, tutDone: P.tut && P.tut.done && !P.tut.skipped ? 1 : 0, found: Object.keys(P.found || {}).length, logins: P.daily.n, streak: P.daily.max || 0, maxRun: Math.max(P.daily.maxRun || 0, P.daily.run == null ? (P.daily.streak || 0) : 0), visited: Object.keys(P.stats.visited).length, ex: P.stats.ex || 0,
            dex: ids.length, byR, hidden: P.stats.hidden || 0, invites: inviteCount, gaveRare: P.stats.gaveRare || 0,
            given: P.stats.given || 0, merges: P.stats.merges || 0, crafted: P.stats.crafted || 0, relics: ids.filter(id => BY_ID[id] && BY_ID[id].crafted).length,
            miles: Math.floor(milesOf() * 10) / 10, bought: P.stats.bought || 0, coinsEarned: P.stats.coinsEarned || 0,
@@ -2941,7 +2943,8 @@ const GUIDE = () => {
     <li>The faction with the most points holds the state; ties hold for nobody.</li>
     <li>See standings on the <b>Me</b> tab, or open the <b>🌎 Global control map</b> to see the whole country.</li></ul>`],
   ['🔗', 'Keys, links & fields', `<ul><li>Opening a chest gives you its <b>🔑 key</b> (one per chest). See them in Items → 🔑 Keys.</li>
-    <li>At a chest, tap <b>🔗 Link</b> and pick a key to link the two chests for your faction. The key is used up. Links reach 1 km per level of the chest you're at (8 km at level 8).</li>
+    <li>At a chest, tap <b>🔗 Link</b> and pick a key to link the two chests for your faction. The key is used up. Like portals in Ingress Prime, a chest's link range grows fast with its level: 160 m at Lv 1, 2.56 km at Lv 2, 13 km at Lv 3, 41 km at Lv 4, 100 km at Lv 5, 207 km at Lv 6, 384 km at Lv 7 and 655 km at Lv 8.</li>
+    <li><b>📡 Link amps</b> multiply a chest's range for your faction: Rare Link Amp 2×, Ultra Link 5×, Very Rare Link Amp 7×. Up to 4 per chest (2 of them yours); the strongest counts fully, the second adds a quarter of its boost and the third and fourth an eighth – four Rare amps make 3×. Buy them in Shop → Boosts &amp; tools or win them from glyph hacks, and install them from the chest window. An enemy Hard hack that breaks the links at a chest knocks its amps out too.</li>
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
@@ -3016,6 +3019,46 @@ async function shieldDialog(target, kind, ll, title, back) {
     });
   });
 }
+// ---- link amps ----
+function ampDialog(meta, chest) {
+  if (!P.team) return chooseTeamDialog(false);
+  const T = TEAMS[P.team], cur = ampsAt(meta.id), enemy = cur && cur.team !== P.team && cur.list.length;
+  const list = cur && !enemy ? cur.list : [], lvl = chestLevel(chestXP(chest)), base = baseRange(lvl);
+  const mineHere = list.filter(a => a.by && a.by.toLowerCase() === P.name.toLowerCase()).length;
+  P.amps = P.amps || {};
+  const slots = Array.from({ length: AMP_SLOTS }, (_, i) => list[i] ? `<span class="ampslot on" style="--ac:${AMPS[list[i].r].c}"><b>${AMPS[list[i].r].ic}</b><small>${AMPS[list[i].r].short}<br>${esc(list[i].by || '')}</small></span>` : '<span class="ampslot"><b>＋</b><small>empty</small></span>').join('');
+  const canAdd = !enemy && list.length < AMP_SLOTS && mineHere < AMP_PER_PLAYER;
+  modal(`<button class="backtop" id="backTop">← Back to chest</button><h3>📡 Link amps · ${esc(meta.name)}</h3>
+    <p class="sub">${enemy ? `${TEAMS[cur.team].icon} ${TEAMS[cur.team].name} have ${cur.list.length} amp${cur.list.length === 1 ? '' : 's'} here. Break their links with a Hard glyph hack to knock them out.`
+      : `Range here: <b>${fmtDist(base)}</b> (Lv ${lvl})${list.length ? ` × ${fmtMult(ampMult(list))} = <b>${fmtDist(base * ampMult(list))}</b>` : ''}. Amps work for your whole faction and stay until an enemy Hard hack breaks the links here.`}</p>
+    <div class="ampslots">${slots}</div>
+    <p class="fine" style="margin:4px 0 8px">Up to ${AMP_SLOTS} amps per chest, ${AMP_PER_PLAYER} of them yours. The strongest amp counts fully, the second adds a quarter of its boost, the third and fourth an eighth.</p>
+    <div class="keylist">${AMPS.map((a, r) => { const n = P.amps[r] || 0, ok = n && canAdd;
+      const after = ampMult(list.concat([{ r }]));
+      return `<button class="keyrow pick${ok ? '' : ' off'}" data-amp="${r}" ${ok ? '' : 'disabled'}><span class="kic">${a.ic}</span><span class="ktx"><b>${a.n} <small class="fine">×${n}</small></b><small>${a.m}× range · here it would make ${fmtMult(after)} (${fmtDist(base * after)})</small></span>${ok ? '<span class="kgo">Install</span>' : ''}</button>`; }).join('')}</div>
+    ${AMPS.some((a, r) => P.amps[r]) ? '' : '<p class="fine">You have no link amps yet – buy them in Shop → Boosts &amp; tools, or win one from glyph hacks.</p>'}
+    <div class="trade"><button class="btn ghost" id="cancelBtn">Back to chest</button></div>`, m => {
+    $('#cancelBtn', m).onclick = $('#backTop', m).onclick = () => backToChest(meta, chest);
+    $$('[data-amp]', m).forEach(b => b.onclick = async () => {
+      const r = +b.dataset.amp; b.disabled = true;
+      try { await DB.call('/amp/install', { chest: meta.id, r, lat: meta.lat, lon: meta.lon }); }
+      catch (e) { b.disabled = false; const d = e.data || {}; return toast(d.error === 'enemy amps' ? 'An enemy faction has amps here' : d.error === 'slots full' ? 'All 4 amp slots are used' : d.error === 'your limit' ? `You can put ${AMP_PER_PLAYER} amps on one chest` : 'Could not install: ' + e.message, 'bad'); }
+      P.amps[r]--; P.stats.ampsInstalled = (P.stats.ampsInstalled || 0) + 1; save(); checkAch();
+      act('amp', `${AMPS[r].n} on ${meta.name}`, meta); FX.sfx('place'); FX.confetti([AMPS[r].c, '#fff'], 40);
+      await loadLinks(true);
+      toast(`${AMPS[r].ic} ${AMPS[r].n} installed – links from here now reach ${fmtDist(linkRange(meta, chest))}`, 'gold');
+      ampDialog(meta, chest);
+    });
+  });
+}
+function buyAmp(r) {
+  const a = AMPS[r]; if (!a) return;
+  modal(`<div style="text-align:center"><div style="font-size:46px">${a.ic}</div><h3>${a.n}</h3><p class="sub">Multiplies a chest's link range by ${a.m}× for your faction. Install it from the chest window (📡 Link amps).</p>
+    <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button><button class="btn" id="aGo">Buy · 🪙 ${fmtC(a.cost)}</button></div></div>`, m => {
+    $('#okBtn', m).onclick = closeModal;
+    $('#aGo', m).onclick = () => { if (!spend(a.cost)) return toast('Not enough coins', 'bad'); P.amps = P.amps || {}; P.amps[r] = (P.amps[r] || 0) + 1; save(); closeModal(); renderAll(); FX.sfx('ach'); toast(`${a.ic} ${a.n} added – you have ${P.amps[r]}`, 'gold'); };
+  });
+}
 // ---- towers ----
 // ---------------- boosts & tools ----------------
 const BOOSTS = {
@@ -3037,7 +3080,10 @@ function boostCard() {
     return `<div class="offer boost${on ? ' live' : ''}${can(b.cost) ? '' : ' dear'}"><span class="bic">${b.icon}</span><div class="otxt"><b>${b.name}${state ? ` <em class="bstate">${state}</em>` : ''}</b><small>${b.sub}</small></div>
       <button class="btn sm" data-boost="${k}">🪙 ${fmtC(b.cost)}</button></div>`;
   };
-  return `<h2 class="sec">Boosts &amp; tools <small>use them when you need them</small></h2>` + Object.entries(BOOSTS).map(([k, b]) => row(k, b)).join('');
+  P.amps = P.amps || {};
+  return `<h2 class="sec">Boosts &amp; tools <small>use them when you need them</small></h2>` + Object.entries(BOOSTS).map(([k, b]) => row(k, b)).join('')
+    + AMPS.map((a, r) => `<div class="offer boost${can(a.cost) ? '' : ' dear'}"><span class="bic">${a.ic}</span><div class="otxt"><b>${a.n}${P.amps[r] ? ` <em class="bstate">×${P.amps[r]}</em>` : ''}</b><small>${a.m}× link range on one chest for your faction</small></div>
+      <button class="btn sm" data-amp-buy="${r}">🪙 ${fmtC(a.cost)}</button></div>`).join('');
 }
 function buyBoost(k) {
   const b = BOOSTS[k]; if (!b) return;
@@ -3276,7 +3322,21 @@ async function openControlMap() {
 // Opening a chest gives you its key (one per chest). At a chest, spend the key of another chest to
 // link the two for your faction; links can't cross, and range grows with the origin chest's level.
 // Three linked chests make a field. A won Hard glyph breaks other factions' links at that chest.
-const MAX_KEYS = 150, LINK_PER_LVL = 1000;
+const MAX_KEYS = 150;
+// ---- link range, Ingress Prime style: 160 m x level^4, multiplied by Link Amps on the chest ----
+const AMPS = [
+  { n: 'Rare Link Amp', short: 'Rare', m: 2, ic: '📡', c: '#4aa3ff', cost: 500 },
+  { n: 'Ultra Link', short: 'Ultra', m: 5, ic: '🛰️', c: '#b46bff', cost: 1500 },
+  { n: 'Very Rare Link Amp', short: 'Very Rare', m: 7, ic: '📶', c: '#ffb02e', cost: 3000 }
+];
+const AMP_SLOTS = 4, AMP_PER_PLAYER = 2;
+const ampMult = list => { const m = (list || []).map(a => (AMPS[a.r] || {}).m || 1).sort((a, b) => b - a), w = [1, .25, .125, .125];
+  return m.length ? m.reduce((t, x, i) => t + x * (w[i] || 0), 0) : 1; };
+const ampsAt = id => ((linkData.amps || []).find(a => a.target === id)) || null;
+const myAmps = id => { const a = ampsAt(id); return a && a.team === P.team ? a.list : []; };
+const baseRange = lvl => 160 * Math.pow(lvl, 4);
+const linkRange = (meta, chest) => baseRange(chestLevel(chestXP(chest))) * ampMult(myAmps(meta.id));
+const fmtMult = x => (Math.round(x * 100) / 100) + '×';
 function gainKey(meta) {
   if (!DB.remote || !meta || P.keys[meta.id]) return;
   P.keys[meta.id] = { n: meta.name, lat: meta.lat, lon: meta.lon, at: Date.now() }; P.stats.keysGot = (P.stats.keysGot || 0) + 1;
@@ -3389,7 +3449,7 @@ async function linkTargets(meta, R) {
 }
 function linkDialog(meta, chest) {
   if (!P.team) return chooseTeamDialog(false);
-  const lvl = chestLevel(chestXP(chest)), R = lvl * LINK_PER_LVL;
+  const lvl = chestLevel(chestXP(chest)), am = ampMult(myAmps(meta.id)), R = linkRange(meta, chest);
   const ks = Object.entries(P.keys).filter(([id]) => id !== meta.id).map(([id, k]) => Object.assign({ id, d: dist(meta, k) }, k)).sort((a, b) => a.d - b.d);
   const inR = ks.filter(k => k.d <= R), out = ks.filter(k => k.d > R);
   const T = TEAMS[P.team];
@@ -3403,7 +3463,7 @@ function linkDialog(meta, chest) {
     return `<button class="keyrow pick${st && st.s !== 'ok' ? ' off' : ''}" data-lk="${esc(k.id)}" ${can ? '' : 'disabled'}><span class="kic">🔑</span><span class="ktx"><b>${esc(RENAMES.get(k.id) || k.n)}</b><small>${fmtDist(k.d)} ${tag}</small></span>${can ? '<span class="kgo">Link →</span>' : ''}</button>`;
   };
   modal(`<button class="backtop" id="backTop">← Back to chest</button><h3>🔗 Link from ${esc(meta.name)}</h3>
-    <p class="sub">Lv ${lvl} chest – links reach <b>${fmtDist(R)}</b>. Pick a key; it's used up. Links can't cross other links. Close a triangle of three chests to make a ${T.icon} field.</p>
+    <p class="sub">Lv ${lvl} chest – links reach <b>${fmtDist(R)}</b>${am > 1 ? ` <span class="ampchip">📡 ${fmtMult(am)} link amps</span>` : ''}. Pick a key; it's used up. Links can't cross other links. Close a triangle of three chests to make a ${T.icon} field.</p>
     ${inR.length ? `<button class="btn ghost big" id="lkMap" style="margin-bottom:8px" disabled>🗺️ Choose on map</button>` : ''}
     <div class="keylist" id="lkList">${inR.map(k => row(k, null)).join('')
       || `<div class="empty">${ks.length ? 'None of your keys are in range of this chest.' : 'You have no other keys yet – open more chests to collect them.'}</div>`}</div>
@@ -3519,12 +3579,13 @@ async function breakLinksAt(id) {
     setTimeout(() => toast(sh.gone ? `💥 You shattered ${T ? T.name + "'s" : 'the'} ${SHIELDS[sh.r].n}! Hack again to break their links here.` : `🛡️ ${T ? T.name + "'s" : 'An enemy'} ${SHIELDS[sh.r].n} took the hit – ${sh.hp}/${sh.max} left`, 'gold'), 1600);
     loadLinks(true); return;
   }
+  if (r && r.amps && !(r.links || r.fields)) { setTimeout(() => toast(`💥 Your hack knocked out ${r.amps} enemy link amp${r.amps === 1 ? '' : 's'}`, 'gold'), 1600); loadLinks(true); return; }
   if (!r || !(r.links || r.fields)) return;
   const c = 20 * r.links + 30 * r.fields; earn(c, '💥 Broke enemy links');
   P.stats.broke = (P.stats.broke || 0) + r.links; save();
   const gm = chests.find(c2 => c2.id === id);
   act('break', `${gm ? gm.name : 'a chest'} · ${r.links} link${r.links === 1 ? '' : 's'}${r.fields ? ', ' + r.fields + ' field' + (r.fields === 1 ? '' : 's') : ''}`, gm);
-  setTimeout(() => toast(`💥 Your hack broke ${r.links} enemy link${r.links === 1 ? '' : 's'}${r.fields ? ` and ${r.fields} field${r.fields === 1 ? '' : 's'}` : ''}! +${c} 🪙`, 'gold'), 1600);
+  setTimeout(() => toast(`💥 Your hack broke ${r.links} enemy link${r.links === 1 ? '' : 's'}${r.fields ? ` and ${r.fields} field${r.fields === 1 ? '' : 's'}` : ''}${r.amps ? ` and ${r.amps} link amp${r.amps === 1 ? '' : 's'}` : ''}! +${c} 🪙`, 'gold'), 1600);
   loadLinks(true); fillStandings(true);
 }
 
@@ -3658,6 +3719,7 @@ function runGlyph(id, after, lvl, hard, onWin) {
           const gotItem = fast ? Math.random() < G.itemChance : Math.random() < G.slowItem;
           const item = gotItem ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
           earn(coins, hard ? '🔥 Hard glyph bonus' : '✨ Glyph bonus'); if (item) addItem(item.id);
+          if (Math.random() < (hard ? 0.06 : 0.015) * (fast ? 1.5 : 1)) { const ar = Math.random() < 0.08 ? 1 : 0; P.amps = P.amps || {}; P.amps[ar] = (P.amps[ar] || 0) + 1; setTimeout(() => toast(`${AMPS[ar].ic} The hack dropped a ${AMPS[ar].n}!`, 'gold'), 2200); }
           P.stats.glyphWins = (P.stats.glyphWins || 0) + 1; if (hard) P.stats.glyphHardWins = (P.stats.glyphHardWins || 0) + 1; checkAch(); save();
           if (onWin) onWin();
           else { const gm0 = chests.find(c => c.id === id), foot = onFootAt(gm0); glyphLevelPoint(id, G.points + (foot ? 1 : 0), 'hacks', foot ? '🥾✨' : '✨'); if (hard) breakLinksAt(id); }
@@ -4915,8 +4977,8 @@ function drawTrail(c, t) {
   c.globalAlpha = 1;
 }
 // other players' recent actions, shown as soft rings with an icon (anonymous, a little delayed)
-const PULSE_ICON = { pick: '🔓', open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣', link: '🔗', field: '🔺', break: '💥', tower: '🗼', towerdown: '💥', ach: '🏅', levelup: '⭐', gift: '🎁', trade: '🔁', craft: '⚒️', merge: '🧪' };
-const PULSE_TEXT = { pick: 'picked a lock', open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
+const PULSE_ICON = { amp: '📡', pick: '🔓', open: '📦', newchest: '✨', hide: '🫳', glyph: '🔣', link: '🔗', field: '🔺', break: '💥', tower: '🗼', towerdown: '💥', ach: '🏅', levelup: '⭐', gift: '🎁', trade: '🔁', craft: '⚒️', merge: '🧪' };
+const PULSE_TEXT = { amp: 'installed a link amp', pick: 'picked a lock', open: 'opened a chest', newchest: 'found a new chest', hide: 'hid a chest', glyph: 'hacked a glyph', link: 'made a link', field: 'claimed a field', break: 'broke a link', tower: 'raised a tower', towerdown: 'toppled a tower', ach: 'earned an achievement', levelup: 'levelled up', gift: 'left a gift', trade: 'made a trade', craft: 'crafted a relic', merge: 'merged items' };
 async function lifePulse() {
   if (!map || !DB.remote || !DB.pulse || document.hidden || view !== 'explore' || !juicy()) return;
   if (LIFE.live && LIFE.pulsed) return;              // pushed live - only the first look replays recent activity
@@ -5621,6 +5683,7 @@ function showChest(meta, chest, canGlyph) {
   const sub = isRare(meta) ? '✨ Rare cache · Epic or better inside' : meta.src === 'player' || meta.kind === 'player' ? chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at })) : kindInfo(meta.kind)[0];
   const tileBtn = (id, ic, label, note, cls, dis) => `<button class="actile ${cls || ''}" id="${id}" ${dis ? 'disabled' : ''}><span class="ati">${ic}</span><b>${label}</b><small>${note}</small></button>`;
   const glyphNote = gLeft ? `ready in ${Math.ceil(gLeft / 60000)} min` : 'bonus coins';
+  const amp0 = ampsAt(meta.id), ampNote = amp0 && amp0.list.length ? (amp0.team === P.team ? `${fmtMult(ampMult(amp0.list))} · ${fmtDist(linkRange(meta, chest))}` : `${TEAMS[amp0.team] ? TEAMS[amp0.team].name : 'enemy'} ×${amp0.list.length}`) : `reach ${fmtDist(baseRange(chestLevel(chestXP(chest))))}`;
   const csh = shieldOn(meta.id), shNote = csh ? (csh.team === P.team ? shieldLabel(csh) : `${TEAMS[csh.team] ? TEAMS[csh.team].name : 'enemy'} ${csh.hp}/${csh.max}`) : 'protect it';
   modal(`<button class="shclose" id="cancelBtn" aria-label="Close">✕</button>
     <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic cm2${meta.kind === 'player' ? ' pl' : ''}${isRare(meta) ? ' rare' : ''}"><span class="pin">${CHEST_SVG}</span></span>
@@ -5636,6 +5699,7 @@ function showChest(meta, chest, canGlyph) {
       ${DB.remote ? tileBtn('pickBtn', '🔓', 'Pick lock', pickLeft(meta.id) ? `ready in ${Math.ceil(pickLeft(meta.id) / 60000)} min` : '+level points', pickLeft(meta.id) ? 'wait' : 'hot', !!pickLeft(meta.id)) : ''}
       ${DB.remote ? tileBtn('linkBtn', '🔗', 'Link', P.team ? Object.keys(P.keys || {}).filter(k => k !== meta.id).length + ' keys' : 'join a faction') : ''}
       ${DB.remote ? tileBtn('shBtn', '🛡️', 'Shield', shNote) : ''}
+      ${DB.remote ? tileBtn('ampBtn', '📡', 'Link amps', ampNote) : ''}
       ${DB.remote ? tileBtn('fxBtn', '🎆', 'Celebrate', 'light it up') : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? tileBtn('giveBtn', '🎁', 'Gift', 'leave an item') : ''}
     </div>
@@ -5646,6 +5710,7 @@ function showChest(meta, chest, canGlyph) {
     const fb = $('#fxBtn', m); if (fb) fb.onclick = () => fxDialog(meta, chest);
     const lb = $('#linkBtn', m); if (lb) lb.onclick = () => linkDialog(meta, chest);
     const shb = $('#shBtn', m); if (shb) shb.onclick = () => shieldDialog(meta.id, 'chest', meta, meta.name, () => backToChest(meta, chest));
+    const amb = $('#ampBtn', m); if (amb) amb.onclick = () => ampDialog(meta, chest);
     const ar = $('#admRen', m); if (ar) ar.onclick = () => adminRenameDialog(chests.find(c => c.id === meta.id) || meta);
     const am = $('#admRm', m); if (am) am.onclick = () => adminRemoveChest(meta.id);
     const pk = $('#pickBtn', m); if (pk && !pk.disabled) pk.onclick = () => lockPick(meta, chest);
@@ -6086,7 +6151,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, ampDialog, buyAmp, linkRange, ampMult, linkDialog, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
