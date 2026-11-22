@@ -1770,3 +1770,8 @@ body.linkpick .tutpill,body.toofast .tutpill{display:none}
 .ampslot small{font-size:10.5px;color:var(--mut);line-height:1.2;overflow:hidden;max-width:100%;text-overflow:ellipsis}
 .ampslot.on{border:2px solid var(--ac);box-shadow:0 0 12px color-mix(in srgb,var(--ac) 50%,transparent);background:color-mix(in srgb,var(--ac) 10%,var(--bg2))}
 .ampslot.on b{color:inherit}
+.crategrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.crateit{display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0;animation:crateIn .5s cubic-bezier(.2,1.5,.4,1) forwards}
+.crateit b{font-size:12px;line-height:1.2}
+@keyframes crateIn{from{opacity:0;transform:translateY(16px) scale(.6)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.crateit{animation:none;opacity:1}}

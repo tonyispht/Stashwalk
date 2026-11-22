@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611221300';
+const APP_BUILD = '202611221330';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -1101,6 +1101,7 @@ function renderShop() {
   $('#shopBox').onclick = e => {
     const bb = e.target.closest('[data-boost]'); if (bb) return buyBoost(bb.dataset.boost);
     const ab = e.target.closest('[data-amp-buy]'); if (ab) return buyAmp(+ab.dataset.ampBuy);
+    const sb = e.target.closest('[data-sb]'); if (sb) { const [k, x, y] = sb.dataset.sb.split(':'); return shopBuy(k, k === 'mod' ? x : +x, +y); }
     const b = e.target.closest('[data-buy]'); if (!b) return;
     const k = b.dataset.buy, i = +k.slice(1);
     if (k[0] === 'd') { if (st.bought[i]) return toast('Sold out until tomorrow'); const it = stock[i]; buyDialog([it.id], priceOf(it), it.n, () => { shopState().bought[i] = 1; }); }
@@ -2944,6 +2945,7 @@ const GUIDE = () => {
     <li>See standings on the <b>Me</b> tab, or open the <b>🌎 Global control map</b> to see the whole country.</li></ul>`],
   ['🔗', 'Keys, links & fields', `<ul><li>Opening a chest gives you its <b>🔑 key</b> (one per chest). See them in Items → 🔑 Keys.</li>
     <li>At a chest, tap <b>🔗 Link</b> and pick a key to link the two chests for your faction. The key is used up. Like portals in Ingress Prime, a chest's link range grows fast with its level: 160 m at Lv 1, 2.56 km at Lv 2, 13 km at Lv 3, 41 km at Lv 4, 100 km at Lv 5, 207 km at Lv 6, 384 km at Lv 7 and 655 km at Lv 8.</li>
+    <li><b>🧩 Chest mods:</b> each chest has 4 mod slots (2 per player, one faction at a time). Besides link amps there are <b>♻️ Multi-hacks</b> (+1/+2/+3 glyph hacks and lock picks before the chest cools down) and <b>❄️ Heat Sinks</b> (20/50/70% shorter cooldown). Hack mods help everyone who hacks that chest; a second mod of the same kind counts half.</li>
     <li><b>📡 Link amps</b> multiply a chest's range for your faction: Rare Link Amp 2×, Ultra Link 5×, Very Rare Link Amp 7×. Up to 4 per chest (2 of them yours); the strongest counts fully, the second adds a quarter of its boost and the third and fourth an eighth – four Rare amps make 3×. Buy them in Shop → Boosts &amp; tools or win them from glyph hacks, and install them from the chest window. An enemy Hard hack that breaks the links at a chest knocks its amps out too.</li>
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
@@ -3022,34 +3024,75 @@ async function shieldDialog(target, kind, ll, title, back) {
 // ---- link amps ----
 function ampDialog(meta, chest) {
   if (!P.team) return chooseTeamDialog(false);
-  const T = TEAMS[P.team], cur = ampsAt(meta.id), enemy = cur && cur.team !== P.team && cur.list.length;
+  const cur = ampsAt(meta.id), enemy = cur && cur.team !== P.team && cur.list.length;
   const list = cur && !enemy ? cur.list : [], lvl = chestLevel(chestXP(chest)), base = baseRange(lvl);
   const mineHere = list.filter(a => a.by && a.by.toLowerCase() === P.name.toLowerCase()).length;
-  P.amps = P.amps || {};
-  const slots = Array.from({ length: AMP_SLOTS }, (_, i) => list[i] ? `<span class="ampslot on" style="--ac:${AMPS[list[i].r].c}"><b>${AMPS[list[i].r].ic}</b><small>${AMPS[list[i].r].short}<br>${esc(list[i].by || '')}</small></span>` : '<span class="ampslot"><b>＋</b><small>empty</small></span>').join('');
+  P.amps = P.amps || {}; P.mods = P.mods || {};
+  const slots = Array.from({ length: AMP_SLOTS }, (_, i) => { const a = list[i], mi = a && modInfo(a);
+    return a ? `<span class="ampslot on" style="--ac:${mi.c}"><b>${mi.ic}</b><small>${esc(mi.n.replace(' Link Amp', ' Amp'))}<br>${esc(a.by || '')}</small></span>` : '<span class="ampslot"><b>＋</b><small>empty</small></span>'; }).join('');
   const canAdd = !enemy && list.length < AMP_SLOTS && mineHere < AMP_PER_PLAYER;
-  modal(`<button class="backtop" id="backTop">← Back to chest</button><h3>📡 Link amps · ${esc(meta.name)}</h3>
-    <p class="sub">${enemy ? `${TEAMS[cur.team].icon} ${TEAMS[cur.team].name} have ${cur.list.length} amp${cur.list.length === 1 ? '' : 's'} here. Break their links with a Hard glyph hack to knock them out.`
-      : `Range here: <b>${fmtDist(base)}</b> (Lv ${lvl})${list.length ? ` × ${fmtMult(ampMult(list))} = <b>${fmtDist(base * ampMult(list))}</b>` : ''}. Amps work for your whole faction and stay until an enemy Hard hack breaks the links here.`}</p>
+  const cdNow = Math.round(30 * (1 - hsCut(meta.id))), hk = 1 + mhBonus(meta.id);
+  const row = (k, r, mi, n, effect) => `<button class="keyrow pick${n && canAdd ? '' : ' off'}" data-mk="${k}" data-mr="${r}" ${n && canAdd ? '' : 'disabled'}><span class="kic">${mi.ic}</span><span class="ktx"><b>${mi.n} <small class="fine">×${n}</small></b><small>${effect}</small></span>${n && canAdd ? '<span class="kgo">Install</span>' : ''}</button>`;
+  modal(`<button class="backtop" id="backTop">← Back to chest</button><h3>🧩 Chest mods · ${esc(meta.name)}</h3>
+    <p class="sub">${enemy ? `${TEAMS[cur.team].icon} ${TEAMS[cur.team].name} hold the mod slots here. Break their links with a Hard glyph hack to knock their mods out.`
+      : `Link range <b>${fmtDist(base * ampMult(list))}</b>${ampMult(list) > 1 ? ` (${fmtMult(ampMult(list))})` : ''} · <b>${hk}</b> hack${hk === 1 ? '' : 's'} and picks per <b>${cdNow} min</b>. Amps help your faction; Multi-hacks and Heat Sinks help everyone who hacks here.`}</p>
     <div class="ampslots">${slots}</div>
-    <p class="fine" style="margin:4px 0 8px">Up to ${AMP_SLOTS} amps per chest, ${AMP_PER_PLAYER} of them yours. The strongest amp counts fully, the second adds a quarter of its boost, the third and fourth an eighth.</p>
-    <div class="keylist">${AMPS.map((a, r) => { const n = P.amps[r] || 0, ok = n && canAdd;
-      const after = ampMult(list.concat([{ r }]));
-      return `<button class="keyrow pick${ok ? '' : ' off'}" data-amp="${r}" ${ok ? '' : 'disabled'}><span class="kic">${a.ic}</span><span class="ktx"><b>${a.n} <small class="fine">×${n}</small></b><small>${a.m}× range · here it would make ${fmtMult(after)} (${fmtDist(base * after)})</small></span>${ok ? '<span class="kgo">Install</span>' : ''}</button>`; }).join('')}</div>
-    ${AMPS.some((a, r) => P.amps[r]) ? '' : '<p class="fine">You have no link amps yet – buy them in Shop → Boosts &amp; tools, or win one from glyph hacks.</p>'}
+    <p class="fine" style="margin:4px 0 8px">${AMP_SLOTS} slots per chest shared by all mods, ${AMP_PER_PLAYER} of them yours. Stacked mods of the same kind count for less.</p>
+    <h4 class="chsec">📡 Link amps</h4><div class="keylist">${AMPS.map((a, r) => { const after = ampMult(list.concat([{ r }])); return row('amp', r, a, P.amps[r] || 0, `${a.m}× link range · would make ${fmtDist(base * after)}`); }).join('')}</div>
+    <h4 class="chsec">♻️ Multi-hacks</h4><div class="keylist">${HMODS.mh.map((a, r) => row('mh', r, a, modCount('mh', r), `+${a.v} hack${a.v > 1 ? 's' : ''} and pick${a.v > 1 ? 's' : ''} before the cooldown`)).join('')}</div>
+    <h4 class="chsec">❄️ Heat Sinks</h4><div class="keylist">${HMODS.hs.map((a, r) => row('hs', r, a, modCount('hs', r), `${Math.round(a.v * 100)}% shorter cooldown`)).join('')}</div>
+    <p class="fine">Get mods in Shop → Chest mods &amp; shields. Glyph hacks sometimes drop link amps.</p>
     <div class="trade"><button class="btn ghost" id="cancelBtn">Back to chest</button></div>`, m => {
     $('#cancelBtn', m).onclick = $('#backTop', m).onclick = () => backToChest(meta, chest);
-    $$('[data-amp]', m).forEach(b => b.onclick = async () => {
-      const r = +b.dataset.amp; b.disabled = true;
-      try { await DB.call('/amp/install', { chest: meta.id, r, lat: meta.lat, lon: meta.lon }); }
-      catch (e) { b.disabled = false; const d = e.data || {}; return toast(d.error === 'enemy amps' ? 'An enemy faction has amps here' : d.error === 'slots full' ? 'All 4 amp slots are used' : d.error === 'your limit' ? `You can put ${AMP_PER_PLAYER} amps on one chest` : 'Could not install: ' + e.message, 'bad'); }
-      P.amps[r]--; P.stats.ampsInstalled = (P.stats.ampsInstalled || 0) + 1; save(); checkAch();
-      act('amp', `${AMPS[r].n} on ${meta.name}`, meta); FX.sfx('place'); FX.confetti([AMPS[r].c, '#fff'], 40);
+    $$('[data-mk]', m).forEach(b => b.onclick = async () => {
+      const k = b.dataset.mk, r = +b.dataset.mr, mi = k === 'amp' ? AMPS[r] : HMODS[k][r]; b.disabled = true;
+      try { await DB.call('/amp/install', { chest: meta.id, k, r, lat: meta.lat, lon: meta.lon }); }
+      catch (e) { b.disabled = false; const d = e.data || {}; return toast(d.error === 'enemy amps' ? 'An enemy faction holds the mod slots here' : d.error === 'slots full' ? 'All 4 mod slots are used' : d.error === 'your limit' ? `You can put ${AMP_PER_PLAYER} mods on one chest` : 'Could not install: ' + e.message, 'bad'); }
+      if (k === 'amp') P.amps[r]--; else P.mods[k][r]--;
+      P.stats.ampsInstalled = (P.stats.ampsInstalled || 0) + 1; save(); checkAch();
+      act('amp', `${mi.n} on ${meta.name}`, meta); FX.sfx('place'); FX.confetti([mi.c, '#fff'], 40);
       await loadLinks(true);
-      toast(`${AMPS[r].ic} ${AMPS[r].n} installed – links from here now reach ${fmtDist(linkRange(meta, chest))}`, 'gold');
+      toast(`${mi.ic} ${mi.n} installed on ${meta.name}`, 'gold');
       ampDialog(meta, chest);
     });
   });
+}
+const SHIELD_PRICE = [200, 450, 1000, 2500, 6000];
+const CRATES = [
+  { id: 'mystery', n: 'Mystery Crate', ic: '📦', cost: 300, sub: '3 random items – anything can come out', roll: () => [0, 1, 2].map(() => rollItem(Math.random, 1.25)) },
+  { id: 'golden', n: 'Golden Crate', ic: '🎁', cost: 1200, sub: '3 items: one guaranteed Epic or better, the rest Rare or better', roll: () => [rollItem(Math.random, 1, Math.random() < .12 ? 4 : 3), rollItem(Math.random, 1, Math.random() < .3 ? 3 : 2), rollItem(Math.random, 1, 2)] }
+];
+function shopBuy(kind, a, b) {
+  let title, ic, sub, cost, give;
+  if (kind === 'mod') { const mi = HMODS[a][b]; title = mi.n; ic = mi.ic; cost = mi.cost; sub = a === 'mh' ? `Install on a chest: +${mi.v} glyph hack${mi.v > 1 ? 's' : ''} and lock pick${mi.v > 1 ? 's' : ''} there before it cools down – for everyone.` : `Install on a chest: cooldowns there are ${Math.round(mi.v * 100)}% shorter – for everyone.`;
+    give = () => { P.mods = P.mods || {}; P.mods[a] = P.mods[a] || {}; P.mods[a][b] = (P.mods[a][b] || 0) + 1; toast(`${ic} ${title} added – install it from a chest's 🧩 Mods tile`, 'gold'); }; }
+  else if (kind === 'shield') { const sh = SHIELDS[a]; title = sh.n; ic = '🛡️'; cost = SHIELD_PRICE[a]; sub = `${RAR[a].n} shield – blocks ${SHIELD_HP[a]} enemy Hard hack${SHIELD_HP[a] === 1 ? '' : 's'} on a chest or tower.`;
+    give = () => { addItem(sh.id); toast(`🛡️ ${title} added to your pack`, 'gold'); }; }
+  else if (kind === 'crate') { const cr = CRATES[a]; title = cr.n; ic = cr.ic; cost = cr.cost; sub = cr.sub;
+    give = () => { const got = cr.roll(); got.forEach(it => { addItem(it.id); histNew(it.id, 'a ' + cr.n); }); P.stats.crates = (P.stats.crates || 0) + 1; crateReveal(cr, got); }; }
+  modal(`<div style="text-align:center"><div style="font-size:46px">${ic}</div><h3>${esc(title)}</h3><p class="sub">${sub}</p>
+    <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button><button class="btn" id="sbGo">Buy · 🪙 ${fmtC(cost)}</button></div></div>`, m => {
+    $('#okBtn', m).onclick = closeModal;
+    $('#sbGo', m).onclick = () => { if (!spend(cost)) return toast(`Need ${fmtC(cost - (P.coins || 0))} more 🪙`, 'bad'); closeModal(); give(); save(); checkAch(); renderAll(); FX.sfx('coin'); };
+  });
+}
+function crateReveal(cr, got) {
+  FX.sfx('reveal', Math.max(...got.map(i => i.r)));
+  modal(`<div style="text-align:center"><p class="sub">${cr.ic} ${esc(cr.n)}</p><div class="crategrid">${got.map((it, i) => `<div class="crateit" style="animation-delay:${200 + i * 260}ms">${tile(it)}<b>${esc(it.n)}</b>${badge(it.r)}</div>`).join('')}</div>
+    <button class="btn big" id="okBtn" style="margin-top:12px">Nice!</button></div>`, m => {
+    $('#okBtn', m).onclick = closeModal;
+    got.forEach((it, i) => setTimeout(() => { const t = $$('.crateit .tile', m)[i]; if (t) FX.reveal(it.r, t, i > 0); }, 260 + i * 260));
+  });
+}
+function modShopCard() {
+  const can = n => (P.coins || 0) >= n; P.amps = P.amps || {};
+  const row = (ic, name, have, sub, cost, attr) => `<div class="offer boost${can(cost) ? '' : ' dear'}"><span class="bic">${ic}</span><div class="otxt"><b>${name}${have ? ` <em class="bstate">×${have}</em>` : ''}</b><small>${sub}</small></div><button class="btn sm" ${attr}>🪙 ${fmtC(cost)}</button></div>`;
+  return `<h2 class="sec">Chest mods &amp; shields <small>install from a chest's 🧩 Mods tile</small></h2>`
+    + AMPS.map((a, r) => row(a.ic, a.n, P.amps[r], `${a.m}× link range for your faction`, a.cost, `data-amp-buy="${r}"`)).join('')
+    + HMODS.mh.map((a, r) => row(a.ic, a.n, modCount('mh', r), `+${a.v} hack${a.v > 1 ? 's' : ''} &amp; pick${a.v > 1 ? 's' : ''} before cooldown, for everyone`, a.cost, `data-sb="mod:mh:${r}"`)).join('')
+    + HMODS.hs.map((a, r) => row(a.ic, a.n, modCount('hs', r), `${Math.round(a.v * 100)}% shorter hack &amp; pick cooldown, for everyone`, a.cost, `data-sb="mod:hs:${r}"`)).join('')
+    + SHIELDS.map((sh, r) => row('🛡️', sh.n, P.inv[sh.id] || 0, `Blocks ${SHIELD_HP[r]} enemy Hard hack${SHIELD_HP[r] === 1 ? '' : 's'} · or craft one in Craft`, SHIELD_PRICE[r], `data-sb="shield:${r}:0"`)).join('')
+    + `<h2 class="sec">Crates</h2>` + CRATES.map((c, i) => row(c.ic, c.n, 0, c.sub, c.cost, `data-sb="crate:${i}:0"`)).join('');
 }
 function buyAmp(r) {
   const a = AMPS[r]; if (!a) return;
@@ -3067,8 +3110,10 @@ const BOOSTS = {
   luck: { icon: '🍀', name: 'Lucky Charm', cost: 500, charges: 3, sub: 'Your next 3 chests each drop a bonus Rare-or-better item' },
   field: { icon: '🔺', name: 'Field Booster', cost: 400, mins: 1440, sub: 'Fields you make in the next 24 hours pay double coins' },
   copier: { icon: '🔑', name: 'Key Copier', cost: 200, sub: 'Copy one of your keys so you can link from it twice' },
-  banner: { icon: '🚩', name: 'Faction Banner', cost: 300, sub: 'Plant your faction’s flag where you stand – everyone sees it for 24 hours' }
+  banner: { icon: '🚩', name: 'Faction Banner', cost: 300, sub: 'Plant your faction’s flag where you stand – everyone sees it for 24 hours' },
+  hackx: { icon: '⚡', name: 'Hack Doubler', cost: 350, mins: 30, sub: 'Double coins from glyph hacks and lock picks for 30 minutes' }
 };
+const BOOST_TIMED = ['magnet', 'xp', 'luck', 'field', 'hackx'];
 const boostLeft = k => { const b = P.boost && P.boost[k]; return k === 'luck' ? (b || 0) : Math.max(0, (b || 0) - Date.now()); };
 const boostOn = k => boostLeft(k) > 0;
 function boostCard() {
@@ -3080,10 +3125,7 @@ function boostCard() {
     return `<div class="offer boost${on ? ' live' : ''}${can(b.cost) ? '' : ' dear'}"><span class="bic">${b.icon}</span><div class="otxt"><b>${b.name}${state ? ` <em class="bstate">${state}</em>` : ''}</b><small>${b.sub}</small></div>
       <button class="btn sm" data-boost="${k}">🪙 ${fmtC(b.cost)}</button></div>`;
   };
-  P.amps = P.amps || {};
-  return `<h2 class="sec">Boosts &amp; tools <small>use them when you need them</small></h2>` + Object.entries(BOOSTS).map(([k, b]) => row(k, b)).join('')
-    + AMPS.map((a, r) => `<div class="offer boost${can(a.cost) ? '' : ' dear'}"><span class="bic">${a.ic}</span><div class="otxt"><b>${a.n}${P.amps[r] ? ` <em class="bstate">×${P.amps[r]}</em>` : ''}</b><small>${a.m}× link range on one chest for your faction</small></div>
-      <button class="btn sm" data-amp-buy="${r}">🪙 ${fmtC(a.cost)}</button></div>`).join('');
+  return `<h2 class="sec">Boosts &amp; tools <small>use them when you need them</small></h2>` + Object.entries(BOOSTS).map(([k, b]) => row(k, b)).join('') + modShopCard();
 }
 function buyBoost(k) {
   const b = BOOSTS[k]; if (!b) return;
@@ -3106,7 +3148,7 @@ function buyBoost(k) {
 }
 function renderBoostBar() {
   const host = $('#maprow'); if (!host || !P) return;
-  let el = $('#boostBar'); const on = ['magnet', 'xp', 'luck', 'field'].filter(boostOn);
+  let el = $('#boostBar'); const on = BOOST_TIMED.filter(boostOn);
   if (!on.length) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'boostBar'; el.className = 'boostbar'; host.appendChild(el); }
   el.innerHTML = on.map(k => { const l = boostLeft(k); return `<span title="${BOOSTS[k].name}">${BOOSTS[k].icon}<b>${k === 'luck' ? '×' + l : l > 3600000 ? Math.ceil(l / 3600000) + 'h' : Math.ceil(l / 60000) + 'm'}</b></span>`; }).join('');
@@ -3330,7 +3372,19 @@ const AMPS = [
   { n: 'Very Rare Link Amp', short: 'Very Rare', m: 7, ic: '📶', c: '#ffb02e', cost: 3000 }
 ];
 const AMP_SLOTS = 4, AMP_PER_PLAYER = 2;
-const ampMult = list => { const m = (list || []).map(a => (AMPS[a.r] || {}).m || 1).sort((a, b) => b - a), w = [1, .25, .125, .125];
+// Hack mods share the chest's 4 slots with link amps and help everyone who hacks the chest.
+// Multi-hack: extra glyph hacks / lock picks before the chest cools down. Heat Sink: shorter cooldown.
+const HMODS = {
+  mh: [{ n: 'Common Multi-hack', short: 'Common', v: 1, ic: '♻️', c: '#8fa39a', cost: 400 }, { n: 'Rare Multi-hack', short: 'Rare', v: 2, ic: '♻️', c: '#4aa3ff', cost: 900 }, { n: 'Very Rare Multi-hack', short: 'V.Rare', v: 3, ic: '♻️', c: '#b46bff', cost: 2000 }],
+  hs: [{ n: 'Common Heat Sink', short: 'Common', v: .2, ic: '❄️', c: '#8fa39a', cost: 400 }, { n: 'Rare Heat Sink', short: 'Rare', v: .5, ic: '❄️', c: '#4aa3ff', cost: 1000 }, { n: 'Very Rare Heat Sink', short: 'V.Rare', v: .7, ic: '❄️', c: '#b46bff', cost: 2200 }]
+};
+const modInfo = a => (a.k && a.k !== 'amp') ? HMODS[a.k][a.r] : AMPS[a.r];
+const modsAt = id => (ampsAt(id) || {}).list || [];
+// strongest counts fully, the next one half (like Ingress)
+const mhBonus = id => { const v = modsAt(id).filter(a => a.k === 'mh').map(a => HMODS.mh[a.r].v).sort((a, b) => b - a); return (v[0] || 0) + Math.floor((v[1] || 0) / 2); };
+const hsCut = id => { const v = modsAt(id).filter(a => a.k === 'hs').map(a => HMODS.hs[a.r].v).sort((a, b) => b - a); return Math.min(.85, (v[0] || 0) + (v[1] || 0) / 2); };
+const modCount = (k, r) => (((P.mods || {})[k] || {})[r]) || 0;
+const ampMult = list => { const m = (list || []).filter(a => (a.k || 'amp') === 'amp').map(a => (AMPS[a.r] || {}).m || 1).sort((a, b) => b - a), w = [1, .25, .125, .125];
   return m.length ? m.reduce((t, x, i) => t + x * (w[i] || 0), 0) : 1; };
 const ampsAt = id => ((linkData.amps || []).find(a => a.target === id)) || null;
 const myAmps = id => { const a = ampsAt(id); return a && a.team === P.team ? a.list : []; };
@@ -3653,12 +3707,23 @@ async function drawCells(force) {
 // backing out of a hard pattern doesn't reset it.
 const GLYPH_CD = 30 * 60000;
 // each chest has its own timer: P.glyphCd[chestId] = when it was last hacked
-const glyphLeft = id => { const cd = P.glyphCd || {}; return Math.max(0, (cd[id] || 0) + GLYPH_CD - Date.now()); };
-function glyphMark(id) {
-  const cd = P.glyphCd = P.glyphCd && typeof P.glyphCd === 'object' ? P.glyphCd : {}, now = Date.now();
-  for (const k in cd) if (now - cd[k] > GLYPH_CD) delete cd[k];      // keep the save small
-  cd[id] = now; delete P.glyphAt;
+// Each record is { t: start of the cooldown window, n: uses in it }. Heat Sinks shorten the window,
+// Multi-hacks allow more uses in it. (Old saves stored just a timestamp.)
+function cdLeft(store, id, base) {
+  const rec = (P[store] || {})[id]; if (!rec) return 0;
+  const r = typeof rec === 'number' ? { t: rec, n: 1 } : rec, len = base * (1 - hsCut(id)), now = Date.now();
+  if (now - r.t >= len) return 0;
+  return r.n >= 1 + mhBonus(id) ? r.t + len - now : 0;
 }
+function cdMark(store, id, base) {
+  const cd = P[store] = P[store] && typeof P[store] === 'object' ? P[store] : {}, now = Date.now();
+  for (const k in cd) { const t = typeof cd[k] === 'number' ? cd[k] : cd[k].t; if (now - t > base) delete cd[k]; }   // keep the save small
+  const r = cd[id], len = base * (1 - hsCut(id));
+  cd[id] = r && typeof r === 'object' && now - r.t < len ? { t: r.t, n: r.n + 1 } : { t: now, n: 1 };
+}
+const hacksLeftNow = (store, id, base) => { const rec = (P[store] || {})[id], len = base * (1 - hsCut(id)); if (!rec || typeof rec === 'number' || Date.now() - rec.t >= len) return 1 + mhBonus(id); return Math.max(0, 1 + mhBonus(id) - rec.n); };
+const glyphLeft = id => cdLeft('glyphCd', id, GLYPH_CD);
+function glyphMark(id) { cdMark('glyphCd', id, GLYPH_CD); delete P.glyphAt; }
 // A solve counts as fast at under ~0.9 s per glyph point; only fast solves can drop an item.
 const GLYPH_FAST_MS = 900, GLYPH_ITEM_CHANCE = 0.5;
 // `after` runs once the hack is over, win or lose: it carries out the trade the player had
@@ -3715,7 +3780,7 @@ function runGlyph(id, after, lvl, hard, onWin) {
           const secs = (performance.now() - t0) / 1000, fast = secs * 1000 <= len * GLYPH_FAST_MS;
           if (fast) P.stats.glyphFast = (P.stats.glyphFast || 0) + 1;
           const spp = secs / len; if (!P.stats.glyphBest || spp < P.stats.glyphBest) P.stats.glyphBest = Math.round(spp * 100) / 100;
-          const coins = Math.round((20 + len * 6) * G.mult) + (fast ? G.fastBonus : 0);
+          const coins = (Math.round((20 + len * 6) * G.mult) + (fast ? G.fastBonus : 0)) * (boostOn('hackx') ? 2 : 1);
           const gotItem = fast ? Math.random() < G.itemChance : Math.random() < G.slowItem;
           const item = gotItem ? rollItem(Math.random, G.itemBoost) : null, fresh = item && !P.dex[item.id];
           earn(coins, hard ? '🔥 Hard glyph bonus' : '✨ Glyph bonus'); if (item) addItem(item.id);
@@ -3744,9 +3809,8 @@ function runGlyph(id, after, lvl, hard, onWin) {
 // More pins, smaller sweet spots and a faster needle at higher chest levels. Two picks: one miss
 // is forgiven, the second snaps the last pick. A clean pick (no misses) is worth 2 level points.
 const PICK_CD = 30 * 60000;
-const pickLeft = id => { const cd = P.pickCd || {}; return Math.max(0, (cd[id] || 0) + PICK_CD - Date.now()); };
-function pickMark(id) { const cd = P.pickCd = P.pickCd && typeof P.pickCd === 'object' ? P.pickCd : {}, now = Date.now();
-  for (const k in cd) if (now - cd[k] > PICK_CD) delete cd[k]; cd[id] = now; }
+const pickLeft = id => cdLeft('pickCd', id, PICK_CD);
+function pickMark(id) { cdMark('pickCd', id, PICK_CD); }
 function lockPick(meta, chest) {
   if (pickLeft(meta.id)) return toast(`This lock can be picked again in ${Math.ceil(pickLeft(meta.id) / 60000)} min`, 'bad');
   const lvl = chestLevel(chestXP(chest)), pins = Math.min(6, 3 + Math.floor((lvl - 1) / 2));
@@ -3772,7 +3836,7 @@ function lockPick(meta, chest) {
     const end = win => {
       over = true; cancelAnimationFrame(raf); tapBtn.disabled = true;
       if (win) {
-        const clean = miss === 0, foot = onFootAt(meta), pts = (clean ? 2 : 1) + (foot ? 1 : 0), coins = 10 + pins * 6 + (clean ? 20 : 0);
+        const clean = miss === 0, foot = onFootAt(meta), pts = (clean ? 2 : 1) + (foot ? 1 : 0), coins = (10 + pins * 6 + (clean ? 20 : 0)) * (boostOn('hackx') ? 2 : 1);
         earn(coins, clean ? '🔓 Clean pick' : '🔓 Lock picked'); gainXP(15 + pins * 3);
         P.stats.pickWins = (P.stats.pickWins || 0) + 1; if (clean) P.stats.pickClean = (P.stats.pickClean || 0) + 1; checkAch(); save();
         glyphLevelPoint(meta.id, pts, 'picks', foot ? '🥾🔓' : '🔓');
@@ -5682,8 +5746,8 @@ function showChest(meta, chest, canGlyph) {
   const mine = Object.keys(P.inv).map(i => BY_ID[i]).filter(Boolean).sort((a, b) => b.r - a.r);
   const sub = isRare(meta) ? '✨ Rare cache · Epic or better inside' : meta.src === 'player' || meta.kind === 'player' ? chestBy(Object.assign({}, meta, meta.by ? {} : { by: chest.by, at: chest.at })) : kindInfo(meta.kind)[0];
   const tileBtn = (id, ic, label, note, cls, dis) => `<button class="actile ${cls || ''}" id="${id}" ${dis ? 'disabled' : ''}><span class="ati">${ic}</span><b>${label}</b><small>${note}</small></button>`;
-  const glyphNote = gLeft ? `ready in ${Math.ceil(gLeft / 60000)} min` : 'bonus coins';
-  const amp0 = ampsAt(meta.id), ampNote = amp0 && amp0.list.length ? (amp0.team === P.team ? `${fmtMult(ampMult(amp0.list))} · ${fmtDist(linkRange(meta, chest))}` : `${TEAMS[amp0.team] ? TEAMS[amp0.team].name : 'enemy'} ×${amp0.list.length}`) : `reach ${fmtDist(baseRange(chestLevel(chestXP(chest))))}`;
+  const gExtra = hacksLeftNow('glyphCd', meta.id, GLYPH_CD), glyphNote = gLeft ? `ready in ${Math.ceil(gLeft / 60000)} min` : gExtra > 1 ? `${gExtra} hacks ready` : 'bonus coins';
+  const amp0 = ampsAt(meta.id), ampNote = amp0 && amp0.list.length ? (amp0.team === P.team ? `${amp0.list.length}/4 · reach ${fmtDist(linkRange(meta, chest))}` : `${TEAMS[amp0.team] ? TEAMS[amp0.team].name : 'enemy'} ×${amp0.list.length}`) : `reach ${fmtDist(baseRange(chestLevel(chestXP(chest))))}`;
   const csh = shieldOn(meta.id), shNote = csh ? (csh.team === P.team ? shieldLabel(csh) : `${TEAMS[csh.team] ? TEAMS[csh.team].name : 'enemy'} ${csh.hp}/${csh.max}`) : 'protect it';
   modal(`<button class="shclose" id="cancelBtn" aria-label="Close">✕</button>
     <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic cm2${meta.kind === 'player' ? ' pl' : ''}${isRare(meta) ? ' rare' : ''}"><span class="pin">${CHEST_SVG}</span></span>
@@ -5699,7 +5763,7 @@ function showChest(meta, chest, canGlyph) {
       ${DB.remote ? tileBtn('pickBtn', '🔓', 'Pick lock', pickLeft(meta.id) ? `ready in ${Math.ceil(pickLeft(meta.id) / 60000)} min` : '+level points', pickLeft(meta.id) ? 'wait' : 'hot', !!pickLeft(meta.id)) : ''}
       ${DB.remote ? tileBtn('linkBtn', '🔗', 'Link', P.team ? Object.keys(P.keys || {}).filter(k => k !== meta.id).length + ' keys' : 'join a faction') : ''}
       ${DB.remote ? tileBtn('shBtn', '🛡️', 'Shield', shNote) : ''}
-      ${DB.remote ? tileBtn('ampBtn', '📡', 'Link amps', ampNote) : ''}
+      ${DB.remote ? tileBtn('ampBtn', '🧩', 'Mods', ampNote) : ''}
       ${DB.remote ? tileBtn('fxBtn', '🎆', 'Celebrate', 'light it up') : ''}
       ${slots.length < C.MAX_CHEST_SLOTS && mine.length ? tileBtn('giveBtn', '🎁', 'Gift', 'leave an item') : ''}
     </div>
@@ -6151,7 +6215,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, ampDialog, buyAmp, linkRange, ampMult, linkDialog, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, shopBuy, glyphLeft, pickLeft, glyphMark, pickMark, hsCut, mhBonus, loadLinks, ampDialog, buyAmp, linkRange, ampMult, linkDialog, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
