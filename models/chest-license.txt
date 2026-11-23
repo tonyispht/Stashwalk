@@ -1,0 +1,11 @@
+Model Information:
+* title:	Mythical Chest Draft 1
+* source:	https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd
+* author:	ArtsGareau (https://sketchfab.com/ArtsGareau)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Mythical Chest Draft 1" (https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd) by ArtsGareau (https://sketchfab.com/ArtsGareau) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

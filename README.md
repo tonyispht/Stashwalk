@@ -508,3 +508,8 @@ Sounds are synthesized in the browser (no audio files). Header buttons toggle so
   and the Daily tab.
 - **Polish**: skeleton shimmer while the admin panel loads, tabular numerals on all counters,
   a soft view-change transition, 42px icon buttons, and `prefers-reduced-motion` honored.
+
+## Credits
+
+- 3D chest: "Mythical Chest Draft 1" (https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd) by ArtsGareau (https://sketchfab.com/ArtsGareau), licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Recoloured per chest level and optimised for the web (models/chest.glb, img/chest_l*.webp). Original licence text in models/chest-license.txt.
+- 3D rendering: three.js (MIT), vendored in vendor/.

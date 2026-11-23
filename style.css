@@ -1809,3 +1809,24 @@ body.linkpick .tutpill,body.toofast .tutpill{display:none}
 /* chests at a fixed ground size: the marker box itself is scaled, the drawing inside scales from its top-left */
 .cm2 .cmz{width:36px;height:44px;transform-origin:0 0}
 .cm2.tiny .kb,.cm2.tiny .lvb,.cm2.tiny .nd{display:none}
+/* ===== 3D chest pictures on the map ===== */
+.cm2 .c3dimg{position:absolute;left:-6px;top:-2px;width:48px;height:48px;pointer-events:none;filter:drop-shadow(0 3px 2px #000a)}
+.cm2.near .c3dimg{filter:drop-shadow(0 0 6px var(--acc)) drop-shadow(0 0 12px var(--acc));animation:c3dBob 1.4s ease-in-out infinite}
+.cm2.rare .c3dimg{filter:drop-shadow(0 0 5px #ffd98a) drop-shadow(0 3px 2px #000a)}
+.cm2.target .c3dimg{filter:drop-shadow(0 0 7px #7ff0ff) drop-shadow(0 0 14px #7ff0ff)}
+@keyframes c3dBob{50%{transform:translateY(-3px)}}
+body.modal-open .cm2 .c3dimg{animation:none}
+.chic3d{flex:none;width:56px;height:56px;display:grid;place-items:center}
+.chic3d img{width:64px;height:64px;filter:drop-shadow(0 4px 6px #000a)}
+.chhead.rare .chic3d img{filter:drop-shadow(0 0 8px #ffd98a)}
+/* ===== 3D opening scene ===== */
+.cine.c3d{background:radial-gradient(ellipse at 50% 58%,color-mix(in srgb,var(--glow) 22%,#0b0d14) 0%,#070910 55%,#020305 100%)}
+.cine.c3d .c3dcanvas{position:absolute;inset:0;width:100%;height:100%}
+.cine.c3d .cname{position:absolute;left:0;right:0;top:12%;text-align:center;z-index:2;font-family:Fraunces,Georgia,serif;font-size:26px;color:#fff;text-shadow:0 2px 12px #000;
+  opacity:0;transform:translateY(-8px);transition:opacity .5s .15s,transform .5s .15s}
+.cine.c3d .cname small{display:block;font-family:inherit;font-size:13px;letter-spacing:.04em;color:var(--glow);margin-top:4px}
+.cine.c3d.go .cname{opacity:1;transform:none}
+.cine.c3d .flash{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 50% 52%,#fff 0%,color-mix(in srgb,var(--glow) 60%,transparent) 35%,transparent 70%);opacity:0}
+.cine.c3d.flashed .flash{animation:c3dFlash .7s ease-out}
+@keyframes c3dFlash{0%{opacity:0}18%{opacity:.85}100%{opacity:0}}
+.cine.c3d .cskip{z-index:2}

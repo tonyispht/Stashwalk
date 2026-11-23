@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611231015';
+const APP_BUILD = '202611231130';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -2963,6 +2963,7 @@ const GUIDE = () => {
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
+  ['🎨', 'Credits', `<p>The 3D chest is based on <a href="https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd" target="_blank" rel="noopener">"Mythical Chest Draft 1"</a> by <a href="https://sketchfab.com/ArtsGareau" target="_blank" rel="noopener">ArtsGareau</a>, licensed under <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a> (recoloured per chest level). 3D rendering by three.js. Map data © OpenStreetMap contributors.</p>`],
   ['🧩', 'Collection sets', `<p>Items belong to themed sets like the Trailhead Kit or Pond Life (see Items → Sets). Collect any version of every item in a set to complete it for coins and XP; collect every one at <b>Rare or better</b> to gild it for a bigger reward and an Epic item. Everything you've ever collected counts, so trading never undoes a set.</p>`],
   ['🌅', 'First chest of the day', `<p>The first chest you open each day gives <b>double loot</b>: two bonus items on top of whatever you trade for.</p>`],
   ['🧙', 'Wandering merchant', `<p>Every two hours a merchant sets up somewhere near you for one hour, shown on the map with a purple ring and a countdown. Get within 300 ft (or fly your drone over) to buy one of four Rare-or-better items. Each item sells once.</p>`],
@@ -5505,7 +5506,7 @@ function chestPin(c, extra) {
   // and you have to zoom in to spot them; bigger chests are higher level.
   const z = chestScale(c, lv);
   return L.divIcon({ className: cls + (z < .45 ? ' tiny' : ''), iconSize: [36 * z, 44 * z], iconAnchor: [18 * z, 42 * z],
-    html: `<div class="cmz" style="--z:${z.toFixed(3)}"><div class="pin${c.skin && SKIN_OK.has(c.skin) ? ' skinned' : ''}">${c.skin && SKIN_OK.has(c.skin) ? `<span class="pskin">${c.skin}</span>` : CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}</div>` });
+    html: `<div class="cmz" style="--z:${z.toFixed(3)}">${c.skin && SKIN_OK.has(c.skin) ? `<div class="pin skinned"><span class="pskin">${c.skin}</span></div>` : `<img class="c3dimg" src="img/chest_l${lv}.webp" alt="" draggable="false">`}<b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}</div>` });
 }
 function drawChestMarkers() {
   if (!map || !window.L || !pos) return;
@@ -5599,9 +5600,46 @@ function renderNearby(force) {
 // swings up on a growing beam, and the moment it is fully open the screen flashes.
 // It also covers the trip to the server - if the data is slow the chest simply sits there
 // glowing instead of showing a spinner. A tap skips the whole thing.
-function chestCinematic(name) {
+function chestCinematic3D(name, meta) {
+  const lvl = chestLevel(LVL.get(meta && meta.id) || 0), rare = !!(meta && isRare(meta)), lite = document.body.classList.contains('ios');
+  const look = C3D.LOOK[lvl];
+  const el = document.createElement('div');
+  el.className = 'cine c3d';
+  el.style.setProperty('--glow', rare ? '#ffd98a' : look[2]);
+  el.innerHTML = `<p class="cname">${esc(name || 'A chest')}<small>${rare ? '✨ Rare cache' : 'Level ' + lvl}</small></p><i class="flash"></i><p class="cskip">tap to skip</p>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('go'));
+  FX.sfx('chest');
+  let finish = null, dead = false, timer = 0; const done = new Promise(res => { finish = res; });
+  const scene = C3D.play(el, { lvl, rare, lite, onFlash: () => {
+    if (dead) return; el.classList.add('flashed'); FX.vibe([18, 40, 26]); FX.sfx('reveal', Math.min(4, Math.floor(lvl / 2)));
+    FX.burst(innerWidth / 2, innerHeight * .48, [look[2], '#fff6d8', '#ffffff', '#ffd98a'], lite ? 18 : 30 + lvl * 4);
+    if (!lite && lvl >= 4) setTimeout(() => FX.confetti([look[2], '#ffd98a', '#ffffff'], 20 + lvl * 4), 160);
+  } });
+  function kill(skipped) {
+    if (dead) return; dead = true; clearTimeout(timer);
+    el.removeEventListener('pointerdown', onTap); el.classList.add('out');
+    setTimeout(() => { scene.stop(); el.remove(); }, skipped ? 140 : 320);
+    finish();
+  }
+  function onTap() { kill(true); }
+  el.addEventListener('pointerdown', onTap);
+  timer = setTimeout(() => kill(false), scene.duration * 1000);
+  return { done, kill: () => kill(true) };
+}
+// 3D opening scene (chest3d.js + the chest model), loaded quietly in the background after sign-in.
+let C3D = null;
+function load3D() {
+  if (C3D || !FX.prefs.fx || FX.isLow()) return;
+  try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+  try { const c = document.createElement('canvas'); if (!(c.getContext('webgl2') || c.getContext('webgl'))) return; } catch (e) { return; }
+  import('./chest3d.js?v=' + (window.ASSET_V || '')).then(m => m.preload().then(() => { C3D = m; })).catch(() => {});
+}
+setTimeout(load3D, 2500);
+function chestCinematic(name, meta) {
   const reduce = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
   if (!FX.prefs.fx || reduce) return { done: Promise.resolve(), kill() {} };
+  if (C3D && C3D.ready()) { try { return chestCinematic3D(name, meta); } catch (e) {} }
 
   const ios = document.body.classList.contains('ios') || FX.isLow();
   const T = ios
@@ -5705,7 +5743,7 @@ async function openChest(id, byDrone) {
   if (!byDrone && dist(pos, meta) > unlockM(meta)) return toast(`Get within ${Math.round(unlockM(meta) * FT)} ft of the chest first`, 'bad');
   // Start the opening straight away: it is the reward for the walk, and it hides the
   // round trip to the server behind something worth watching.
-  const cine = chestCinematic(meta.name);
+  const cine = chestCinematic(meta.name, meta);
   try {
     const day = utcDay();
     const firstVisit = !P.stats.visited[id], walkIn = !byDrone && onFootAt(meta);
@@ -5811,7 +5849,7 @@ function showChest(meta, chest, canGlyph) {
   const amp0 = ampsAt(meta.id), ampNote = amp0 && amp0.list.length ? (amp0.team === P.team ? `${amp0.list.length}/4 · reach ${fmtDist(linkRange(meta, chest))}` : `${TEAMS[amp0.team] ? TEAMS[amp0.team].name : 'enemy'} ×${amp0.list.length}`) : `reach ${fmtDist(baseRange(chestLevel(chestXP(chest))))}`;
   const csh = shieldOn(meta.id), shNote = csh ? (csh.team === P.team ? shieldLabel(csh) : `${TEAMS[csh.team] ? TEAMS[csh.team].name : 'enemy'} ${csh.hp}/${csh.max}`) : 'protect it';
   modal(`<button class="shclose" id="cancelBtn" aria-label="Close">✕</button>
-    <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic cm2${meta.kind === 'player' ? ' pl' : ''}${isRare(meta) ? ' rare' : ''}"><span class="pin">${CHEST_SVG}</span></span>
+    <div class="chhead${isRare(meta) ? ' rare' : ''}"><span class="chic3d"><img src="img/chest_l${chestLevel(chestXP(chest))}.webp" alt=""></span>
       <div class="chtx"><h3>${esc(meta.name)}</h3><p>${kindInfo(meta.kind)[1]} ${sub}${csh && TEAMS[csh.team] ? ` <span class="chsh" style="--tc:${TEAMS[csh.team].c}">🛡️ ${TEAMS[csh.team].icon} ${csh.hp}/${csh.max}</span>` : ''}</p></div></div>
     ${lvlChip(chest)}
     ${DB.remote ? (onFootAt(meta) ? '<p class="footnote on">🥾 You’re here in person – hacks, lock picks and links earn this chest an extra level point.</p>' : '<p class="footnote">🛸 Drone visit – walk here in person for extra level points on hacks, picks and links.</p>') : ''}
