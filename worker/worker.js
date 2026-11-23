@@ -355,7 +355,7 @@ export default {
         const rec = { name: (await nameOfUser(env, me)).slice(0, 16),
           coins: num(b.coins, 1e9), miles: Math.max(0, Math.min(1e6, +b.miles || 0)), opened: num(b.opened, 1e6), dex: num(b.dex, 1e5),
           wk: num(b.wk, 1e6), wkCoins: num(b.wkCoins, 1e9), t: Date.now() };
-        if (/^(#[0-9a-f]{6}|rainbow|gold)$/i.test(String(b.nc || ''))) rec.nc = String(b.nc);
+        if (/^(#[0-9a-f]{6}|rainbow|gold|prism)$/i.test(String(b.nc || ''))) rec.nc = String(b.nc);
         const bd = String(b.bd || ''); if (bd && bd.length <= 8 && !/[<>&"'\sA-Za-z0-9]/.test(bd)) rec.bd = bd;
         rec.miles = Math.round(rec.miles * 10) / 10;
         // Sanity limits: scores are sent by the phone, so anything faster than real play is cut back to

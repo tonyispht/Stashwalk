@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611221330';
+const APP_BUILD = '202611231000';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -97,6 +97,8 @@ function rollItem(r, boost = 1, tier) {
   const t = tier == null ? rollRarity(r, boost) : tier, a = BY_R[t]; return a[Math.floor(r() * a.length)];
 }
 const SLOT_IDS = 'abcdefgh'.split('');
+// higher-level chests hold more items: Lv1-2 4, Lv3-4 5, Lv5-6 6, Lv7 7, Lv8 8
+const lvlSlots = l => Math.min(8, Math.max(C.CHEST_SLOTS || 4, [4, 4, 5, 5, 6, 6, 7, 8][Math.max(1, Math.min(8, l || 1)) - 1]));
 function wildItems(id, day, boost, slots) {
   const out = {};
   slots.forEach(s => { out[s] = { id: rollItem(rng(hashStr(id + '|' + day + '|' + s)), boost).id, w: 1, at: Date.now() }; });
@@ -129,7 +131,7 @@ function chestItems(meta, day, slots) {
 }
 function makeChest(meta, day) {
   return { name: meta.name, lat: meta.lat, lon: meta.lon, kind: meta.kind, day, created: Date.now(),
-           items: chestItems(meta, day, SLOT_IDS.slice(0, C.CHEST_SLOTS)) };
+           items: chestItems(meta, day, SLOT_IDS.slice(0, lvlSlots(chestLevel(typeof LVL !== 'undefined' ? LVL.get(meta.id) || 0 : 0)))) };
 }
 function refreshChest(cur, meta, day) {
   // Wild (auto-generated) items rotate daily. Items left by players stay until somebody swaps them.
@@ -137,7 +139,7 @@ function refreshChest(cur, meta, day) {
   Object.keys(cur.items || {}).forEach(s => { const it = cur.items[s]; if (it && BY_ID[it.id]) items[s] = it; });
   const wildSlots = Object.keys(items).filter(s => items[s].w);
   // Make sure the chest is never left empty, even if its stored record was damaged or partial.
-  SLOT_IDS.slice(0, C.CHEST_SLOTS).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
+  SLOT_IDS.slice(0, lvlSlots(chestLevel(chestXP(cur)))).forEach(s => { if (!items[s] && wildSlots.indexOf(s) < 0) wildSlots.push(s); });
   const fresh = chestItems({ id: meta.id, kind: cur.kind || meta.kind, lvl: chestLevel(chestXP(cur)) }, day, wildSlots);
   cur.items = Object.assign(items, fresh); cur.day = day; return cur;
 }
@@ -668,6 +670,7 @@ function timeToReset() {
 const COSMETICS = {
   picon: { label: 'Player icon', def: 'dot', items: [
     { id: 'dot', name: 'Classic Dot', cost: 0, em: '' },
+    { id: 'comet', name: 'Comet', cost: 0, login: 7, em: '☄️' },
     { id: 'boot', name: 'Boots', cost: 200, em: '🥾' },
     { id: 'compass', name: 'Compass', cost: 200, em: '🧭' },
     { id: 'star', name: 'Star', cost: 250, em: '⭐' },
@@ -723,6 +726,7 @@ const COSMETICS = {
     { id: 'genie', name: 'Magic Carpet', cost: 1500, em: '🧞' } ] },
   dlight: { label: 'Drone lights', def: 'classic', items: [
     { id: 'classic', name: 'Nav Lights', cost: 0, c1: '#ff4d4d', c2: '#49e07f', c3: '#7ff0ff' },
+    { id: 'aurora', name: 'Aurora Lights', cost: 0, login: 14, c1: '#7ff0ff', c2: '#b88bff', c3: '#49d17a' },
     { id: 'police', name: 'Patrol', cost: 300, c1: '#ff3b3b', c2: '#3b7bff', c3: '#ffffff' },
     { id: 'ice', name: 'Glacier', cost: 300, c1: '#d6f6ff', c2: '#7fe0ff', c3: '#bff6ff' },
     { id: 'sunset', name: 'Sunset', cost: 350, c1: '#ff9f45', c2: '#ff5fa2', c3: '#ffd98a' },
@@ -752,6 +756,7 @@ const COSMETICS = {
     { id: 'rainbow', name: 'Rainbow', cost: 1000, c: 'rainbow' } ] },
   map: { label: 'Map style', def: 'classic', items: [
     { id: 'classic', name: 'Classic', cost: 0, cls: '' },
+    { id: 'starlight', name: 'Starlight', cost: 0, login: 90, cls: 'mt-starlight' },
     { id: 'midnight', name: 'Midnight', cost: 300, cls: 'mt-midnight' },
     { id: 'sepia', name: 'Sepia', cost: 300, cls: 'mt-sepia' },
     { id: 'mono', name: 'Mono', cost: 400, cls: 'mt-mono' },
@@ -777,6 +782,7 @@ const COSMETICS = {
     { id: 'inkwell', name: 'Inkwell', cost: 600, cls: 'mt-ink' } ] },
   cskin: { label: 'Chest skin', def: 'classic', items: [
     { id: 'classic', name: 'Classic Chest', cost: 0, em: '' },
+    { id: 'monolith', name: 'Monolith', cost: 0, login: 75, em: '🗿' },
     { id: 'crate', name: 'Wooden Crate', cost: 250, em: '📦' },
     { id: 'toolbox', name: 'Toolbox', cost: 250, em: '🧰' },
     { id: 'barrel', name: 'Barrel', cost: 300, em: '🛢️' },
@@ -790,6 +796,7 @@ const COSMETICS = {
     { id: 'dragonegg', name: 'Dragon Hoard', cost: 1200, em: '🐉' } ] },
   trail: { label: 'Walking trail', def: 'none', items: [
     { id: 'none', name: 'No Trail', cost: 0, t: '' },
+    { id: 'aurora', name: 'Aurora Trail', cost: 0, login: 30, t: 'aurora' },
     { id: 'sparkle', name: 'Sparkles', cost: 300, t: 'sparkle' },
     { id: 'steps', name: 'Footprints', cost: 250, t: 'emoji', em: '👣' },
     { id: 'flames', name: 'Flames', cost: 500, t: 'flame' },
@@ -801,6 +808,7 @@ const COSMETICS = {
     { id: 'ghost', name: 'Ghost Mist', cost: 450, t: 'mist' } ] },
   ncolor: { label: 'Name colour', def: 'plain', items: [
     { id: 'plain', name: 'Plain', cost: 0, c: '' },
+    { id: 'prism', name: 'Prismatic', cost: 0, login: 45, c: 'prism' },
     { id: 'gold', name: 'Gold', cost: 400, c: 'gold' },
     { id: 'cyan', name: 'Cyan', cost: 250, c: '#5ee8ff' },
     { id: 'rose', name: 'Rose', cost: 250, c: '#ff7aa8' },
@@ -810,6 +818,7 @@ const COSMETICS = {
     { id: 'rainbow', name: 'Rainbow', cost: 1000, c: 'rainbow' } ] },
   badge: { label: 'Name badge', def: 'none', items: [
     { id: 'none', name: 'No Badge', cost: 0, em: '' },
+    { id: 'devoted', name: 'Devoted', cost: 0, login: 60, em: '🎖️' },
     { id: 'star', name: 'Star', cost: 200, em: '🌟' },
     { id: 'compass', name: 'Compass', cost: 200, em: '🧭' },
     { id: 'clover', name: 'Clover', cost: 250, em: '🍀' },
@@ -823,6 +832,7 @@ const COSMETICS = {
     { id: 'dragon', name: 'Dragon', cost: 1500, em: '🐉' } ] },
   theme: { label: 'App theme', def: 'forest', items: [
     { id: 'forest', name: 'Forest', cost: 0, v: ['#0f1a14', '#13241b', '#183024', '#234230', '#2a4a39', '#9fb8aa', '#e9f1ec'] },
+    { id: 'eclipse', name: 'Eclipse', cost: 0, login: 100, v: ['#08060f', '#100b1c', '#1a1230', '#261a45', '#3b2a66', '#b9aee0', '#f6f2ff'] },
     { id: 'midnight', name: 'Midnight', cost: 300, v: ['#0b1020', '#10172b', '#151f38', '#1d2a4a', '#2a3a62', '#9aa7c4', '#e8ecf7'] },
     { id: 'oled', name: 'OLED Black', cost: 400, v: ['#000000', '#070707', '#111111', '#1b1b1b', '#2b2b2b', '#9d9d9d', '#f2f2f2'] },
     { id: 'charcoal', name: 'Charcoal', cost: 300, v: ['#141517', '#1a1c1f', '#212429', '#2b2f35', '#3b4048', '#a3a9b3', '#eceef1'] },
@@ -845,6 +855,7 @@ const COSMETICS = {
     { id: 'waves', name: 'Waves', cost: 350, cls: 'bg-waves' } ] },
   drone: { label: 'Drone paint', def: 'silver', items: [
     { id: 'silver', name: 'Silver', cost: 0, c: '#cfd8e3' },
+    { id: 'chrome', name: 'Liquid Chrome', cost: 0, login: 120, c: '#e8f6ff' },
     { id: 'crimson', name: 'Crimson', cost: 300, c: '#ff5a5a' },
     { id: 'emerald', name: 'Emerald', cost: 300, c: '#49e39a' },
     { id: 'carbon', name: 'Carbon', cost: 400, c: '#4a5568' },
@@ -902,6 +913,7 @@ const COSMETICS = {
     { id: 'goldbg', name: 'Solid Gold', cost: 1500, g: 'linear-gradient(135deg,#fff0b0,#ffd34d 45%,#b8860b)', ink: '#2a1d00' } ] },
   avframe: { label: 'Profile frame', def: 'none', items: [
     { id: 'none', name: 'No Frame', cost: 0, cls: '' },
+    { id: 'legend', name: 'Legend Halo', cost: 0, login: 21, cls: 'fr-legend' },
     { id: 'silver', name: 'Silver Ring', cost: 250, cls: 'fr-silver' },
     { id: 'goldr', name: 'Gold Ring', cost: 500, cls: 'fr-gold' },
     { id: 'team', name: 'Faction Ring', cost: 400, cls: 'fr-team' },
@@ -931,7 +943,7 @@ function refreshMeIcon() { if (meMarker && window.L) try { meMarker.setIcon(meIc
 function droneGlyph() { const ic = cosGet('dicon', cosEq('dicon')); return ic.em ? `<span class="droneglyph">${ic.em}</span>` : droneSVG(); }
 const MAP_THEME_CLASSES = COSMETICS.map.items.map(m => m.cls).filter(Boolean);
 const cosGet = (cat, id) => COSMETICS[cat].items.find(x => x.id === id) || COSMETICS[cat].items.find(x => x.id === COSMETICS[cat].def);
-const cosOwned = (cat, id) => cosGet(cat, id).cost === 0 || !!(P.cos.owned[cat + ':' + id]);
+const cosOwned = (cat, id) => { const it = cosGet(cat, id); return it.login ? (P.daily && P.daily.n || 0) >= it.login : it.cost === 0 || !!(P.cos.owned[cat + ':' + id]); };
 const cosEq = cat => (P.cos.eq && P.cos.eq[cat]) || COSMETICS[cat].def;
 function applyCosmetics() {
   if (!P) return;
@@ -952,7 +964,7 @@ function applyCosmetics() {
 }
 // coloured names and badges (yours, and other players' on the leaderboards)
 function nameHtml(name, nc, bd) {
-  const cls = nc === 'rainbow' ? 'nc-rainbow' : nc === 'gold' ? 'nc-gold' : '';
+  const cls = nc === 'rainbow' ? 'nc-rainbow' : nc === 'gold' ? 'nc-gold' : nc === 'prism' ? 'nc-prism' : '';
   const st = nc && nc[0] === '#' ? ` style="color:${nc}"` : '';
   return `<span class="pname ${cls}"${st}>${esc(name)}</span>${bd ? `<span class="pbadge">${bd}</span>` : ''}`;
 }
@@ -1002,6 +1014,7 @@ function equipCos(cat, id) {
 function buyCos(cat, id) {
   const it = cosGet(cat, id);
   if (cosOwned(cat, id)) return equipCos(cat, id);
+  if (it.login) return toast(`🔒 ${it.name} is a login exclusive – claim your daily reward ${it.login} times to unlock it (${P.daily.n || 0}/${it.login})`);
   if ((P.coins || 0) < it.cost) return toast(`Need ${fmtC(it.cost - (P.coins || 0))} more 🪙`, 'bad');
   modal(`<div style="text-align:center"><h3>${esc(it.name)}</h3><p class="sub">${COSMETICS[cat].label} · 🪙 ${fmtC(it.cost)}</p>
     <div class="trade"><button class="btn ghost" id="okBtn">Cancel</button><button class="btn" id="buyGo">Buy for 🪙 ${fmtC(it.cost)}</button></div></div>`,
@@ -1017,7 +1030,7 @@ function swatch(cat, it) {
   if (cat === 'map') return `<i class="sw mtsw ${it.tiles ? 'mts-' + it.tiles : it.cls || 'mtsw-classic'}"></i>`;
   if (cat === 'cskin') return it.em ? `<i class="sw swem">${it.em}</i>` : `<i class="sw swem swchest">${CHEST_SVG}</i>`;
   if (cat === 'trail') return `<i class="sw swtrail tr-${it.id}">${it.em ? it.em + it.em : ''}</i>`;
-  if (cat === 'ncolor') return `<i class="sw swname ${it.c === 'rainbow' ? 'nc-rainbow' : it.c === 'gold' ? 'nc-gold' : ''}" style="${it.c && it.c[0] === '#' ? 'color:' + it.c : ''}">Aa</i>`;
+  if (cat === 'ncolor') return `<i class="sw swname ${it.c === 'rainbow' ? 'nc-rainbow' : it.c === 'gold' ? 'nc-gold' : it.c === 'prism' ? 'nc-prism' : ''}" style="${it.c && it.c[0] === '#' ? 'color:' + it.c : ''}">Aa</i>`;
   if (cat === 'badge') return `<i class="sw swem">${it.em || '–'}</i>`;
   if (cat === 'theme') return `<i class="sw swth" style="background:linear-gradient(135deg,${it.v[0]} 0 45%,${it.v[2]} 45% 75%,${it.v[4]} 75%)"><b style="background:var(--acc)"></b></i>`;
   if (cat === 'bg') return `<i class="sw swbg ${it.cls}"></i>`;
@@ -1041,8 +1054,8 @@ function renderStyle() {
     h += `<h2 class="sec">${g.label} <small>${own}/${g.items.length} owned</small></h2><div class="cosgrid" data-cat="${cat}">`;
     g.items.forEach(it => {
       const owned = cosOwned(cat, it.id), on = eq === it.id;
-      h += `<button class="cositem${on ? ' on' : ''}" data-cos="${it.id}">${swatch(cat, it)}
-        <b>${esc(it.name)}</b><small>${on ? '✓ Equipped' : owned ? 'Tap to use' : '🪙 ' + fmtC(it.cost)}</small></button>`;
+      h += `<button class="cositem${on ? ' on' : ''}${it.login ? ' excl' : ''}" data-cos="${it.id}">${swatch(cat, it)}
+        <b>${esc(it.name)}</b><small>${on ? '✓ Equipped' : owned ? (it.login ? '✨ Login exclusive' : 'Tap to use') : it.login ? `🔒 ${it.login} daily logins` : '🪙 ' + fmtC(it.cost)}</small></button>`;
     });
     h += `</div>`;
   });
@@ -2898,7 +2911,7 @@ const GUIDE = () => {
     <ul><li>Turn on GPS and walk. The map follows you.</li><li>Chests start <b>hidden</b>. You'll see a dashed <b>search circle</b>; the chest is somewhere inside it.</li>
     <li>Get within <b>${ft(C.DISCOVER_FT || 20)}</b> and the chest is found for good. Within <b>${ft(C.UNLOCK_FT)}</b> you can open it.</li>
     <li>Use the <b>locator</b> (offered when you're close) – it ticks faster as you get warmer.</li></ul>`],
-  ['📦', 'Chests & trading', `<p>Each chest holds ${C.CHEST_SLOTS} items, and can grow to ${C.MAX_CHEST_SLOTS} when players leave gifts.</p>
+  ['📦', 'Chests & trading', `<p>Chests hold more as they level up – 4 items at levels 1–2, 5 at 3–4, 6 at 5–6, 7 at level 7 and 8 at level 8 – and they look bigger on the map too. Gifts from players can fill a chest up to ${C.MAX_CHEST_SLOTS}. Now and then a chest also has a boost or a mod tucked inside for you (more often, and better, in higher-level chests; once per chest per day).</p>
     <ul><li><b>Trade:</b> pick one item to take and one of yours to leave. You can trade at the same chest once every ${C.TRADE_COOLDOWN_MIN || 60} minutes.</li>
     <li><b>Leave an item</b> without taking one to be generous (+${CO.gift} 🪙).</li><li>Items left by players stay until someone swaps them; the rest restock every day.</li>
     <li>Opening a chest for the first time pays <b>+${CO.chestNew} 🪙</b>. <span class="gtag" style="--c:#b88bff">✨ Rare</span> chests pay +${RARE_BONUS} 🪙 and always hold an Epic or better.</li>
@@ -3101,6 +3114,32 @@ function buyAmp(r) {
     $('#okBtn', m).onclick = closeModal;
     $('#aGo', m).onclick = () => { if (!spend(a.cost)) return toast('Not enough coins', 'bad'); P.amps = P.amps || {}; P.amps[r] = (P.amps[r] || 0) + 1; save(); closeModal(); renderAll(); FX.sfx('ach'); toast(`${a.ic} ${a.n} added – you have ${P.amps[r]}`, 'gold'); };
   });
+}
+// ---- chest finds: now and then a chest also holds a boost or a mod, better in higher-level chests ----
+const FINDS = [
+  { w: 12, min: 1, ic: '🧲', t: '30 min Coin Magnet', give: () => boostAdd('magnet', 30) },
+  { w: 12, min: 1, ic: '🧪', t: '30 min XP Elixir', give: () => boostAdd('xp', 30) },
+  { w: 10, min: 1, ic: '⚡', t: '30 min Hack Doubler', give: () => boostAdd('hackx', 30) },
+  { w: 9, min: 1, ic: '♻️', t: 'Common Multi-hack', give: () => modAdd('mh', 0) },
+  { w: 9, min: 1, ic: '❄️', t: 'Common Heat Sink', give: () => modAdd('hs', 0) },
+  { w: 8, min: 2, ic: '📡', t: 'Rare Link Amp', r: 2, give: () => { P.amps = P.amps || {}; P.amps[0] = (P.amps[0] || 0) + 1; } },
+  { w: 6, min: 3, ic: '🍀', t: 'Lucky Charm charge', give: () => { P.boost = P.boost || {}; P.boost.luck = (P.boost.luck || 0) + 1; } },
+  { w: 5, min: 4, ic: '♻️', t: 'Rare Multi-hack', r: 2, give: () => modAdd('mh', 1) },
+  { w: 5, min: 4, ic: '❄️', t: 'Rare Heat Sink', r: 2, give: () => modAdd('hs', 1) },
+  { w: 3, min: 6, ic: '🛰️', t: 'Ultra Link', r: 3, give: () => { P.amps = P.amps || {}; P.amps[1] = (P.amps[1] || 0) + 1; } },
+  { w: 1, min: 8, ic: '📶', t: 'Very Rare Link Amp', r: 4, give: () => { P.amps = P.amps || {}; P.amps[2] = (P.amps[2] || 0) + 1; } }
+];
+function chestFind(meta) {
+  const day = utcDay(); P.findDay = P.findDay || {};
+  if (P.findDay[meta.id] === day) return null;                 // once per chest per day
+  Object.keys(P.findDay).forEach(k => { if (P.findDay[k] !== day) delete P.findDay[k]; });
+  P.findDay[meta.id] = day;
+  const lv = chestLevel(LVL.get(meta.id) || 0);
+  if (Math.random() >= 0.06 + 0.025 * lv) return null;           // 8.5% at Lv1 ... 26% at Lv8
+  const pool = FINDS.filter(f => lv >= f.min); let roll = Math.random() * pool.reduce((a, f) => a + f.w, 0), f = pool[0];
+  for (const x of pool) { roll -= x.w; if (roll < 0) { f = x; break; } }
+  f.give(); P.stats.chestFinds = (P.stats.chestFinds || 0) + 1; save();
+  return f;
 }
 // ---- towers ----
 // ---------------- boosts & tools ----------------
@@ -4466,6 +4505,17 @@ function renderDex() {
 // ---- daily ----
 const TIERS = [0,0,1,0,1,0,2, 0,1,1,0,1,0,3, 1,0,2,1,0,1,3, 1,1,2,1,2,1,4];
 const TIER_ICON = ['🎁', '🎁', '💙', '💜', '🌟'];
+// Days 7, 14, 21 and 28 of every cycle also give the rarest mods, boosts and a tower - nowhere cheaper.
+const DAY_PERKS = {
+  7: { ic: '♻️', t: 'Very Rare Multi-hack + 30 min Hack Doubler', give: () => { modAdd('mh', 2); boostAdd('hackx', 30); } },
+  14: { ic: '📶', t: 'Very Rare Heat Sink + Very Rare Link Amp', give: () => { modAdd('hs', 2); P.amps = P.amps || {}; P.amps[2] = (P.amps[2] || 0) + 1; } },
+  21: { ic: '🛡️', t: 'Aegis Shield + Lucky Charm (3 chests)', give: () => { addItem(SHIELDS[4].id); P.boost = P.boost || {}; P.boost.luck = (P.boost.luck || 0) + 3; } },
+  28: { ic: '🗼', t: 'Faction Tower + Very Rare Link Amp + Ultra Link', give: () => { P.towers = (P.towers || 0) + 1; P.amps = P.amps || {}; P.amps[2] = (P.amps[2] || 0) + 1; P.amps[1] = (P.amps[1] || 0) + 1; } }
+};
+function modAdd(k, r) { P.mods = P.mods || {}; P.mods[k] = P.mods[k] || {}; P.mods[k][r] = (P.mods[k][r] || 0) + 1; }
+function boostAdd(k, mins) { P.boost = P.boost || {}; P.boost[k] = Math.max(Date.now(), P.boost[k] || 0) + mins * 60000; }
+// login exclusives: cosmetics that unlock only by claiming the daily reward enough times
+function loginExclusives() { const out = []; Object.entries(COSMETICS).forEach(([cat, g]) => g.items.forEach(it => { if (it.login) out.push(Object.assign({ cat, label: g.label }, it)); })); return out.sort((a, b) => a.login - b.login); }
 const dailyCoins = (streak, day, run) => Math.round((CO.daily + CO.dailyStreak * Math.min(Math.max(0, streak - 1), 6) + (day % 7 === 0 ? CO.dailyBig : 0)) * (1 + perfectBonus(run || 0)));
 function renderDaily() {
   const n = P.daily.n, claimed = P.daily.last === dayKey(), cycleDay = (n % 28) + 1, cycle = Math.floor(n / 28) + 1;
@@ -4482,9 +4532,14 @@ function renderDaily() {
   for (let d = 1; d <= 28; d++) {
     const t = TIERS[d - 1], done = d < cycleDay || (d === cycleDay && claimed && false), now = d === cycleDay && !claimed;
     const calStreak = baseStreak + (d - cycleDay) + (claimed ? 0 : 1), calRun = baseRun + (d - cycleDay) + (claimed ? 0 : 1);
-    h += `<div class="day t${t}${d < cycleDay ? ' done' : ''}${now ? ' now' : ''}"><b>Day ${d}</b><span>${TIER_ICON[t]}</span><small style="color:${RAR[t].c}">${t >= 2 ? RAR[t].n : ''}</small>${d >= cycleDay ? `<em>+${dailyCoins(calStreak, d, calRun)}🪙</em>` : ''}</div>`;
+    h += `<div class="day t${t}${d < cycleDay ? ' done' : ''}${now ? ' now' : ''}${DAY_PERKS[d] ? ' perk' : ''}"><b>Day ${d}</b><span>${TIER_ICON[t]}${DAY_PERKS[d] ? `<i class="perkic">${DAY_PERKS[d].ic}</i>` : ''}</span><small style="color:${RAR[t].c}">${t >= 2 ? RAR[t].n : ''}</small>${d >= cycleDay ? `<em>+${dailyCoins(calStreak, d, calRun)}🪙</em>` : ''}</div>`;
   }
   h += `</div><p class="fine pad">Missing a day never resets your streak – it picks up where you left off. Every claim pays coins (more as your streak grows, up to +${CO.dailyStreak * 6}, and +${CO.dailyBig} on days 7, 14, 21 and 28). Claim without missing a day and it gets better: +10% coins for each unbroken day, up to double, plus a bonus rare item every 7 unbroken days.</p>`;
+  const ex = loginExclusives(), n2 = P.daily.n || 0, nx = ex.find(e => n2 < e.login);
+  h += `<div class="card perkcard"><b>🎖️ Login rewards</b><p class="fine" style="margin:4px 0 8px">Day 7, 14, 21 and 28 of every cycle also give the rarest gear: ${Object.entries(DAY_PERKS).map(([d, p]) => `<b>${p.ic} Day ${d}</b> ${esc(p.t)}`).join(' · ')}.</p>
+    <b style="font-size:13px">✨ Login exclusives</b> <small class="fine">${ex.filter(e => n2 >= e.login).length}/${ex.length} unlocked · only from claiming daily rewards</small>
+    <div class="exlist">${ex.map(e => `<span class="exit${n2 >= e.login ? ' got' : ''}" title="${esc(e.label)}"><b>${n2 >= e.login ? '✓' : e.login}</b><small>${esc(e.name)}</small></span>`).join('')}</div>
+    ${nx ? `<p class="fine" style="margin:6px 0 0">Next: <b>${esc(nx.name)}</b> (${esc(nx.label.toLowerCase())}) in ${nx.login - n2} more daily claim${nx.login - n2 === 1 ? '' : 's'}.</p>` : '<p class="fine" style="margin:6px 0 0">You have every login exclusive!</p>'}</div>`;
   h += renderChallenges();
   $('#dailyBox').innerHTML = h;
   const b = $('#claimBtn'); if (b) b.onclick = claimDaily;
@@ -4563,6 +4618,8 @@ function claimDaily() {
   const coins = dailyCoins(P.daily.streak, day, P.daily.run), pb = Math.round(perfectBonus(P.daily.run) * 100);
   const bonus = P.daily.run > 1 && P.daily.run % 7 === 0 ? rollItem(Math.random, 1, Math.min(4, 2 + Math.floor(P.daily.run / 28))) : null;
   if (bonus) addItem(bonus.id);
+  const perk = DAY_PERKS[day]; if (perk) perk.give();
+  const exNow = loginExclusives().find(e => e.login === P.daily.n);
   const isNew = addItem(it.id); earn(coins, pb ? 'Daily reward + unbroken bonus' : 'Daily reward'); act('daily'); save(); checkAch(); renderAll();
   if (notifOn()) scheduleDailyReminder();
   FX.sfx('daily');
@@ -4571,6 +4628,8 @@ function claimDaily() {
     <p class="coinline">+${fmtC(coins)} 🪙${P.daily.streak > 1 ? ` <small>streak ${P.daily.streak}</small>` : ''}</p>
     ${P.daily.run > 1 ? `<p class="perfect" style="margin:4px 0 0">✨ ${P.daily.run} days unbroken · +${pb}% coins</p>` : ''}
     ${bonus ? `<p class="sub" style="margin-top:8px">Perfect-week bonus: <b style="color:${RAR[bonus.r].c}">${esc(bonus.n)}</b></p>` : ''}
+    ${perk ? `<div class="perkwin"><span>${perk.ic}</span><b>Day ${day} bonus</b><small>${esc(perk.t)}</small></div>` : ''}
+    ${exNow ? `<div class="perkwin excl"><span>✨</span><b>Login exclusive unlocked!</b><small>${esc(exNow.name)} · ${esc(exNow.label)} – equip it in Shop → Style</small></div>` : ''}
     <button class="btn big" id="okBtn">Nice!</button></div>`, m => { $('#okBtn', m).onclick = closeModal; FX.reveal(it.r, $('.tile.big', m), true); });
 }
 
@@ -5030,6 +5089,7 @@ function drawTrail(c, t) {
     else if (tr.t === 'flame') { const fl = .6 + .4 * Math.sin(t * 12 + p.i * 2.3); c.globalAlpha = fade * fl;
       const g = c.createRadialGradient(p.x, p.y - fl * 3, 0, p.x, p.y, 7 * f + 2); g.addColorStop(0, '#fff3a0'); g.addColorStop(.4, '#ff9a3c'); g.addColorStop(1, 'rgba(255,60,20,0)');
       c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y - fl * 3, 7 * f + 2, 0, 6.29); c.fill(); }
+    else if (tr.t === 'aurora') { c.globalAlpha = fade * .55; const r = 6 + 4 * f, g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r); g.addColorStop(0, `hsla(${(160 + p.i * 4 + t * 40) % 360},95%,70%,1)`); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y + Math.sin(t * 2 + p.i * .4) * 3, r, 0, 6.29); c.fill(); }
     else if (tr.t === 'rainbow') { c.globalAlpha = fade * .85; c.fillStyle = `hsl(${(p.i * 6 + t * 80) % 360},90%,62%)`; c.beginPath(); c.arc(p.x, p.y, 3.2 * f + 1, 0, 6.29); c.fill(); }
     else if (tr.t === 'bubble') { c.globalAlpha = fade * .8; c.strokeStyle = '#bff6ff'; c.lineWidth = 1.2; const r = 2 + (p.i % 4) + (1 - f) * 4;
       c.beginPath(); c.arc(p.x + Math.sin(t + p.i) * 4, p.y - (1 - f) * 18, r, 0, 6.29); c.stroke(); }
@@ -5435,7 +5495,7 @@ function chestPin(c, extra) {
   const rare = isRare(c), seen = !!(P && P.stats.visited[c.id]), lv = chestLevel(LVL.get(c.id));
   const cls = 'cm cm2' + (c.kind === 'player' ? ' pl' : '') + (rare ? ' rare' : '') + (seen ? ' seen' : ' fresh') + (extra || '');
   return L.divIcon({ className: cls, iconSize: [36, 44], iconAnchor: [18, 42],
-    html: `<div class="pin${c.skin && SKIN_OK.has(c.skin) ? ' skinned' : ''}">${c.skin && SKIN_OK.has(c.skin) ? `<span class="pskin">${c.skin}</span>` : CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}` });
+    html: `<div class="cmz" style="--z:${(1 + 0.09 * (lv - 1)).toFixed(2)}"><div class="pin${c.skin && SKIN_OK.has(c.skin) ? ' skinned' : ''}">${c.skin && SKIN_OK.has(c.skin) ? `<span class="pskin">${c.skin}</span>` : CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}</div>` });
 }
 function drawChestMarkers() {
   if (!map || !window.L || !pos) return;
@@ -5660,6 +5720,10 @@ async function openChest(id, byDrone) {
       if (!cur) { const c = makeChest(meta, day); c.visits = firstVisit ? 1 : 0; if (firstVisit && walkIn) c.wk = 1; counted = firstVisit; return c; }
       let changed = false;
       if ((cur.day || 0) < day) { refreshChest(cur, meta, day); changed = true; }
+      else {                                          // grew a level since today's refresh: fill the new slots now
+        const want = SLOT_IDS.slice(0, lvlSlots(chestLevel(chestXP(cur)))).filter(s => !cur.items[s]);
+        if (want.length) { Object.assign(cur.items, chestItems({ id: meta.id, kind: cur.kind || meta.kind, lvl: chestLevel(chestXP(cur)) }, day, want)); changed = true; }
+      }
       // each explorer counts once; explorers from before counting began are added the next time
       // they open a chest that has no explorers on record yet
       const backfill = !firstVisit && !P.lvlCounted[id] && !(cur.visits > 0);
@@ -5680,6 +5744,7 @@ async function openChest(id, byDrone) {
     gainKey(meta);
     const tb = towerBonus(meta);
     if (tb.length) setTimeout(() => { toast(`🗼 Tower bonus: +${tb.map(it => it.n).join(', ')}`, 'gold'); renderAll(); }, 2400);
+    { const fnd = chestFind(meta); if (fnd) setTimeout(() => { toast(`${fnd.ic} Tucked in the chest: ${fnd.t}!`, 'gold'); FX.sfx('reveal', fnd.r || 2); FX.confetti(['#7ff0ff', '#ffd98a', '#fff'], 40); renderAll(); renderBoostBar(); }, 2600); }
     if (P.firstOpenDay !== dayKey()) {
       P.firstOpenDay = dayKey(); const lk = 1.4 + 0.1 * (chestLevel(LVL.get(meta.id) || 0) - 1);
       const fo = [rollItem(Math.random, lk), rollItem(Math.random, lk)]; fo.forEach(it => { addItem(it.id); histNew(it.id, meta.name); });
@@ -6215,7 +6280,7 @@ function wire() {
 document.addEventListener('DOMContentLoaded', async () => { wire(); await resume(); });
 
 // exposed for tests
-window.__sw = { fieldReveal, shopBuy, glyphLeft, pickLeft, glyphMark, pickMark, hsCut, mhBonus, loadLinks, ampDialog, buyAmp, linkRange, ampMult, linkDialog, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
+window.__sw = { fieldReveal, chestFind, claimDaily2: null, loginExclusives, DAY_PERKS, chestPin, lvlSlots, LVL, shopBuy, glyphLeft, pickLeft, glyphMark, pickMark, hsCut, mhBonus, loadLinks, ampDialog, buyAmp, linkRange, ampMult, linkDialog, checkTut, tutSheet, tutInit, renderTutPill, TUT, checkSets, renderSets, SETS, setProgress, merchNow, drawMerchant, merchantSheet, hatchEgg, petWalk, drawPet, fillFriends, giftCheck, histIn, histOut, refreshChestViews, doTrade, lockPick, glyphLevelPoint, showChest, get LIVE() { return LIVE; }, buyBoost, boostOn, keyCopyDialog, bannerDialog, TRAIL, trailAdd, equipCos, makeLink, showPulse, lifeSky, LIFE, skyPhase, trackSpeed, SPD, claimDaily, renderDaily, get daily() { return P.daily; }, levelUpShow, achBanner, coinShower, comboPop, xpPop, gainXP, get map() { return map; }, towerSheet, placeTower, shieldDialog, craftShield, doMerge, runGlyph, get linkData() { return linkData; }, loadLinks, linkDialog, renderKeys, parkedSheet, recoverDrone, pollDrones, get OTHERS() { return OTHERS; }, openGuide, renderLegend, openChest, chooseTeamDialog, glyphGame, ensureTeam, drawCells, cellKeyScore, get TEAMS2(){return TEAMS;}, adminUserCard, adminPlaceMode, adminHideDialog, drawAdminPlayers, showSpotOnMap, chestBy, isRare, DISCOVER_M, submitLB, renderLB, buyCos, setSub, metricVal, pickChallenges, applyCosmetics, COSMETICS, get admPlacing() { return admPlacing; }, dist, rollItem, rng, hashStr, makeChest, refreshChest, TIERS, ACH, hashPw, daysBetween,
   claimDaily, hideDialog, openChest, doMerge, doCraft, needNet, makeRecoveryCode, normCode,
   isStandalone, canInstall, appCard, tile, plateVars, applyBasemap, isAdmin, adminPoll, get adminData() { return adminData; }, isFound, discover, hideDialog, searchCenter, RC, rcDecode, rcCoinsNear, rcGot, rcDraw, rcCollect, launchDrone, endFlight, droneOpen, droneState, get fly() { return fly; }, joy, addWalk, trackWalk, dailyStock, mergeOffers, craftOffers, earn, get P() { return P; }, get offline() { return OFFLINE; }, get chests() { return chests; } };
 })();
