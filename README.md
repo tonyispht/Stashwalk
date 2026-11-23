@@ -512,4 +512,5 @@ Sounds are synthesized in the browser (no audio files). Header buttons toggle so
 ## Credits
 
 - 3D chest: "Mythical Chest Draft 1" (https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd) by ArtsGareau (https://sketchfab.com/ArtsGareau), licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Recoloured per chest level and optimised for the web (models/chest.glb, img/chest_l*.webp). Original licence text in models/chest-license.txt.
+- Gold coin: "gold coin" (https://sketchfab.com/3d-models/gold-coin-f2481a0614b84f4da33c481f3d9af1ac) by alex.yefremov (https://sketchfab.com/alex.yefremov), licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Rendered to images for the game (img/coin.webp, img/coin_spin.webp, img/coin_stack.webp). Original licence text in models/coin-license.txt.
 - 3D rendering: three.js (MIT), vendored in vendor/.

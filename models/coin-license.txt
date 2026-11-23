@@ -1,0 +1,11 @@
+Model Information:
+* title:	gold coin
+* source:	https://sketchfab.com/3d-models/gold-coin-f2481a0614b84f4da33c481f3d9af1ac
+* author:	alex.yefremov (https://sketchfab.com/alex.yefremov)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "gold coin" (https://sketchfab.com/3d-models/gold-coin-f2481a0614b84f4da33c481f3d9af1ac) by alex.yefremov (https://sketchfab.com/alex.yefremov) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

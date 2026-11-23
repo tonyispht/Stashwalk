@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611231130';
+const APP_BUILD = '202611231200';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -38,6 +38,26 @@ function fmtDist(m) { const ft = m * FT; if (ft < 1000) return Math.round(ft) + 
 const dayKey = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const utcDay = () => Math.floor(Date.now() / 86400000);
 function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+// ---- coin icon: every 🪙 on screen is swapped for the rendered gold coin (img/coin.webp) ----
+const COIN_SKIP = { OPTION: 1, TEXTAREA: 1, INPUT: 1, SCRIPT: 1, STYLE: 1, TITLE: 1 };
+function coinText(n) {
+  const p = n.parentNode; if (!p || COIN_SKIP[p.nodeName] || p.closest && p.closest('svg')) return;
+  const parts = n.nodeValue.split('🪙'); if (parts.length < 2) return;
+  const f = document.createDocumentFragment();
+  parts.forEach((t, i) => { if (i) { const c = document.createElement('i'); c.className = 'ci'; c.setAttribute('aria-label', 'coins'); f.appendChild(c); } if (t) f.appendChild(document.createTextNode(t)); });
+  p.replaceChild(f, n);
+}
+function coinify(root) {
+  if (root.nodeType === 3) return root.nodeValue.includes('🪙') && coinText(root);
+  if (root.nodeType !== 1 || !root.textContent.includes('🪙')) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.nodeValue.includes('🪙') ? 1 : 3 }), hits = [];
+  while (w.nextNode()) hits.push(w.currentNode);
+  hits.forEach(coinText);
+}
+new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') coinify(m.target); else m.addedNodes.forEach(coinify); } })
+  .observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+document.addEventListener('DOMContentLoaded', () => coinify(document.body));
+if (document.body) coinify(document.body);
 function toast(msg, kind) {
   if (kind === 'bad') FX.sfx('error');
   const t = document.createElement('div'); t.className = 'toast ' + (kind || ''); t.textContent = msg;
@@ -1843,7 +1863,7 @@ function rcDraw(force) {
   RC.layer.eachLayer(m => { if (!live.has(m)) RC.layer.removeLayer(m); });
   for (const c of want) {
     if (RC.marks.has(c.id)) continue;
-    const m = L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'rcm' + (c.stack ? ' stack' : ''), html: '<i></i>', iconSize: c.stack ? [19, 19] : [12, 12] }),
+    const m = L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'rcm' + (c.stack ? ' stack' : ''), html: `<i style="--d:${(Math.random() * 1.6).toFixed(2)}"></i>`, iconSize: c.stack ? [26, 26] : [16, 16] }),
       interactive: false, keyboard: false });
     m.coin = c; m.addTo(RC.layer); RC.marks.set(c.id, m);
   }
@@ -2963,7 +2983,7 @@ const GUIDE = () => {
     <li>Links can't cross any other link. Link three chests into a triangle and it becomes a <b>🔺 field</b> for your faction. Links pay 15 🪙; fields pay more the bigger they are.</li>
     <li>Win a <b>🔥 Hard glyph hack</b> at a chest to break the other factions' links and fields anchored there.</li>
     <li>Links and fields count in the faction standings. Toggle them on the map with the layers button.</li></ul>`],
-  ['🎨', 'Credits', `<p>The 3D chest is based on <a href="https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd" target="_blank" rel="noopener">"Mythical Chest Draft 1"</a> by <a href="https://sketchfab.com/ArtsGareau" target="_blank" rel="noopener">ArtsGareau</a>, licensed under <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a> (recoloured per chest level). 3D rendering by three.js. Map data © OpenStreetMap contributors.</p>`],
+  ['🎨', 'Credits', `<p>The 3D chest is based on <a href="https://sketchfab.com/3d-models/mythical-chest-draft-1-cc3d58d1c409436eb2f1ab1f47f8f0cd" target="_blank" rel="noopener">"Mythical Chest Draft 1"</a> by <a href="https://sketchfab.com/ArtsGareau" target="_blank" rel="noopener">ArtsGareau</a>, licensed under <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a> (recoloured per chest level). The gold coin is based on <a href="https://sketchfab.com/3d-models/gold-coin-f2481a0614b84f4da33c481f3d9af1ac" target="_blank" rel="noopener">"gold coin"</a> by <a href="https://sketchfab.com/alex.yefremov" target="_blank" rel="noopener">alex.yefremov</a>, licensed under <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a> (rendered to images). 3D rendering by three.js. Map data © OpenStreetMap contributors.</p>`],
   ['🧩', 'Collection sets', `<p>Items belong to themed sets like the Trailhead Kit or Pond Life (see Items → Sets). Collect any version of every item in a set to complete it for coins and XP; collect every one at <b>Rare or better</b> to gild it for a bigger reward and an Epic item. Everything you've ever collected counts, so trading never undoes a set.</p>`],
   ['🌅', 'First chest of the day', `<p>The first chest you open each day gives <b>double loot</b>: two bonus items on top of whatever you trade for.</p>`],
   ['🧙', 'Wandering merchant', `<p>Every two hours a merchant sets up somewhere near you for one hour, shown on the map with a purple ring and a countdown. Get within 300 ft (or fly your drone over) to buy one of four Rare-or-better items. Each item sells once.</p>`],
