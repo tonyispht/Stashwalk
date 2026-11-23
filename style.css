@@ -1806,3 +1806,6 @@ body.linkpick .tutpill,body.toofast .tutpill{display:none}
 .perkwin span{font-size:30px}
 .perkwin small{color:var(--mut)}
 .perkwin.excl{border-color:#b88bff;background:color-mix(in srgb,#b88bff 12%,var(--card))}
+/* chests at a fixed ground size: the marker box itself is scaled, the drawing inside scales from its top-left */
+.cm2 .cmz{width:36px;height:44px;transform-origin:0 0}
+.cm2.tiny .kb,.cm2.tiny .lvb,.cm2.tiny .nd{display:none}

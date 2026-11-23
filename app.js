@@ -2,7 +2,7 @@
 'use strict';
 // Build stamp of this file. tools/bump.sh keeps it equal to ASSET_V in index.html; if the two ever
 // differ, the browser handed us an old cached copy of the code and we fetch a fresh one.
-const APP_BUILD = '202611231000';
+const APP_BUILD = '202611231015';
 window.APP_BUILD = APP_BUILD;
 const C = window.GEO_CONFIG, ITEMS = window.ITEMS, BY_ID = window.ITEM_BY_ID, BY_R = window.ITEMS_BY_R,
       RAR = window.RARITIES, RELICS = window.RELICS || [], DB = window.DB;
@@ -2911,7 +2911,7 @@ const GUIDE = () => {
     <ul><li>Turn on GPS and walk. The map follows you.</li><li>Chests start <b>hidden</b>. You'll see a dashed <b>search circle</b>; the chest is somewhere inside it.</li>
     <li>Get within <b>${ft(C.DISCOVER_FT || 20)}</b> and the chest is found for good. Within <b>${ft(C.UNLOCK_FT)}</b> you can open it.</li>
     <li>Use the <b>locator</b> (offered when you're close) – it ticks faster as you get warmer.</li></ul>`],
-  ['📦', 'Chests & trading', `<p>Chests hold more as they level up – 4 items at levels 1–2, 5 at 3–4, 6 at 5–6, 7 at level 7 and 8 at level 8 – and they look bigger on the map too. Gifts from players can fill a chest up to ${C.MAX_CHEST_SLOTS}. Now and then a chest also has a boost or a mod tucked inside for you (more often, and better, in higher-level chests; once per chest per day).</p>
+  ['📦', 'Chests & trading', `<p>Chests hold more as they level up – 4 items at levels 1–2, 5 at 3–4, 6 at 5–6, 7 at level 7 and 8 at level 8 – and they're bigger on the map too. Chests have a real size on the ground, so they shrink as you zoom out – zoom in to spot them, and the bigger ones are higher level. Gifts from players can fill a chest up to ${C.MAX_CHEST_SLOTS}. Now and then a chest also has a boost or a mod tucked inside for you (more often, and better, in higher-level chests; once per chest per day).</p>
     <ul><li><b>Trade:</b> pick one item to take and one of yours to leave. You can trade at the same chest once every ${C.TRADE_COOLDOWN_MIN || 60} minutes.</li>
     <li><b>Leave an item</b> without taking one to be generous (+${CO.gift} 🪙).</li><li>Items left by players stay until someone swaps them; the rest restock every day.</li>
     <li>Opening a chest for the first time pays <b>+${CO.chestNew} 🪙</b>. <span class="gtag" style="--c:#b88bff">✨ Rare</span> chests pay +${RARE_BONUS} 🪙 and always hold an Epic or better.</li>
@@ -5491,11 +5491,21 @@ async function fetchLevels() {
 }
 const mySkin = () => cosGet('cskin', cosEq('cskin')).em;
 const SKIN_OK = new Set(COSMETICS.cskin.items.map(i => i.em).filter(Boolean));
+const CHEST_M = 12, CHEST_GROW = 0.15;
+function chestScale(c, lv) {
+  if (!map) return 1;
+  const mpp = 156543.03 * Math.cos((c.lat || 0) * Math.PI / 180) / Math.pow(2, map.getZoom());
+  const px = CHEST_M * (1 + CHEST_GROW * (lv - 1)) / mpp;
+  return Math.max(6, Math.min(140, px)) / 44;
+}
 function chestPin(c, extra) {
   const rare = isRare(c), seen = !!(P && P.stats.visited[c.id]), lv = chestLevel(LVL.get(c.id));
   const cls = 'cm cm2' + (c.kind === 'player' ? ' pl' : '') + (rare ? ' rare' : '') + (seen ? ' seen' : ' fresh') + (extra || '');
-  return L.divIcon({ className: cls, iconSize: [36, 44], iconAnchor: [18, 42],
-    html: `<div class="cmz" style="--z:${(1 + 0.09 * (lv - 1)).toFixed(2)}"><div class="pin${c.skin && SKIN_OK.has(c.skin) ? ' skinned' : ''}">${c.skin && SKIN_OK.has(c.skin) ? `<span class="pskin">${c.skin}</span>` : CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}</div>` });
+  // Chests have a real size on the ground (12 m at level 1, +15% per level), so they shrink as you zoom out
+  // and you have to zoom in to spot them; bigger chests are higher level.
+  const z = chestScale(c, lv);
+  return L.divIcon({ className: cls + (z < .45 ? ' tiny' : ''), iconSize: [36 * z, 44 * z], iconAnchor: [18 * z, 42 * z],
+    html: `<div class="cmz" style="--z:${z.toFixed(3)}"><div class="pin${c.skin && SKIN_OK.has(c.skin) ? ' skinned' : ''}">${c.skin && SKIN_OK.has(c.skin) ? `<span class="pskin">${c.skin}</span>` : CHEST_SVG}</div><b class="kb">${rare ? '✨' : kindInfo(c.kind)[1]}</b>${seen ? '' : '<i class="nd"></i>'}${lv > 1 ? `<b class="lvb" style="--lc:${LVLC[lv]}">${lv}</b>` : ''}</div>` });
 }
 function drawChestMarkers() {
   if (!map || !window.L || !pos) return;
@@ -5514,22 +5524,8 @@ function drawChestMarkers() {
     const ic = chestPin(c, (dist(pos, c) <= unlockM(c) ? ' near' : '') + (locTarget === c.id ? ' target' : ''));
     markers.push(L.marker([c.lat, c.lon], { icon: ic, title: c.name }).addTo(map).on('click', () => openOne(c)));
   };
-  // bucket by a ~52px pixel grid at the current zoom
-  const CELL = 52, buckets = new Map();
-  found.forEach(c => {
-    let pt; try { pt = map.latLngToContainerPoint([c.lat, c.lon]); } catch (e) { return one(c); }
-    const key = Math.floor(pt.x / CELL) + '_' + Math.floor(pt.y / CELL);
-    (buckets.get(key) || buckets.set(key, []).get(key)).push(c);
-  });
-  buckets.forEach(group => {
-    if (group.length === 1) return one(group[0]);
-    const near = group.some(c => dist(pos, c) <= unlockM(c)), rare = group.some(isRare);
-    const lat = group.reduce((s, c) => s + c.lat, 0) / group.length, lon = group.reduce((s, c) => s + c.lon, 0) / group.length;
-    const ic = L.divIcon({ className: 'cmcluster' + (near ? ' near' : '') + (rare ? ' rare' : ''), html: '<span>' + group.length + '</span>', iconSize: [34, 34] });
-    markers.push(L.marker([lat, lon], { icon: ic, title: group.length + ' chests' }).addTo(map).on('click', () => {
-      try { map.fitBounds(group.map(c => [c.lat, c.lon]), { padding: [60, 60], maxZoom: 17 }); } catch (e) { map.setView([lat, lon], Math.min(17, map.getZoom() + 2)); }
-    }));
-  });
+  // every chest is drawn on its own at its true size - no grouping, so you zoom in to find them
+  found.forEach(one);
 }
 let lastRowIds = '', lastRender = 0, renderTimer = null;
 function renderNearby(force) {
